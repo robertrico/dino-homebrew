@@ -96,7 +96,7 @@ asserted at all, is the stamp gate wired to the right leg.
 
 ## The flash/monitor cycle
 
-    cd dino/tests/dino_bringup
+    cd tests/dino_bringup   # from the repo root
     source env.sh          # picks up /dev/tty.usbmodem*
     build                  # avr-gcc, -Werror
     flash                  # exits with "Resource busy"? screen still owns
