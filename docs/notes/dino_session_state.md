@@ -1129,3 +1129,109 @@ are untouched historical record and still accurate for what they cover.
     NEXT: registers/alu/mar/memory/io modules (plan 2 order), INT-A
     when Rico calls it. Milestone gate unchanged: nothing new until
     the machine adds two numbers.
+
+## 2026-07-28 session ledger (repo split + control-first integration plan)
+
+No bench work. Desk session: reorganised the integration plan, recorded a
+machine-wide invariant, and split DINO out of the `hardware` portfolio repo
+into `dino-homebrew` with history preserved (138 commits, git filter-repo
+--path dino/ --path-rename dino/:).
+
+### Decisions, with the reasoning that produced them
+
+STAGE 1 CLOSED as a diagnostic, not a gate. It was never run and is not
+owed: the module tests validate the rig more completely than a loopback
+jumper does (pin->jumper->pin vs pin->ribbon->strip->chip->back). A dead
+pin or wrong pinmap entry cannot survive a module going green. "What tests
+the tester" terminates at INDEPENDENT AGREEMENT — host-tested expect models
+with no AVR, netlist-derived assertions, a generated pinmap, and ten
+modules agreeing with all three after first going RED on real faults — not
+at self-inspection. mod_selftest.c stays as a triage tool.
+
+INTEGRATION REORGANISED TWICE. First from the INT-A..INT-E pairwise-seam
+ladder to blocks (the ladder was written when nothing was proven; the
+modules are fixtures now). Then the block order was INVERTED from
+datapath-first to CONTROL-FIRST, on Rico's constraint:
+
+  "My biggest requirement is, we can only use LESS wires per module."
+
+That constraint and "lowest risk of introducing error modes" turn out to be
+the SAME objective, because every rig wire is a wire that can be one hole
+off or swapped in a ribbon. And the risk is asymmetric: a wrong SAMPLED
+wire is a false FAIL, a wrong DRIVEN wire can fight a real driver, and a
+wrong driven STROBE is worst because strobes are ENABLES. The control unit
+has the highest fan-out in the machine, so the datapath-first plan — which
+had the rig impersonating control across four boards, ~40 driven wires
+including ~20 strobes — was the single most dangerous harness the project
+could build. Control-first means the strobes are copper from step 1 and the
+rig never drives an enable into a datapath board at all.
+
+This also restored what the spec originally said: INT-A first, because it
+is the highest-risk seam and needs no datapath.
+
+MACHINE INVARIANT RECORDED (BRINGUP.md). Everything that changes state is
+clock-qualified and commits on CLK low. Netlist-verified, written in
+English so it is not re-derived. The consequence is the useful part: a
+microcode decode glitch is a SUPPLY question, never a CORRECTNESS one, so
+do not gate the '138s pre-emptively. Also a diagnostic corollary — if a
+VALUE is wrong, the cause is not a decode glitch; look at the CLK-low
+window instead.
+
+Two things were reasoned wrong before the netlist was consulted, both
+corrected the same session: the END->T path is not an async race (U6 is a
+'163, SYNCHRONOUS clear), and the PC has no glitch-corruption path (load,
+clear and count are each independently clock-gated through U36/U10).
+RULE EARNED: run build_report, do not reason from memory. It is two
+seconds and it is authoritative.
+
+cw_expect DEMOTED from driver to checker. Under datapath-first the rig
+would have DRIVEN strobes computed from cw_expect(MC_REAL_WORDS[...]).
+Control-first deletes that job: the real ROM and decoder produce the
+strobes from step 1, and the model verifies them instead. No handover to
+engineer, nothing to unplug.
+
+BRANCH COVERAGE no longer needs a ROM reburn. control.cond forces FLAG_Z
+both ways in Block 1 and proves both U62 arms. The burned image stays the
+milestone program (LDAI 5; LDBI 3; ADD; OUT; HALT), so Block 5 is a true
+dress rehearsal for free-run rather than a rehearsal of a different
+program. The countdown/JNZ image remains a TL866 minute away if a
+full-program branch test is ever wanted.
+
+ROM IMAGES NOW TRACKED. All six were silently untracked in `hardware`,
+swallowed by a bare `*.bin` inherited from the MCU projects. Verified
+byte-identical against the tracked generators before committing. See
+roms/README.md.
+
+PINMAP HOST TEST FIXED. test_kicad_contracts_pinmap.py asserted global bus
+positions (SA2 at PL1/D48, MDR0 at PF0) that two later bench decisions
+overrode — the ALU's as-built map ("mega should bend to the DUT") and
+memory's ribbon-first 24-pin run. The assertions now exempt PER SIGNAL,
+reading the exempt set straight from PIN_ASSIGN so it stays true when the
+bench pins another module by hand. It had been failing in `hardware` too.
+
+### Block 1 pre-mortem (predictions, for scoring later)
+
+Ranked guesses at what Block 1 costs, recorded now so they can be checked
+against what actually happens:
+
+  1. THREE-BOARD SUPPLY/RETURN. First 3-board stack. The cross-board bulk
+     cap rule (2026-07-14 ledger) has only ever been exercised on two.
+     Presents as intermittent failures worsening as more strobes switch —
+     the parasitic-power signature from the registers bring-up.
+  2. CW0-15 ROTATED between boards. 16 inter-board wires; A8-A11 rotation
+     and M9<->M10 are both precedents. Presents as a control.decode FAIL
+     pattern that decodes as a bit permutation.
+  3. DECODE GLITCH, characterised but harmless — no datapath is wired, so
+     the '138 outputs go to rig sample pins and there is nothing to fight.
+     Best possible place to measure it.
+  4. END->T timing. root passed 5/5 with a RIG-driven END; now it arrives
+     from the ROM one access time after T changes.
+  5. '138 HIGH drive is weak (LS sources -0.4mA) into real cross-board
+     loads. A soft HIGH reads as a clean 1 to the Mega. Scope only.
+  6. FLAG_Z rig wire onto a real U62 input — 4 of 5 control_word faults
+     were one-hole slips around U62 pins 1/2/3.
+
+Confidence by block: 1 moderate (most runs expected), 2 good (zero new
+driven wires), 3 moderate (the LE_IR vs ROM-access race is the one to
+watch), 4 good, 5 good, 6 UNKNOWN — free-run is where a genuine timing or
+design issue surfaces, and nothing before it can do that job.

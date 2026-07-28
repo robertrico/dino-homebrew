@@ -33,9 +33,38 @@ for s, tok, n in re.findall(r'\{(pm_s\d+), sig_(\w+), (\d+)\}', mm.group(1)):
     assert strings[s] == tok, f"MODMAPS name {strings[s]} != array token {tok}"
     assert int(n) == len(modules[tok]), f"MODMAPS count mismatch for {tok}"
 
-# W bus pinned to PORTA in every module that has it
+# The bus-position rules below are POOL-ALLOCATION invariants: they hold
+# for modules whose pins the generator hands out. They do NOT hold for
+# modules pinned BY THE BENCH, and those outrank the generator by
+# definition:
+#
+#   alu     Rico, 2026-07-26: "Change the code for the ALU only on the test
+#           rig. It's assigned arbitrarily. full stop. MEGA SHOULD BEND TO
+#           THE DUT." The strip's slot map is AS-BUILT and FROZEN
+#           (layout_gen.py); PIN_ASSIGN follows it with pin = slot + 17.
+#   memory  ribbon-first bench call: both byte buses in one unbroken 24-pin
+#           run, D53->D30 (MDR0-7 = D53-D46, M0-M15 = D45-D30).
+#
+# Read the exempt set straight from PIN_ASSIGN so this stays true when the
+# bench pins another module by hand — same discipline as everything else
+# here: derive it, don't retype it.
+import importlib.util as _ilu
+_spec = _ilu.spec_from_file_location(
+    "kicad_contracts", os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                    "kicad_contracts.py"))
+_kc = _ilu.module_from_spec(_spec)
+_spec.loader.exec_module(_kc)
+PIN_ASSIGN = getattr(_kc, "PIN_ASSIGN", {})
+assert PIN_ASSIGN, "PIN_ASSIGN empty — exemption set would silently vanish"
+
+# Exempt PER SIGNAL, not per module: a hand-pinned module can still have
+# pool-allocated signals, and those must keep obeying the bus rules.
 for tok, rows in modules.items():
+    bench_pinned = PIN_ASSIGN.get(tok, {})
     for sig, pin, _d in rows:
+        if sig in bench_pinned:
+            continue
+        # W bus pinned to PORTA in every module that has it
         if sig == "W0":
             assert pin.startswith("PA0"), f"W0 must be PA0/D22, got {pin} in {tok}"
         # MDR bus on PORTF

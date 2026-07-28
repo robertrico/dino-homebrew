@@ -2,10 +2,23 @@
 __pycache__/
 *.pyc
 
-# KiCad editor lock files
+# KiCad editor lock files and autosave/backup snapshots
 *.lck
+**/*-backups/
+~$*
+
+# Rig firmware build output. NOTE: deliberately scoped to the build dir —
+# do NOT add a bare `*.bin` here. The hardware repo had one (inherited
+# from the MCU projects) and it was silently swallowing roms/*.bin, which
+# are the record of what is physically burned into the sockets.
+tests/dino_bringup/build/
+*.o
+*.elf
+*.hex
 
 # (compiled host-test binaries: see tests/dino_bringup/hosttest/.gitignore)
 
 # Obsidian per-machine editor state
 docs/notes/.obsidian/workspace.json
+
+.DS_Store
