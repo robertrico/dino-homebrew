@@ -1206,6 +1206,42 @@ The finickiest boards on the machine, and the ones with no datapath
 dependency at all. Nothing downstream can be trusted until the control
 unit says the right thing at the right time.
 
+### UNFINISHED WORK — none of this exists yet. Build it before wiring.
+
+Every module stage above was wired against a `pins <mod>` table the
+firmware prints from generated data. THERE IS NO EQUIVALENT FOR A BLOCK,
+and you cannot wire Block 1 against a table that cannot be produced yet.
+
+    [ ] BLOCK SUPPORT in kicad_contracts.py
+        The rig's bundles are PER MODULE, and root / microcode /
+        control_word REUSE THE SAME MEGA PINS — each was wired alone, so
+        nothing ever had to deduplicate them. A block needs one bundle
+        over the union of its members, which means:
+          - a BLOCKS table: block name -> member modules
+          - drop the signals that become COPPER between members. For this
+            block that is T0-3 (root -> microcode address) and CW0-15
+            (microcode -> control_word). The rig stops DRIVING them.
+          - but KEEP THEM AS SAMPLED PROBES. Sampling is cheap and
+            low-risk (a bad sample wire is a false FAIL, never a fight),
+            and CW0-15 captured alongside the decoded strobes is what
+            lets a FAIL name the lying gate instead of the lying board.
+          - COLLISION DETECTION across members, and a hard error rather
+            than a silent last-writer-wins. Two modules claiming one pin
+            is exactly the class of bug this whole toolchain exists to
+            make impossible.
+          - PIN_ASSIGN still outranks everything (the bench pins win).
+    [ ] `pins block1` / `pins control` in the shell, same contract as
+        `pins <mod>`: the printout IS the complete hookup, probes included.
+    [ ] mod_control.c + registry entries for the control.* tests below.
+    [ ] host test for the block bundle generator, same as
+        test_kicad_contracts_pinmap.py does for the per-module maps.
+    [ ] teach coverage_lint.py about blocks so it does not report a gap
+        for signals now covered at block level.
+
+Do the tooling first. Wiring three boards against a hand-written list is
+the one thing this project has never done, and the ALU slot-map evening
+is what it costs when the paper and the copper disagree.
+
 ### Wiring
 
 Three boards to each other: microcode ROM outputs CW0-15 to the control

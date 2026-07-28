@@ -71,6 +71,14 @@ project. Make it real first:
 An earlier datapath-first plan was inverted on 2026-07-28 for exactly the
 wire-count reason. Don't re-propose it.
 
+**Block 1 is blocked on tooling that does not exist yet.** The rig's pin
+bundles are per-module, and root/microcode/control_word reuse the same
+Mega pins — there is no `pins <block>` and so no table to wire against.
+Build block support in `kicad_contracts.py` first (union of members,
+drop what becomes copper between them but keep it as sampled probes,
+hard-error on pin collisions), then `mod_control.c`. Full checklist in
+BRINGUP.md under "UNFINISHED WORK".
+
 ## The machine invariant (do not re-derive)
 
 **Everything that changes state is clock-qualified and commits on CLK
