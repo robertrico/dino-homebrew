@@ -1562,7 +1562,25 @@ now runs BEFORE decode.
 Each row is one wiring session. The rig only ever sheds. END and HALT
 stay on D45/D42 at U61.3/U61.5 throughout and are never re-landed.
 
-### BLOCK 2 — + pc + mar + memory      (driven 8, sampled 10, 18 jumpers)
+### BLOCK 2 — + pc + mar + memory      (driven 8, sampled 15, 23 jumpers)
+
+    modules: root, microcode, control_word, pc, mar, memory
+
+    KEEP   PL0/D49 CLK, PF4-7/A4-A7 T0-3      the STANDING TIMING SET
+           PL4/D45 END  U61.3, PL7/D42 HALT   U61.5
+           A8-A15  IRB0-7 driven -> U16.2 .4 .6 .8 .11 .13 .15 .17
+    OFF    PL1-3 SA, PL5 PC_UP, PL6 PC_MAR_MUX
+           PC0-7  the 8 SRC strobes
+           PF0-3  the jmp group
+    ON     PA0-7 / D22-D29  MDR0-7  <- U19.18 .17 .16 .15 .14 .13 .12 .11
+
+    NOTE PA0-6 held the DST strobes in block 1 and now hold MDR on the MEMORY
+    board — same Mega holes, different board, different signals. Re-land all
+    eight, do not assume the ribbon can stay put.
+
+    WHY MDR IS ON PA AND NOT ITS USUAL PF: so that PF4-7 remains T's home in
+    EVERY block. CLK and T0-3 are worth more as five wires that never move
+    than MDR is as a bus-rule default.
 
 Three boards for free. M0-15 becomes copper between PC/MAR and memory,
 and every strobe already comes from the real decoder — so 26 sample wires
@@ -1597,6 +1615,29 @@ come off and 8 go on.
     STA, JMP and JNZ reach MAR only through the absent U25 bridge. What it
     proves is the PC_MAR_MUX handoff on M and the ~{RAM_EN} = INV(M15)
     decode.
+
+    BENCH RESULT 2026-08-01 — 2/2 PASS
+      block2.dump    diagnostic: MDR by T-state, four distinct addresses
+                     inside one LDA
+      block2.fetch   ADDRESS ORDER proven from inside one instruction —
+                     LDA's T0/T1/T2 read PC, PC+1, PC+2, consecutive BY
+                     CONSTRUCTION, captured from a fixed-interval burst and
+                     matched against the DIAG image at 0x0838 and 0x1943 on
+                     two runs
+
+    THE FAULT WAS END AND HALT NOT YET WIRED. Without them T never cleared,
+    the PC never advanced between instructions, and the fetch byte was
+    constant. They are copper in this block (U15.16->U61.3, U15.19->U61.5)
+    and they are easy to forget because block 1 SAMPLED them at U61 without
+    needing the ROM-side run to exist.
+
+    ADJACENCY MUST COME FROM A BURST. Three rig attempts failed here: assuming
+    successive fetch samples were one instruction apart (at ~21% yield they
+    are 2-3 apart), then requiring two consecutive POLLED successes (the poll
+    loop is ~15-19 cycles against a 977ns clock, so the phase drifts and a
+    success is almost never followed by another). A burst samples at a FIXED
+    interval, so consecutive buffer entries are consecutive in time by
+    construction.
 
     SCOPE/LA   PC_MAR_MUX vs M0 — the tri-state handoff, strike-6
                territory. BAD TRACE: any overlap where PC and MAR both

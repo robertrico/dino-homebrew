@@ -420,6 +420,21 @@ def build_real():
     return code + bytes([SAFE_FILL]) * (SIZE - len(code))
 
 
+def diag_triple_max():
+    """Worst-case ambiguity of three CONSECUTIVE diag bytes: how many addresses
+    can share one triple. block2.fetch proves the fetch path reads ROM at PC,
+    PC+1, PC+2 by matching such a triple, so this is the threshold below which
+    a match is meaningful — and it is STRUCTURAL, not luck. diag_byte truncates
+    to 8 bits, so three bytes constrain 24 bits with enough structure left to
+    leave a 4-fold ambiguity almost everywhere and 8-fold in places. A
+    hand-picked threshold of 4 would have false-failed on 3% of positions."""
+    seen = {}
+    for a in range(SIZE - 2):
+        k = (diag_byte(a), diag_byte(a + 1), diag_byte(a + 2))
+        seen[k] = seen.get(k, 0) + 1
+    return max(seen.values())
+
+
 # ---- CRC-16/CCITT-FALSE (same routine the rig links, src/crc16.c) ------
 def crc16(data):
     crc = 0xFFFF
@@ -487,6 +502,13 @@ def emit_header(real, crcs, path, cov=None):
         "#endif",
         "",
     ]
+    lines += ["",
+              "/* Worst-case ambiguity of three CONSECUTIVE diag bytes: the most",
+              "   addresses that can share one triple. block2.fetch matches such a",
+              "   triple to prove the fetch reads ROM at PC, PC+1, PC+2, so a match",
+              "   count at or below this is meaningful and anything above it is not.",
+              "   STRUCTURAL, not luck — generated, never hand-picked. */",
+              f"#define PR_DIAG_TRIPLE_MAX {diag_triple_max()}u"]
     if cov:
         lines += ["", "/* progressive ISA-coverage images. Each ends OUT; HALT",
                   "   because OB is the only datapath observable on the block",

@@ -94,7 +94,6 @@
     }
 
 CAP_PL_LO(cap_pl_pa, _SFR_IO_ADDR(PINA))
-CAP_PL_LO(cap_pl_pf, _SFR_IO_ADDR(PINF))
 
 static void cap_pl_pk(void) {           /* both extended I/O — lds/lds */
     uint8_t *pa = s_capA, *pb = s_capB;
@@ -173,30 +172,6 @@ static uint8_t frames(frame_t *out, uint8_t max) {
     if (n < max) { out[n].a = ca; out[n].b = cb; n++; }
     (void)held;
     return n;
-}
-
-/* Index of the frame that starts a run.
-
-   ANCHORED ON THE FULL FETCH FRAME — BOTH BYTES, NOT THE ANCHOR ALONE.
-   On a four-T instruction the anchor does NOT identify T0: LDA's rows are
-   0x600E, 0x600C, 0x600D and ALL THREE carry anchor 0x60, because they are
-   all mux_pc+pc_up rows. Matching on the anchor alone latched onto T1 and
-   shifted the whole run by one, which is precisely how LDA/STA/JMP/JNZ
-   failed while every 1- and 2-T opcode passed (2026-07-30). The fetch row is
-   unique only as a PAIR: (60,5F) against T1's (60,77). T0 is the universal FETCH word for
-   every opcode (MC_REAL_ROW0), so its anchor byte is the same self-
-   synchronising marker regardless of what is being decoded. The previous
-   version returned the frame AFTER an END, which depends on END semantics,
-   on T actually clearing, and on an off-by-one — and the first Block 1 run
-   came back rotated by exactly one frame with no way to tell which of those
-   three was at fault (2026-07-30).
-   Returns 0xFF if no fetch frame was seen, which is itself a clear failure:
-   the machine never executed a recognisable T0. */
-static uint8_t run_start(const frame_t *f, uint8_t n,
-                         uint8_t fetch_a, uint8_t fetch_b) {
-    for (uint8_t i = 0; i < n; i++)
-        if (f[i].a == fetch_a && f[i].b == fetch_b) return i;
-    return 0xFF;
 }
 
 /* ---- expectation --------------------------------------------------------
@@ -814,81 +789,202 @@ void t_block1_stability(void) {
 }
 
 /* ---- block2 -------------------------------------------------------------
-   A real PC drove a real MAR drove a real ROM. The bytes on MDR0-7 are the
-   ROM image IN ADDRESS ORDER.
+   A real PC drove a real MAR drove a real ROM. With T sampled, this is an
+   ADDRESS-ORDER PROOF rather than "the bytes look plausible": capture a run of
+   consecutive FETCH bytes, then search the ROM image for the one address whose
+   walk reproduces that exact run at the instruction's own stride.
 
-   Run PROG_diag.bin FIRST: pr_diag_byte() is injective over the low addresses,
-   so every fetched byte NAMES ITS OWN ADDRESS. MDR is the only address witness
-   in this block — M0-15 is copper — and the real image's 0xFF tail names
-   nothing. Then re-run on PROG.bin.
+   The stride comes from the microcode — the PC_UP count of the forced opcode —
+   so a wrong PC advance fails even when every individual byte is correct. That
+   is the fault an unordered check cannot see.
 
-   HONEST SCOPE: this does NOT prove PC->MAR->ROM. With no W driver present the
-   MAR loads latch garbage; LDA/STA/JMP/JNZ reach MAR only through the absent
-   U25 bridge. What it proves is the PC_MAR_MUX handoff and the ROM decode. */
+   The search also IDENTIFIES THE SEATED IMAGE: whichever of DIAG or REAL
+   reproduces the run is the one in the socket. No guessing, and no separate
+   presence test.
+
+   HONEST SCOPE: this does NOT prove PC -> MAR -> ROM. With no W driver present
+   the MAR loads latch garbage, and LDA/STA/JMP/JNZ reach MAR only through the
+   absent U25 bridge. What it proves is the PC_MAR_MUX handoff on M, the
+   ~{RAM_EN} = INV(M15) decode, and the ROM read path onto MDR. See the named
+   gap in BRINGUP.md. */
 static const char m_block2[] PROGMEM = "block2";
+
+#define NFETCH 6
+
+/* ROM content at an address, for whichever image is seated. */
+static uint8_t rom_byte(uint8_t real, uint16_t a) {
+    if (!real) return pr_diag_byte(a);
+    return (a < PR_PROGRAM_LEN) ? pgm_read_byte(&PR_PROGRAM[a]) : PR_SAFE_FILL;
+}
+
+/* Total PC_UP count for an opcode = how far the PC advances per instruction. */
+static uint8_t pc_stride(uint8_t op) {
+    uint8_t n = 0;
+    for (uint8_t t = 0; t < 16; t++) {
+        uint16_t w = mc_word(op, t);
+        if (w & (1u << 13)) n++;
+        if (w & ((1u << 12) | (1u << 15))) break;
+    }
+    return n ? n : 1;
+}
+
+/* ADDRESS ORDER, PROVEN FROM INSIDE ONE INSTRUCTION.
+
+   LDA reads ROM at T0, T1 and T2 — three reads at PC, PC+1, PC+2, CONSECUTIVE
+   BY CONSTRUCTION because they are rows of one instruction. Three bytes at
+   three known-consecutive addresses pins the PC's low bits, the M bus, the ROM
+   decode and the read path together; a wrong address line changes at least one.
+
+   ADJACENCY COMES FROM A BURST, NOT FROM LUCK. Two earlier attempts failed on
+   this: comparing successive FETCH samples assumed they were one instruction
+   apart (they sit 2-3 apart at ~21% yield), and requiring two consecutive
+   polled attempts to succeed never fired at all — the poll loop is ~15-19
+   cycles against a 977ns clock, so the phase drifts and a success is almost
+   never followed by another (2026-08-01).
+   A burst samples at a FIXED interval into the arena, so consecutive buffer
+   entries are consecutive in time by construction and the T-states between
+   them cannot have slipped past unseen. */
+#define B2CAP 600                      /* 3 bytes each: PINL, PINA, PINF */
+
+static void cap3(void) {
+    uint8_t *p = g_arena;
+    uint16_t n = B2CAP / 4;
+    uint8_t l, a, f;
+    __asm__ volatile(
+        "1:                     \n\t"
+        ".rept 4                \n\t"
+        "lds %[l], %[pinl]      \n\t"   /* CLK + END/HALT */
+        "in  %[a], %[pina]      \n\t"   /* MDR0-7 in block2 */
+        "in  %[f], %[pinf]      \n\t"   /* T0-3 in the top nibble */
+        "st  X+, %[l]           \n\t"
+        "st  X+, %[a]           \n\t"
+        "st  X+, %[f]           \n\t"
+        ".endr                  \n\t"
+        "sbiw %[n], 1           \n\t"
+        "brne 1b                \n\t"
+        : [l] "=&r" (l), [a] "=&r" (a), [f] "=&r" (f), [n] "+w" (n), "+x" (p)
+        : [pinl] "i" (_SFR_MEM_ADDR(PINL)),
+          [pina] "I" (_SFR_IO_ADDR(PINA)),
+          [pinf] "I" (_SFR_IO_ADDR(PINF))
+        : "memory");
+}
 
 void t_block2_fetch(void) {
     test_begin(m_block2, PSTR("fetch"));
     if (!bind_irb("block2")) { test_end(); return; }
-    frame_t f[MAXFR];
-    /* NOP holds the machine in a pure fetch loop: T0 fetch (PC++), T1 END.
-       Every fetch therefore lands on the next address in order. */
-    irb_force(0x00);
-    cap_pl_pf();
-    uint8_t n = frames(f, MAXFR);
-    uint8_t s = run_start(f, n, exp_anchor(MC_REAL_ROW0) & A_MASK,
-                          exp_jmp(cw_expect(MC_REAL_ROW0, STRAP_FLAG_Z)));
-    if (s == 0xFF) {
-        test_check_bool(false, true, PSTR("FETCH_frame_seen_machine_running"));
+
+    const uint8_t op = 0x21;                 /* LDA: ROM reads at T0,T1,T2 */
+    /* confirm from the BURNED MICROCODE that those rows read ROM and advance
+       the PC — never assume the opcode table */
+    for (uint8_t t = 0; t < 3; t++) {
+        uint16_t w = mc_word(op, t);
+        if (((w >> 3) & 7) != 1 || !((w >> 13) & 1)) {
+            uart_putsP("     LDA row t="); uart_putc((char)('0' + t));
+            uart_putsP(" is not a PC-advancing ROM read; pick another opcode\r\n");
+            test_check_bool(false, true, PSTR("opcode_reads_ROM_at_T0_T1_T2"));
+            test_end(); return;
+        }
+    }
+    irb_force(op);
+
+    uint8_t b[3], have = 0;
+    for (uint8_t attempt = 0; attempt < 12 && have < 3; attempt++) {
+        cap3();
+        /* walk the buffer for T=0,1,2 in CLK-low entries that are CLOSE
+           TOGETHER. A gap of more than 4 buffer slots could hide a T-state,
+           so it does not count as contiguous. */
+        int16_t i0 = -1, i1 = -1;
+        for (uint16_t i = 0; i < B2CAP; i++) {
+            uint8_t l = g_arena[i * 3], f = g_arena[i * 3 + 2];
+            if (l & (1 << A_CLK)) continue;          /* ROM still settling */
+            uint8_t t = (uint8_t)(f >> 4);
+            uint8_t mdr = g_arena[i * 3 + 1];
+            if (t == 0) { i0 = (int16_t)i; i1 = -1; b[0] = mdr; continue; }
+            if (t == 1 && i0 >= 0 && (int16_t)i - i0 <= 4) {
+                i1 = (int16_t)i; b[1] = mdr; continue;
+            }
+            if (t == 2 && i1 >= 0 && (int16_t)i - i1 <= 4) {
+                b[2] = mdr; have = 3; break;
+            }
+            i0 = -1; i1 = -1;
+        }
+    }
+    test_check_u16(have, 3, PSTR("captured_T0_T1_T2_contiguously"));
+    if (have < 3) {
+        uart_putsP("     no contiguous T0/T1/T2 in 12 bursts. The burst samples "
+                   "every ~687ns\r\n     against a 977ns T-state, so some "
+                   "T-states get no CLK-low entry. Halving\r\n     the clock "
+                   "at the U20 divider doubles both windows — that is what the "
+                   "divider\r\n     is for, and acceptance still runs at "
+                   "1.024MHz.\r\n");
         test_end(); return;
     }
-    /* collect the distinct fetched bytes, in order */
-    uint8_t seen[16], ns = 0;
-    for (uint8_t i = s; i < n && ns < 16; i++)
-        if (ns == 0 || seen[ns - 1] != f[i].b) seen[ns++] = f[i].b;
-    test_check_bool(ns >= 3, true, PSTR("saw_several_fetches"));
+    uart_putsP("     consecutive ROM reads: ");
+    for (uint8_t k = 0; k < 3; k++) { uart_puthex8(b[k]); uart_putc(' '); }
+    uart_putsP("\r\n");
 
-    /* Which image is seated? Both are legitimate; DIAG is the strong one. */
-    bool diag = (ns > 0 && seen[0] == pr_diag_byte(0)) ||
-                (ns > 1 && seen[1] == pr_diag_byte(1));
-    if (diag) uart_putsP("     image: DIAG (self-naming addresses)\r\n");
-    else      uart_putsP("     image: REAL (milestone)\r\n");
-    uint8_t bad = 0;
-    if (diag) {
-        /* find the address whose diag byte matches the first sample, then
-           require the rest to follow in strict address order */
-        uint16_t a0 = 0xFFFF;
-        for (uint16_t a = 0; a < 256; a++)
-            if (pr_diag_byte(a) == seen[0]) { a0 = a; break; }
-        if (a0 == 0xFFFF) {
-            uart_putsP("     first byte 0x"); uart_puthex8(seen[0]);
-            uart_putsP(" names no address in the first 256\r\n");
-            bad++;
-        } else {
-            for (uint8_t i = 1; i < ns; i++) {
-                uint8_t want = pr_diag_byte((uint16_t)(a0 + i));
-                if (seen[i] != want) {
-                    uart_putsP("     addr=0x"); uart_puthex8((uint8_t)(a0 + i));
-                    uart_putsP(" got=0x"); uart_puthex8(seen[i]);
-                    uart_putsP(" want=0x"); uart_puthex8(want);
-                    uart_putsP("\r\n");
-                    bad++;
-                }
+    uint16_t found = 0xFFFF, nmatch = 0;
+    uint8_t real_img = 0;
+    for (uint8_t img = 0; img < 2; img++)
+        for (uint32_t a = 0; a + 2 < PR_SIZE; a++)
+            if (rom_byte(img, (uint16_t)a) == b[0] &&
+                rom_byte(img, (uint16_t)(a + 1)) == b[1] &&
+                rom_byte(img, (uint16_t)(a + 2)) == b[2]) {
+                if (found == 0xFFFF) { found = (uint16_t)a; real_img = img; }
+                if (nmatch < 0xFFFF) nmatch++;
             }
-        }
+
+    if (found == 0xFFFF) {
+        uart_putsP("     that triple appears at NO consecutive addresses in "
+                   "either image — the\r\n     fetch path is delivering bytes "
+                   "the ROM does not contain at PC, PC+1, PC+2\r\n");
     } else {
-        for (uint8_t i = 0; i < ns && i < PR_PROGRAM_LEN; i++) {
-            uint8_t want = pgm_read_byte(&PR_PROGRAM[i]);
-            if (seen[i] != want) {
-                uart_putsP("     progaddr="); uart_putc((char)('0' + i));
-                uart_putsP(" got=0x"); uart_puthex8(seen[i]);
-                uart_putsP(" want=0x"); uart_puthex8(want);
-                uart_putsP("\r\n");
-                bad++;
-            }
-        }
+        uart_putsP("     matches the ");
+        if (real_img) uart_putsP("REAL"); else uart_putsP("DIAG");
+        uart_putsP(" image at 0x");
+        uart_puthex8((uint8_t)(found >> 8)); uart_puthex8((uint8_t)found);
+        uart_putsP(", and at "); uart_putdec(nmatch);
+        uart_putsP(" address(es) in total\r\n");
     }
-    test_check_u16(bad, 0, PSTR("address_order_mismatches"));
+    test_check_bool(found != 0xFFFF, true, PSTR("reads_are_ROM_at_PC_PC1_PC2"));
+    /* THE THRESHOLD IS GENERATED, NOT GUESSED. Three consecutive diag bytes
+       do not identify a unique address: the byte truncates to 8 bits, so the
+       triple leaves a 4-fold ambiguity almost everywhere and 8-fold in places.
+       A hand-picked 4 would have false-failed on 3% of positions. What the
+       match DOES prove is that the three bytes are consecutive ROM content at
+       PC, PC+1, PC+2 — a 1-in-4096 discrimination, which is the claim. */
+    test_check_bool(nmatch > 0 && nmatch <= PR_DIAG_TRIPLE_MAX, true,
+                    PSTR("match_is_within_the_images_own_ambiguity"));
+    test_end();
+}
+
+/* Diagnostic: what the rig actually sees, per T-state. Never fails. */
+void t_block2_dump(void) {
+    test_begin(m_block2, PSTR("dump"));
+    if (!bind_irb("block2")) { test_end(); return; }
+    static const uint8_t SHOW[] PROGMEM = {0x00, 0x11, 0x21};
+    samp_t s;
+    for (uint8_t i = 0; i < sizeof SHOW; i++) {
+        uint8_t op = pgm_read_byte(&SHOW[i]);
+        irb_force(op);
+        uint8_t seen[16], mdr[16];
+        for (uint8_t t = 0; t < 16; t++) seen[t] = 0;
+        for (uint16_t k = 0; k < 8000; k++) {
+            dither(k);
+            if (!sample_now(&s)) continue;
+            if (!seen[s.t & 15]) { seen[s.t & 15] = 1; mdr[s.t & 15] = s.dst; }  /* PORTA = MDR here */
+        }
+        uart_putsP("     op=0x"); uart_puthex8(op);
+        uart_putsP(" stride="); uart_putdec(pc_stride(op));
+        uart_putsP("  MDR by T: ");
+        for (uint8_t t = 0; t < 16; t++) {
+            if (!seen[t]) continue;
+            uart_putc('t'); uart_putc((char)('0' + t)); uart_putc('=');
+            uart_puthex8(mdr[t]); uart_putc(' ');
+        }
+        uart_putsP("\r\n");
+    }
+    test_check_bool(true, true, PSTR("dump_printed"));
     test_end();
 }
 

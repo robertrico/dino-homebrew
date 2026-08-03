@@ -48,6 +48,13 @@ static const uint8_t PR_PROGRAM[PR_PROGRAM_LEN] PROGMEM = {
 #endif
 
 
+/* Worst-case ambiguity of three CONSECUTIVE diag bytes: the most
+   addresses that can share one triple. block2.fetch matches such a
+   triple to prove the fetch reads ROM at PC, PC+1, PC+2, so a match
+   count at or below this is meaningful and anything above it is not.
+   STRUCTURAL, not luck — generated, never hand-picked. */
+#define PR_DIAG_TRIPLE_MAX 8u
+
 /* progressive ISA-coverage images. Each ends OUT; HALT
    because OB is the only datapath observable on the block
    ladder. Burn as needed; PROG.bin (the milestone) is never

@@ -89,6 +89,12 @@ QUAL = {"CLK"}
 # DST. Block1 only: block2 fills PF with MDR0-7, and blocks 2-6 do not decode
 # per-T.
 QUAL1 = QUAL | T03
+# CLK + T0-3 are the STANDING TIMING SET: sampled in every block, in the same
+# holes throughout, exactly as END/HALT are. Neither is an assertion —
+# root.clock and root.tstates own them. They are what makes a sample
+# INTERPRETABLE: CLK says the ROM has settled, T says which microcode row the
+# sample belongs to.
+TIMING = QUAL | T03
 
 
 def test_block_names_and_order():
@@ -119,14 +125,11 @@ def test_driven_gate():
 def test_sample_counts():
     print("sample ladder")
     counts = [len(SURF[b]["sample"]) for b in SURF]
-    check_eq(counts, [31, 11, 11, 11, 11, 9],
-             "sampled ladder 31,11,11,11,11,9 (CLK everywhere, T0-3 in block1)")
-    check_eq(SURF["block1"]["qualify"], ["CLK", "T0", "T1", "T2", "T3"],
-             "block1 qualifies on CLK and labels every sample with T")
-    for b in ("block2", "block3", "block4", "block5"):
-        check_eq(SURF[b]["qualify"], ["CLK"], f"{b} qualifies capture on CLK")
-    check_eq(SURF["block6"]["qualify"], [],
-             "block6 polls rather than frame-decoding — no qualifier needed")
+    check_eq(counts, [31, 15, 15, 15, 15, 14],
+             "sampled ladder 31,15,15,15,15,14 (CLK+T0-3 in every block)")
+    for b in SURF:
+        check_eq(SURF[b]["qualify"], ["CLK", "T0", "T1", "T2", "T3"],
+                 f"{b} carries the standing timing set")
 
 
 def test_block1_surface():
@@ -156,8 +159,8 @@ def test_block1_surface():
 def test_block2_surface():
     print("block2 — + pc + mar + memory")
     s = SURF["block2"]
-    check_eq(set(s["sample"]), MDR | ENDHALT | QUAL,
-             "block2 samples MDR0-7 + END/HALT + CLK")
+    check_eq(set(s["sample"]), MDR | ENDHALT | TIMING,
+             "block2 samples MDR0-7 + END/HALT + CLK + T0-3")
     check(all(f"M{i}" in s["copper"] for i in range(15)), "M0-14 are copper")
     check("M15=ROM_EN" in s["copper"], "M15=ROM_EN is copper")
     check_eq(set(s["strap"]), {"FLAG_Z", "WRITE_DIR"} | {f"W{i}" for i in range(8)},
@@ -176,8 +179,8 @@ def test_block2_surface():
 def test_block3_surface():
     print("block3 — + mdr")
     s = SURF["block3"]
-    check_eq(set(s["sample"]), IRB | ENDHALT | QUAL,
-             "block3 samples IRB0-7 + END/HALT + CLK")
+    check_eq(set(s["sample"]), IRB | ENDHALT | TIMING,
+             "block3 samples IRB0-7 + END/HALT + CLK + T0-3")
     check(IRB <= set(s["copper"]), "IRB is copper now — the IR is real")
     check(all(f"W{i}" in s["copper"] for i in range(8)), "W0-7 is copper now")
     check("WRITE_DIR" in s["copper"], "WRITE_DIR is copper now")
@@ -188,8 +191,8 @@ def test_block3_surface():
 def test_block4_surface():
     print("block4 — + registers + alu")
     s = SURF["block4"]
-    check_eq(set(s["sample"]), OB | ENDHALT | QUAL,
-             "block4 samples OB0-7 + END/HALT + CLK")
+    check_eq(set(s["sample"]), OB | ENDHALT | TIMING,
+             "block4 samples OB0-7 + END/HALT + CLK + T0-3")
     check("FLAG_Z" in s["copper"], "FLAG_Z is copper now — real flags")
     check_eq(set(s["strap"]), set(), "block4 straps nothing")
     check(all(i not in s["sample"] for i in IRB), "IRB retired by block3")
@@ -198,15 +201,16 @@ def test_block4_surface():
 def test_block5_and_6():
     print("block5 / block6")
     s5, s6 = SURF["block5"], SURF["block6"]
-    check_eq(set(s5["sample"]), OB | ENDHALT | QUAL,
-             "block5 samples OB0-7 + END/HALT + CLK")
+    check_eq(set(s5["sample"]), OB | ENDHALT | TIMING,
+             "block5 samples OB0-7 + END/HALT + CLK + T0-3")
     check(OB <= set(s5["copper"]), "OB is copper at block5 — io is present")
     check_eq(set(s5["strap"]), set(),
              "block5 straps nothing — IS0-7 never crosses a sheet, so SW1=0xF7 "
              "is a bench setting, not a contract strap")
-    check_eq(set(s6["sample"]), OB | {"CW15=HALT"}, "block6 samples OB0-7 + HALT only")
+    check_eq(set(s6["sample"]), OB | {"CW15=HALT"} | TIMING,
+             "block6 samples OB0-7 + HALT + the timing set")
     check("CW12=END" not in s6["sample"], "block6 drops the END jumper")
-    check_eq(len(s6["sample"]), 9, "block6 is nine wires")
+    check_eq(len(s6["sample"]), 14, "block6 is fourteen sampled wires")
 
 
 def test_every_unfed_input_is_classified():
@@ -336,6 +340,22 @@ def test_owner_board_is_where_the_wire_lands():
         check_eq(o5[s], "io", f"block5 {s} moves to the io end")
 
 
+def test_timing_set_never_moves():
+    """CLK and T0-3 must be in the SAME HOLES in every block. Five wires that
+    never move are five wires that cannot be re-landed wrong — the same reason
+    END/HALT are pinned."""
+    print("the timing set never moves")
+    want = {"CLK": "PL0/D49", "T0": "PF4/A4", "T1": "PF5/A5",
+            "T2": "PF6/A6", "T3": "PF7/A7"}
+    for b in SURF:
+        pins = {s: p for s, p, _d, _o in kc.block_pins(CONTRACTS, b)}
+        for sig, pin in want.items():
+            check_eq(pins.get(sig), pin, f"{b}: {sig} on {pin}")
+        for sig in want:
+            check_eq({o for s, _p, _d, o in kc.block_pins(CONTRACTS, b)
+                      if s == sig}, {"root"}, f"{b}: {sig} lands on root")
+
+
 def test_end_halt_never_move():
     print("END/HALT never move")
     for b in SURF:
@@ -352,6 +372,7 @@ if __name__ == "__main__":
                test_every_unfed_input_is_classified, test_hard_errors,
                test_pinmap_has_block_bundles, test_block1_port_alignment,
                test_owner_board_is_where_the_wire_lands,
+               test_timing_set_never_moves,
                test_end_halt_never_move):
         fn()
     if FAILS:

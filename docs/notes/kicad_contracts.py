@@ -468,6 +468,15 @@ PIN_PROBES = {
 # `sample_anyway` is the END/HALT exception, spelled out rather than special
 # cased: copper, but sampled because nothing else can segment the instruction
 # stream or observe the freeze from outside.
+# THE STANDING TIMING SET. CLK and T0-3 are sampled in EVERY block, in the
+# SAME HOLES throughout, exactly as END/HALT are. Neither is an assertion —
+# root.clock and root.tstates own them. They are what makes a sample
+# INTERPRETABLE: CLK says the ROM has settled, T says which microcode row the
+# sample belongs to. Without T the rig must infer the row from position in a
+# captured sequence, and Block 1 spent an evening proving how many ways that
+# goes wrong. Five wires, sampled, so the driven gate is untouched.
+_TIMING = ["CLK", "T0", "T1", "T2", "T3"]
+
 BLOCKS = {
     "block1": {
         # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
@@ -485,7 +494,7 @@ BLOCKS = {
         # mux_pc+pc_up+src=ROM and differ only in DST. It also broke whenever a
         # single T-state got no sample. Four sampled wires make both failure
         # modes structurally impossible (2026-07-30).
-        "qualify": ["CLK", "T0", "T1", "T2", "T3"],
+        "qualify": _TIMING,
         "members": ["root", "microcode", "control_word"],
         "primary": "decode",
         "drive": [f"IRB{i}" for i in range(8)],
@@ -506,7 +515,7 @@ BLOCKS = {
         # into several frames and loses t = position entirely. Gating on CLK
         # low samples after the ROM has settled. Sampled, so driven is
         # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
-        "qualify": ["CLK"],
+        "qualify": _TIMING,
         "members": ["root", "microcode", "control_word", "pc", "mar", "memory"],
         "primary": "fetch",
         "drive": [f"IRB{i}" for i in range(8)],
@@ -524,7 +533,7 @@ BLOCKS = {
         # into several frames and loses t = position entirely. Gating on CLK
         # low samples after the ROM has settled. Sampled, so driven is
         # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
-        "qualify": ["CLK"],
+        "qualify": _TIMING,
         "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
                     "mdr"],
         "primary": "opcodes",
@@ -544,7 +553,7 @@ BLOCKS = {
         # into several frames and loses t = position entirely. Gating on CLK
         # low samples after the ROM has settled. Sampled, so driven is
         # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
-        "qualify": ["CLK"],
+        "qualify": _TIMING,
         "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
                     "mdr", "registers", "alu"],
         "primary": "milestone",
@@ -561,7 +570,7 @@ BLOCKS = {
         # into several frames and loses t = position entirely. Gating on CLK
         # low samples after the ROM has settled. Sampled, so driven is
         # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
-        "qualify": ["CLK"],
+        "qualify": _TIMING,
         "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
                     "mdr", "registers", "alu", "io"],
         "primary": "run",
@@ -576,6 +585,7 @@ BLOCKS = {
                           [f"OB{i}" for i in range(8)]),
     },
     "block6": {
+        "qualify": _TIMING,
         "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
                     "mdr", "registers", "alu", "io"],
         "primary": "acceptance",
@@ -600,13 +610,19 @@ BLOCKS = {
 # PL's one free bit (CW8 is copper), so CLK sits on D49 in EVERY block — the
 # same hole throughout, exactly like END on D45 and HALT on D42. Left to the
 # pool it landed on PD7/D38, which no capture pass reads.
-_CLK_PIN = {"CLK": "PL0/D49"}
+_CLK_PIN = {"CLK": "PL0/D49",
+            "T0": "PF4/A4", "T1": "PF5/A5", "T2": "PF6/A6", "T3": "PF7/A7"}
 
 BLOCK_PIN_ASSIGN = {
-    "block2": dict(_CLK_PIN),
+    # MDR0-7 off its usual PF and onto PA (one unbroken D22->D29 run) so that
+    # PF4-7 remains T's home in EVERY block. A fixed home for the timing set
+    # matters more than MDR keeping its bus-rule default: five wires that never
+    # move are five wires that cannot be re-landed wrong.
+    "block2": dict(_CLK_PIN, **{f"MDR{i}": f"PA{i}/D{22+i}" for i in range(8)}),
     "block3": dict(_CLK_PIN),
     "block4": dict(_CLK_PIN),
     "block5": dict(_CLK_PIN),
+    "block6": dict(_CLK_PIN),
     "block1": {
         # DST group -> PORTA, D22..D28
         "~{REG_A_LOAD}":   "PA0/D22",

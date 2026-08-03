@@ -556,6 +556,14 @@ static const sigpin_t sig_block2[] PROGMEM = {
     {pm_s19, pm_s27, 'I', pm_s2},
     {pm_s9, pm_s10, 'I', pm_s2},
     {pm_s11, pm_s12, 'I', pm_s2},
+    {pm_s144, pm_s58, 'I', pm_s160},
+    {pm_s146, pm_s60, 'I', pm_s160},
+    {pm_s148, pm_s62, 'I', pm_s160},
+    {pm_s150, pm_s64, 'I', pm_s160},
+    {pm_s152, pm_s91, 'I', pm_s160},
+    {pm_s154, pm_s93, 'I', pm_s160},
+    {pm_s156, pm_s95, 'I', pm_s160},
+    {pm_s158, pm_s97, 'I', pm_s160},
     {pm_s128, pm_s129, 'O', pm_s165},
     {pm_s130, pm_s131, 'O', pm_s165},
     {pm_s132, pm_s133, 'O', pm_s165},
@@ -564,14 +572,10 @@ static const sigpin_t sig_block2[] PROGMEM = {
     {pm_s138, pm_s139, 'O', pm_s165},
     {pm_s140, pm_s141, 'O', pm_s165},
     {pm_s142, pm_s143, 'O', pm_s165},
-    {pm_s144, pm_s145, 'I', pm_s160},
-    {pm_s146, pm_s147, 'I', pm_s160},
-    {pm_s148, pm_s149, 'I', pm_s160},
-    {pm_s150, pm_s151, 'I', pm_s160},
-    {pm_s152, pm_s153, 'I', pm_s160},
-    {pm_s154, pm_s155, 'I', pm_s160},
-    {pm_s156, pm_s157, 'I', pm_s160},
-    {pm_s158, pm_s159, 'I', pm_s160}
+    {pm_s5, pm_s145, 'I', pm_s2},
+    {pm_s7, pm_s147, 'I', pm_s2},
+    {pm_s13, pm_s149, 'I', pm_s2},
+    {pm_s15, pm_s151, 'I', pm_s2}
 };
 static const sigpin_t sig_block3[] PROGMEM = {
     {pm_s19, pm_s27, 'I', pm_s2},
@@ -584,7 +588,11 @@ static const sigpin_t sig_block3[] PROGMEM = {
     {pm_s136, pm_s137, 'I', pm_s165},
     {pm_s138, pm_s139, 'I', pm_s165},
     {pm_s140, pm_s141, 'I', pm_s165},
-    {pm_s142, pm_s143, 'I', pm_s165}
+    {pm_s142, pm_s143, 'I', pm_s165},
+    {pm_s5, pm_s145, 'I', pm_s2},
+    {pm_s7, pm_s147, 'I', pm_s2},
+    {pm_s13, pm_s149, 'I', pm_s2},
+    {pm_s15, pm_s151, 'I', pm_s2}
 };
 static const sigpin_t sig_block4[] PROGMEM = {
     {pm_s19, pm_s27, 'I', pm_s2},
@@ -597,7 +605,11 @@ static const sigpin_t sig_block4[] PROGMEM = {
     {pm_s172, pm_s137, 'I', pm_s178},
     {pm_s173, pm_s139, 'I', pm_s178},
     {pm_s174, pm_s141, 'I', pm_s178},
-    {pm_s175, pm_s143, 'I', pm_s178}
+    {pm_s175, pm_s143, 'I', pm_s178},
+    {pm_s5, pm_s145, 'I', pm_s2},
+    {pm_s7, pm_s147, 'I', pm_s2},
+    {pm_s13, pm_s149, 'I', pm_s2},
+    {pm_s15, pm_s151, 'I', pm_s2}
 };
 static const sigpin_t sig_block5[] PROGMEM = {
     {pm_s19, pm_s27, 'I', pm_s2},
@@ -610,9 +622,14 @@ static const sigpin_t sig_block5[] PROGMEM = {
     {pm_s172, pm_s137, 'I', pm_s167},
     {pm_s173, pm_s139, 'I', pm_s167},
     {pm_s174, pm_s141, 'I', pm_s167},
-    {pm_s175, pm_s143, 'I', pm_s167}
+    {pm_s175, pm_s143, 'I', pm_s167},
+    {pm_s5, pm_s145, 'I', pm_s2},
+    {pm_s7, pm_s147, 'I', pm_s2},
+    {pm_s13, pm_s149, 'I', pm_s2},
+    {pm_s15, pm_s151, 'I', pm_s2}
 };
 static const sigpin_t sig_block6[] PROGMEM = {
+    {pm_s19, pm_s27, 'I', pm_s2},
     {pm_s11, pm_s12, 'I', pm_s2},
     {pm_s168, pm_s129, 'I', pm_s167},
     {pm_s169, pm_s131, 'I', pm_s167},
@@ -621,7 +638,11 @@ static const sigpin_t sig_block6[] PROGMEM = {
     {pm_s172, pm_s137, 'I', pm_s167},
     {pm_s173, pm_s139, 'I', pm_s167},
     {pm_s174, pm_s141, 'I', pm_s167},
-    {pm_s175, pm_s143, 'I', pm_s167}
+    {pm_s175, pm_s143, 'I', pm_s167},
+    {pm_s5, pm_s145, 'I', pm_s2},
+    {pm_s7, pm_s147, 'I', pm_s2},
+    {pm_s13, pm_s149, 'I', pm_s2},
+    {pm_s15, pm_s151, 'I', pm_s2}
 };
 
 static const modmap_t MODMAPS[] PROGMEM = {
@@ -636,11 +657,11 @@ static const modmap_t MODMAPS[] PROGMEM = {
     {pm_s176, sig_pc, 23, pm_s176},
     {pm_s178, sig_registers, 31, pm_s178},
     {pm_s185, sig_block1, 39, pm_s186},
-    {pm_s187, sig_block2, 19, pm_s188},
-    {pm_s189, sig_block3, 11, pm_s190},
-    {pm_s191, sig_block4, 11, pm_s192},
-    {pm_s193, sig_block5, 11, pm_s194},
-    {pm_s195, sig_block6, 9, pm_s194}
+    {pm_s187, sig_block2, 23, pm_s188},
+    {pm_s189, sig_block3, 15, pm_s190},
+    {pm_s191, sig_block4, 15, pm_s192},
+    {pm_s193, sig_block5, 15, pm_s194},
+    {pm_s195, sig_block6, 14, pm_s194}
 };
 #define MODMAP_COUNT 16
 

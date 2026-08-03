@@ -93,6 +93,7 @@ typedef struct { const char *module; const char *name; testfn_t fn; } testcase_t
     X(block1, onehot) \
     X(block1, seq) \
     X(block1, stability) \
+    X(block2, dump) \
     X(block2, fetch) \
     X(block3, opcodes) \
     X(block4, milestone) \

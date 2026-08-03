@@ -164,6 +164,29 @@ def test_loop_image_iterates_exactly():
     check_eq(res["out"], pg.LOOP_EXPECT, "accumulator matches the declared total")
 
 
+def test_diag_triple_ambiguity_is_generated():
+    """block2.fetch proves the fetch path reads ROM at PC, PC+1, PC+2 by
+    matching three consecutive diag bytes. Those do NOT identify a unique
+    address — the byte truncates to 8 bits — so the acceptance threshold must
+    be the image's own worst case, generated, never hand-picked. A guessed
+    threshold of 4 would false-fail on the 3% of positions that legitimately
+    match at 8."""
+    print("the diag triple ambiguity is generated, not guessed")
+    m = pg.diag_triple_max()
+    check(m >= 1, "a worst case exists")
+    # recompute independently of the generator's own helper
+    seen = {}
+    for a in range(pg.SIZE - 2):
+        k = (pg.diag_byte(a), pg.diag_byte(a + 1), pg.diag_byte(a + 2))
+        seen[k] = seen.get(k, 0) + 1
+    check_eq(m, max(seen.values()), "matches an independent recount")
+    check(m < 32, f"ambiguity {m} still discriminates ~1 in {32768 // m}")
+    hdr = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
+                            "tests", "dino_bringup", "src", "progrom_expect.h")).read()
+    check(f"#define PR_DIAG_TRIPLE_MAX {m}u" in hdr,
+          "the rig's threshold comes from the header, not from a literal")
+
+
 def test_images_fit_and_safe_fill():
     print("images fit the ROM and are HALT-filled")
     for tag, prog in pg.COVERAGE.items():
@@ -178,7 +201,9 @@ if __name__ == "__main__":
                test_flags_hold_across_non_alu, test_images_are_witnesses,
                test_coverage_is_progressive, test_alu_image_hits_every_sa_code,
                test_mem_image_round_trips_ram, test_flow_image_never_reaches_poison,
-               test_loop_image_iterates_exactly, test_images_fit_and_safe_fill):
+               test_loop_image_iterates_exactly,
+               test_diag_triple_ambiguity_is_generated,
+               test_images_fit_and_safe_fill):
         fn()
     if FAILS:
         print(f"\n{len(FAILS)} FAILED")
