@@ -7,21 +7,34 @@ Every register, every bus, every gate is a chip you can put a probe on.
 Schematics in KiCad, microcode in EEPROM, and a bare-metal ATmega2560 test
 rig that brings the machine up one board at a time.
 
-**Status:** all ten modules are bench-proven. Integration is next, and the
-milestone is a program that adds two numbers:
+**Status: IT RUNS.** All ten modules and all five integration blocks are
+bench-proven, and the machine executes programs at full speed off its own
+1.024MHz crystal. The milestone:
 
 ```asm
-LDAI 0xFF   ; poison OB — destroy the previous answer
+LDAI 0xFF   ; poison OB — destroy the previous answer first
 OUT
 LDAI 0x2F   ; A = 0x2F
-LDBI 3      ; B = 3
+LDBI 0x1E   ; B = 0x1E
 ADD         ; A = A + B
 OUT         ; LEDs show 0x4D
 HALT
 ```
 
-It is burned and seated in the program ROM, waiting for the boards to be
-wired together.
+And it is no longer limited to what is burned into the ROM. `IN` reads the
+DIP switches onto the bus, so an operand comes off the bench:
+
+```asm
+LDAI 0x2F   ; one addend from ROM
+IN          ; the other from SW1
+ADD
+OUT         ; 0x2F + 0x01 = 0x30, 0x2F + 0x1E = 0x4D
+HALT
+```
+
+Timing is retired: it free-runs, and "works single-stepped, fails
+free-run" never appeared. Next is the minimum work to reach a 16550 UART
+so DINO can talk to a terminal, then a proto-Monitor.
 
 ---
 

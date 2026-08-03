@@ -1,9 +1,17 @@
 # DINO hardware growth plan
 
-**2026-07-28. PLAN ONLY — nothing here is built or burned.**
+**2026-07-28, updated 2026-08-02. PLAN ONLY — nothing here is built or
+burned.**
+
+Context change since this was written: the block ladder is DONE (blocks 1-5
+bench-proven, block 6 dropped), timing is retired, and the milestone gate is
+open. The first ISA extension, `IN` at 0x52, shipped on 2026-08-02 as pure
+microcode — no board work — so nothing in this document was needed for it.
+The next item on Rico's stated roadmap is the minimum path to the 16550 so
+DINO can talk to a terminal, which DOES need the I/O decode '138 below.
 
 Rule 2 (CLAUDE.md) gates all of this on the machine adding two numbers. The
-block ladder finishes first, Block 6 goes green, and only then does any of this
+block ladder finished first (blocks 1-5, 2026-08-02), and only then does any of this
 get wired. Companion document: `dino_isa_for_basic.md`, which covers the
 instruction set these paths enable.
 
@@ -224,7 +232,7 @@ build it before there is a workload that needs it.
 **Breadboard fan-out, not logic, is what will bite.**
 
 Every device added to `W` adds load. The `OB3` VOH check already scheduled for
-Block 6 is the canary: a 74LS373 sourcing roughly twice its rated `IOH` into a
+The LED drive is the canary: a 74LS373 sourcing roughly twice its rated `IOH` into a
 330Ω LED, on the one node the whole milestone is read from. A pin sitting at
 2.0V reads as a clean HIGH to the Mega and is garbage to a real gate — this
 project has already been bitten by exactly that at 1.67V (U45.2).

@@ -448,11 +448,34 @@ ADDB_PROGRAM = [                     # B carries the value, A is zero
     ("LDAI", 0x00), ("LDBI", PROBE_VALUE), ("ADD",), ("OUT",), ("HALT",),
 ]
 
+# in — THE INTERACTIVE ONE. The second addend comes off SW1 instead of the
+# ROM, so the machine takes an operand from the bench. A is the same 0x2F the
+# milestone uses, so with the switches set to 0x1E the answer is the SAME 0x4D
+# — the value blocks 4 and 5 already proved. Only its SOURCE changed, which
+# makes a wrong answer point squarely at the '244 -> W path.
+#
+# SW1 IS ACTIVE LOW: R17-R24 pull IS0-7 to +5V and the switch pulls down, so
+# the byte the '244 puts on W has a 0 wherever a switch is CLOSED. To present
+# 0x1E = 0b00011110, CLOSE the switches for bits 0, 5, 6 and 7.
+IN_SW = ADDEND_B                        # 0x1E, presented on SW1
+
+IN_PROGRAM = [
+    ("LDAI", POISON), ("OUT",),         # destroy the previous answer first
+    ("LDAI", ADDEND_A),                 # A = 0x2F, from ROM
+    ("IN",),                            # B <- SW1, and TMP_B with it
+    ("ADD",), ("OUT",), ("HALT",),
+]
+
+# images whose answer depends on the switches. Everything else is read with
+# the default, and the rig is told the setting rather than left to guess.
+COVERAGE_SW = {"in": IN_SW}
+
 COVERAGE = {
     "probe": PROBE_PROGRAM,
     "adda": ADDA_PROGRAM,
     "addb": ADDB_PROGRAM,
     "real": PROGRAM,
+    "in": IN_PROGRAM,
     "alu": ALU_PROGRAM,
     "mem": MEM_PROGRAM,
     "flow": FLOW_PROGRAM,
@@ -578,10 +601,12 @@ def emit_header(real, crcs, path, cov=None):
                   "   regenerated under another name. */",
                   f"#define PR_COV_COUNT {len(cov)}u",
                   "typedef struct { const char *name; uint16_t crc;",
-                  "                 uint8_t expect_ob; uint8_t expect_ends; } prcov_t;",
+                  "                 uint8_t expect_ob; uint8_t expect_ends;",
+                  "                 uint8_t sw; uint8_t needs_sw; } prcov_t;",
                   "static const prcov_t PR_COVERAGE[PR_COV_COUNT] = {"]
-        for tag, (crc, ob, ends) in cov.items():
-            lines.append(f'    {{"{tag}", 0x{crc:04X}u, 0x{ob:02X}u, {ends}u}},')
+        for tag, (crc, ob, ends, sw, needs) in cov.items():
+            lines.append(f'    {{"{tag}", 0x{crc:04X}u, 0x{ob:02X}u, {ends}u, '
+                         f'0x{sw:02X}u, {1 if needs else 0}u}},')
         lines.append("};")
     with open(path, "w") as f:
         f.write("\n".join(lines))
@@ -607,16 +632,19 @@ def main():
         img = build_image(prog)
         with open(os.path.join(ROMS, f"PROG_{tag}.bin"), "wb") as f:
             f.write(img)
-        r = simulate(prog)
-        cov[tag] = (crc16(img), r["out"], r["ends"])
+        r = simulate(prog, switches=COVERAGE_SW.get(tag, 0x00))
+        cov[tag] = (crc16(img), r["out"], r["ends"],
+                    COVERAGE_SW.get(tag, 0x00), tag in COVERAGE_SW)
     emit_header(real, crcs, HDR, cov)
     print(f"wrote {2 + len(cov)}x {SIZE}B bins -> {ROMS}")
     print(f"wrote expect header -> {HDR}")
     print("burn order: DIAG first (rom.order proves 15 address lines),")
     print("            then REAL (the milestone program)")
     print("  coverage images (burn as needed; each ends OUT; HALT):")
-    for tag, (crc, ob, ends) in cov.items():
-        print(f"    PROG_{tag}.bin  crc=0x{crc:04X}  OB 0x{ob:02X}  {ends} END pulses")
+    for tag, (crc, ob, ends, sw, needs) in cov.items():
+        extra = f"  SW1=0x{sw:02X}" if needs else ""
+        print(f"    PROG_{tag}.bin  crc=0x{crc:04X}  OB 0x{ob:02X}  "
+              f"{ends} END pulses{extra}")
     print(f"  program: {' '.join(s[0] for s in PROGRAM)}"
           f"  -> OUT should show 0x{EXPECT_SUM:02X}")
     for name, val in crcs.items():

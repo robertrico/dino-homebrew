@@ -71,6 +71,8 @@ burn-prog:
 # upstream and no amount of staring at a sum will find it.
 burn-prog-probe:
 	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_probe.bin
+burn-prog-in:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_in.bin
 burn-prog-adda:
 	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_adda.bin
 burn-prog-addb:
@@ -115,7 +117,7 @@ verify-real-u15: read-rom
 .PHONY: all size flash clean \
         burn-diag-u9 burn-diag-u15 burn-real-u9 burn-real-u15 \
         burn-prog-diag burn-prog read-prog verify-prog-diag verify-prog \
-        burn-prog-probe burn-prog-adda burn-prog-addb burn-prog-alu burn-prog-mem burn-prog-flow \
+        burn-prog-probe burn-prog-in burn-prog-adda burn-prog-addb burn-prog-alu burn-prog-mem burn-prog-flow \
         burn-prog-loop \
         read-rom id-rom \
         verify-diag-u9 verify-diag-u15 verify-real-u9 verify-real-u15

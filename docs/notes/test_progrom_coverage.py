@@ -120,12 +120,14 @@ def test_coverage_is_progressive():
         "adda": "TMP_A alone: value + 0, so the answer IS the operand",
         "addb": "TMP_B alone: 0 + value, isolating the other shadow latch",
         "real": "the milestone: the machine adds two numbers",
+        "in": "an operand from the BENCH, not the ROM — the machine is now "
+              "interactive, and the answer is the milestone's own 0x4D",
         "flow": "unconditional PC_LOAD, and the JNZ NOT-taken arm",
         "loop": "the JNZ TAKEN arm, iterated an exact number of times",
         "mem": "MAR as a LATCH, not just a mux — the named gap in BRINGUP.md",
     }
     seen = set()
-    order = ["probe", "adda", "addb", "real", "alu", "mem", "flow", "loop"]
+    order = ["probe", "adda", "addb", "real", "in", "alu", "mem", "flow", "loop"]
     check_eq(list(pg.COVERAGE), order, "images in ladder order")
     for tag in order:
         used = {s[0] for s in pg.COVERAGE[tag] if not isinstance(s, str)}
@@ -136,6 +138,27 @@ def test_coverage_is_progressive():
     # LDCI is unreachable by design: C is write-only until MOV exists
     check_eq(unreached, {"LDCI", "NOP"},
              "only LDCI (C is write-only) and NOP go unexercised")
+
+
+def test_in_image_takes_its_operand_from_the_switches():
+    """IN is the first instruction whose answer is not fully determined by the
+    ROM. The image must therefore DECLARE the switch setting it expects, or the
+    expectation is unfalsifiable — and it must produce a DIFFERENT answer under
+    a different setting, or it is not really reading the switches at all."""
+    print("the IN image is genuinely driven by SW1")
+    check("in" in pg.COVERAGE_SW, "the image declares its SW1 setting")
+    sw = pg.COVERAGE_SW["in"]
+    got = pg.simulate(pg.COVERAGE["in"], switches=sw)
+    check_eq(got["out"], pg.EXPECT_SUM,
+             f"SW1=0x{sw:02X} reproduces the milestone answer 0x{pg.EXPECT_SUM:02X}")
+    # a stuck '244, or an IN that never reached the bus, would leave B at
+    # whatever it held — the answer must MOVE when the switches move
+    other = pg.simulate(pg.COVERAGE["in"], switches=(sw ^ 0xFF) & 0xFF)
+    check(other["out"] != got["out"],
+          "flipping every switch changes the answer")
+    check_eq(pg.simulate(pg.COVERAGE["in"], switches=sw)["ends"],
+             pg.simulate(pg.PROGRAM)["ends"],
+             "same instruction count as the milestone — only the SOURCE moved")
 
 
 def test_alu_image_hits_every_sa_code():
@@ -227,6 +250,7 @@ if __name__ == "__main__":
                test_mem_image_round_trips_ram, test_flow_image_never_reaches_poison,
                test_loop_image_iterates_exactly,
                test_milestone_is_a_real_carry_chain,
+               test_in_image_takes_its_operand_from_the_switches,
                test_diag_triple_ambiguity_is_generated,
                test_images_fit_and_safe_fill):
         fn()

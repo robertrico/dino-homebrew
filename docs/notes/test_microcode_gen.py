@@ -14,6 +14,8 @@ HDR = os.path.join(HERE, "..", "..", "tests", "dino_bringup", "src",
 
 sys.path.insert(0, HERE)
 import microcode_gen as g
+from microcode_gen import (INSTRUCTIONS, OPCODES, SRC, DST, SA, word,
+                           build_real, check_word)
 
 # ---- CRC16 algorithm (CCITT-FALSE): the one known-answer vector ----
 assert g.crc16(b"123456789") == 0x29B1, "crc16 not CRC-16/CCITT-FALSE"
@@ -150,6 +152,49 @@ for name in ("MC_CRC_U9_REAL", "MC_CRC_U15_REAL",
     assert f"0x{hdr_val(name):04X}" in out, f"CRC {name} not printed"
 
 print("OK test_microcode_gen")
+
+def test_IN_reads_the_switches_into_B():
+    """IN is the first instruction that makes the machine INTERACTIVE: it puts
+    the SW1 byte on W and latches it into B, so an operand comes off the bench
+    rather than out of the ROM.
+
+    NETLIST-VERIFIED BEFORE ENCODING (2026-08-02), because a field that agrees
+    with its own table and not with the wiring is exactly what the SA bug was:
+
+      input_output.kicad_sch
+        SWITCH-GATE1 is a plain buffer, IS0-7 -> W0-7 with NO permutation
+        (1A1.2->1Y1.18, 1A2.4->1Y2.16, 1A3.6->1Y3.14, 1A4.8->1Y4.12,
+         2A1.11->2Y1.9, 2A2.13->2Y2.7, 2A3.15->2Y3.5, 2A4.17->2Y4.3)
+        both halves enabled together: 1~G.1 and 2~G.19 are the SAME net,
+        ~{SW_OUT}, so src=SW drives all eight bits or none
+        R17-R24 pull IS0-7 to +5V and SW1 pulls them down, so a CLOSED
+        switch reads 0 — the byte is ACTIVE LOW at the bench
+
+      alu.kicad_sch
+        U46 (TMP_B shadow) D0-7 = W0-7, LE = LE_TMP_B
+        U50 is a 74LS02: LE_TMP_B = NOR(~{REG_B_LOAD}, CLK)
+        THE SHADOW LATCHES ON ~{REG_B_LOAD}, NOT ON THE LDBI OPCODE, so any
+        instruction with dst=REG_B fills TMP_B and ADD will see it.
+
+    IN is therefore one microword and no hardware."""
+    assert "IN" in INSTRUCTIONS, "IN is not in the instruction table"
+    length, rows = INSTRUCTIONS["IN"]
+    assert length == 1, f"IN is one byte, not {length}"
+    assert len(rows) == 1, "IN is a single T1 row"
+    w = rows[0]
+    misc, src, dst = (w >> 6) & 7, (w >> 3) & 7, w & 7
+    assert src == SRC["SW"], f"IN must source the switches, not {src}"
+    assert dst == DST["REG_B"], f"IN must land in B (TMP_B shadow), not {dst}"
+    assert w & (1 << 12), "IN needs END — one T1 row and the block must retire"
+    assert not w & (1 << 13), "IN is one byte: no PC_UP beyond the fetch"
+    assert not w & (1 << 15), "IN must not set HALT"
+    assert misc == 0, f"IN needs no misc strobe, got {misc}"
+    real = build_real()
+    op = OPCODES["IN"]
+    assert real[op * 16 + 1] == w, "IN's T1 row is not in the built table"
+    assert real[op * 16 + 2] == 0x1000, "IN's block must safe-fill after T1"
+    check_word(op * 16 + 1, w)          # the police must accept it
+
 
 def test_sa_field_reaches_the_382_uninverted():
     """THE BUG THIS EXISTS FOR: the SA field arrived at the '382s BIT-REVERSED,

@@ -11,7 +11,12 @@ the generator and hope OPCODES has not moved."
 ## The images
 
     U9.bin  U15.bin              microcode, REAL pair. CURRENTLY SEATED.
-                                 CRC U9=0xAD70  U15=0xF49F
+                                 CRC U9=0x0FBB  U15=0xF49F
+                                 U9 CHANGED 2026-08-02: IN added at opcode
+                                 0x52, word 0x103A (END | src=SW | dst=REG_B).
+                                 Only the LOW byte moved — the high byte 0x10
+                                 already matched the safe-fill that was there —
+                                 so U15 is UNCHANGED and only U9 reburns.
                                  U15 CHANGED 2026-08-02: the SA field is now
                                  packed BIT-REVERSED into CW9..CW11, because
                                  CW9 is labelled SA2 and wired to the '382's
@@ -58,6 +63,28 @@ itself. Burn as needed; none of them is required for the milestone.
                                  only MAR loaders and the milestone has
                                  none. CRC 0x3E4B, OB 0xC5
                                  EARLIEST: block 4
+    PROG_in.bin                  THE INTERACTIVE ONE. A = 0x2F from ROM,
+                                 B = SW1 through the '244. With SW1 = 0x1E
+                                 the answer is the milestone's own 0x4D, so
+                                 only the SOURCE of the operand changed and a
+                                 wrong result points at the '244 -> W path.
+                                 CRC 0x2B9C, OB 0x4D, SW1 = 0x1E
+                                 SW1 IS ACTIVE LOW, AND THE DIP LABEL READS
+                                 BACKWARDS FROM THE BUS. Netlist: R17-R24 pull
+                                 IS0-7 to +5V, SW1.9-16 are all GND, so a
+                                 CLOSED switch shorts its bit to ground. On a
+                                 DIP that means "ON" = 0 and "OFF" = 1 — the
+                                 silkscreen says ON where the bus reads zero.
+                                 To present 0x1E = 0b00011110, set positions
+                                 1, 6, 7, 8 ON and 2, 3, 4, 5 OFF.
+
+                                 The position numbering is SILKSCREEN, not
+                                 copper, so it cannot be netlist-checked.
+                                 Calibrate it: position 1 ON alone gives
+                                 OB 0x2D if position 1 is bit 0, or OB 0xAE if
+                                 it is bit 7. Neither reading is confusable
+                                 under bit-reversal or nibble-swap.
+                                 EARLIEST: block 5 (needs the io board)
     PROG_loop.bin                the JNZ TAKEN arm, iterated exactly 3
                                  times; a wrong count changes the answer.
                                  CRC 0x8727, OB 0x15

@@ -99,7 +99,7 @@ OPCODES = {
     "JMP": 0x31, "JNZ": 0x32,
     "ADD": 0x41, "SUB": 0x42, "AND": 0x43, "OR": 0x44,
     "XOR": 0x45, "CLR": 0x46, "SET": 0x47, "BSUB": 0x48,
-    "OUT": 0x51,
+    "OUT": 0x51, "IN": 0x52,        # the I/O group
     "HALT": 0xFF,
 }
 
@@ -128,6 +128,15 @@ INSTRUCTIONS = {
     "XOR": (1, _alu("XOR")), "CLR": (1, _alu("CLR")),
     "SET": (1, _alu("SET")), "BSUB": (1, _alu("BSUB")),
     "OUT": (1, [word(end=True, misc="REG_OUT_LOAD", src="REG_A")]),
+    # IN — the first instruction that makes the machine INTERACTIVE. src=SW
+    # enables SWITCH-GATE1 (a plain '244, IS0-7 -> W0-7 unpermuted, both halves
+    # on the one ~{SW_OUT} net), and dst=REG_B latches W into B. It also fills
+    # the TMP_B shadow, because U50 makes LE_TMP_B = NOR(~{REG_B_LOAD}, CLK) —
+    # the latch follows the LOAD STROBE, not the LDBI opcode — so ADD sees the
+    # switch byte with no extra row. One byte, so no PC_UP beyond the fetch.
+    # SW1 is ACTIVE LOW at the bench: R17-R24 pull IS0-7 high, the switch pulls
+    # down, so a CLOSED switch reads 0.
+    "IN": (1, [word(end=True, src="SW", dst="REG_B")]),
     "HALT": (1, [word(halt=True)]),
 }
 

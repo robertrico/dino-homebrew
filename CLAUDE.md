@@ -9,8 +9,11 @@ full history (138 commits) preserved.
 
 1. **NEVER commit or push without an explicit ask.** This is a bench
    machine; Rico commits when Rico decides.
-2. **Milestone gate.** No ISA or hardware extensions until the whole
-   machine adds two numbers. Bug fixes are exempt.
+2. **Milestone gate — SATISFIED 2026-08-02.** The rule was: no ISA or
+   hardware extensions until the whole machine adds two numbers. It does,
+   free-running, and it now adds a number handed to it on the switches.
+   The gate is open; extensions are on the table. Keep the habit that made
+   it work — one capability at a time, netlist first, host test RED first.
 3. **TDD.** Host-testable logic gets a host test FIRST, RED before GREEN.
    On the bench, RED/GREEN is the hardware itself.
 4. **Rico burns the ROMs** (TL866). The rig verifies; it never programs.
@@ -27,16 +30,34 @@ full history (138 commits) preserved.
 6. **`avr-gcc -Werror` clean is the verification you can do.** The bench
    run is Rico's.
 
-## State as of 2026-07-28
+## State as of 2026-08-02
 
-**All ten modules bench-proven.** root, pc, microcode, control_word, mdr,
-registers, mar, memory, alu, io. Coverage lint: 0 gaps, 0 pending.
-Stage 1 (rig self-test) is CLOSED as a diagnostic, not a gate.
+**THE MACHINE RUNS.** All ten modules bench-proven, all five integration
+blocks bench-proven, and the ISA has its first interactive instruction.
+Coverage lint: 0 gaps, 0 pending. Stage 1 (rig self-test) is CLOSED as a
+diagnostic, not a gate.
 
-**What remains:** the integration ladder, then IN. The milestone
-program is burned and seated: `LDAI 0xFF; OUT; LDAI 0x2F; LDBI 0x1E; ADD; OUT; HALT`
-→ OUT should read 0x4D. The leading `LDAI 0xFF; OUT` POISONS OB, so a
-stale answer cannot survive a run that starts.
+The milestone program is burned and seated:
+
+    LDAI 0xFF; OUT; LDAI 0x2F; LDBI 0x1E; ADD; OUT; HALT   -> OB = 0x4D
+
+The leading `LDAI 0xFF; OUT` POISONS OB. U35 has no reset and the machine
+free-runs at power-up, so OB always already holds the previous answer and
+a power-cycle does not clear it — the program destroys the old answer
+itself, and OB can only read 0x4D if THIS run reached the second OUT.
+
+`PROG_in` replaces the second addend with SW1 through the io '244. Bench
+confirmed across settings: SW1=0x01 gives 0x30, SW1=0x1E gives 0x4D.
+
+**Timing is RETIRED.** Blocks 4 and 5 free-run at 1.024MHz with Y1 seated.
+"Works single-stepped, fails free-run" was the signature to watch for; it
+never appeared.
+
+**What remains:** the roadmap, in Rico's stated order — minimum work to
+reach the 16550 UART so DINO can talk to a terminal, then a proto-Monitor,
+then the wider ISA. `IN` is the front half of I/O; `OUT` to a UART data
+register instead of the LEDs is the back half, and the I/O decode '138 is
+what it needs. Nothing is blocking it.
 
 **Read `tests/dino_bringup/BRINGUP.md` first.** It is the bench bible:
 per-stage wiring, commands, expected output, failure meanings, and the
@@ -89,7 +110,7 @@ Sampled, so driven is unchanged.
 Driven hits ZERO at Block 3 when the real IR fetches the machine's own
 instruction bytes. From there the rig cannot fight anything by
 construction. END/HALT are the same two wires (D45/D42, tapped at
-**U61.3/U61.5**, the consumer end) in all six blocks.
+**U61.3/U61.5**, the consumer end) in every block.
 
 An earlier datapath-first plan was inverted on 2026-07-28 for the
 wire-count reason. Don't re-propose it.
@@ -100,19 +121,25 @@ Block 5. Rig jumpers are removed as they retire — that IS the ladder.
 Temporary board straps (`WRITE_DIR`, `W0-7`, `FLAG_Z`) must come off when
 real copper takes over the net, or a real driver meets a tie.
 
-**Consequence: the rig never owns the clock.** `CLK` is U27.5 and `RESET`
-is U27.9, both '74 totem-pole outputs; the only non-contending injection
-point needs Y1 out of its socket. **Every block free-runs at 1.024MHz and
-there is no single-stepping anywhere.** Every test is
-burst-capture-and-decode; reset is the button on an `ARM` prompt.
+**Two clock modes, and each test must say which it needs.** `CLK` is
+U27.5 and `RESET` is U27.9, both '74 totem-pole outputs, so the rig can
+never inject there. The one non-contending point is `CLKIN` at **U20.2**,
+the divider input, reachable only with Y1 disabled at its EN pin. That
+gives:
 
-**Block 1 is blocked on tooling that does not exist yet.** The rig's pin
-bundles are per-module, and root/microcode/control_word reuse the same
-Mega pins — there is no `pins <block>` and so no table to wire against.
-Build block support in `kicad_contracts.py` first (BLOCKS table, the four
-categories above, `retire`/`strap` as dicts carrying citations, hard-error
-on pin collisions, emit a FLOAT list), host test RED first, then
-`mod_control.c`. Full checklist in BRINGUP.md under "UNFINISHED WORK".
+    FREE-RUN     Y1 in, CLKIN jumper off   block4.milestone, block5.run
+    STEP-CLOCK   Y1 out, CLKIN on U20.2    block3.clocked, block4.stepped
+
+The bench alternates between them, so arriving in the wrong one is the
+NORMAL case, not an error. Both directions are guarded and each names its
+own repair. The discriminator is not "does CLK move?" — a live Y1 moves it
+for you, which is how a step test once reported success while the machine
+free-ran past every sample. It is **"does CLK hold still when I stop
+asking?"** Free-run tests check the opposite: CLK must show both levels.
+
+The machine is fully static (the '121 one-shot is gone), so the clock can
+stop indefinitely. Free-run tests are burst-capture-and-decode; reset is
+the button on an `ARM` prompt, and no press has to be fast.
 
 ## The machine invariant (do not re-derive)
 
@@ -187,15 +214,28 @@ Host tests sit next to each (`test_*.py`), plus C model tests in
 
 ## What is proven and what is not
 
-- Microcode is **100% burned** (CRCs exact) and **well-policed**
+- Microcode is **100% burned** (CRCs exact), **well-policed**
   (`check_word`/`check_table` reject bus fights, IR loads outside T0,
-  missing END, PC_UP/length mismatch) but **unexecuted** except for the SA
-  field, which `alu.ops` proved at the real '382s. Block 1 executes a
-  microcode row for the first time.
-- The opcode table is marked PROPOSED, which sounds scarier than it is:
-  `progrom_gen.py` imports `OPCODES` from `microcode_gen`, so the two ROMs
-  cannot disagree. The numbers are arbitrary; `HALT=0xFF` is the one real
-  choice, so an erased EEPROM halts instead of raving.
+  missing END, PC_UP/length mismatch) and now **EXECUTED**. What that
+  bought, immediately: the SA field had been packed bit-reversed since the
+  ROMs were first burned, so every ADD was executing as AND. It survived
+  every earlier test because a permutation is self-consistent — block1
+  checked ROM against pin and found them agreeing, `alu.ops` drove SA from
+  the rig and never used the microcode's encoding at all, and
+  `test_microcode_gen` hard-coded the SAME wrong packing. Nothing compared
+  the ENCODING against the WIRING until a program ran.
+  `test_sa_field_reaches_the_382_uninverted()` now walks the netlist and
+  does exactly that.
+- Executed so far: the milestone path (`LDAI`, `ADD`, `OUT`, `HALT`) and
+  `IN`. `LDA`/`STA`/`JMP`/`JNZ` and the other seven ALU codes are burned
+  and policed but still unrun — the coverage images `alu`, `mem`, `flow`
+  and `loop` exist and are generated, and `mem` is the only witness for
+  MAR-as-a-latch, which the milestone never exercises.
+- The opcode table is no longer PROPOSED in any meaningful sense —
+  `LDAI=0x11` was the only documented anchor, `HALT=0xFF` is the one real
+  choice (an erased EEPROM halts instead of raving), and the rest are
+  arbitrary but now BURNED and RUN. `progrom_gen.py` imports `OPCODES`
+  from `microcode_gen`, so the two ROMs cannot disagree.
 - Timing is RETIRED. Blocks 4 and 5 free-run with Y1 seated at 1.024MHz
   and produce 0x4D. "Works single-stepped, fails free-run" was the
   signature to watch for; it never appeared.

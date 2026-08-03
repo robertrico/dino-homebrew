@@ -1692,6 +1692,12 @@ void t_block4_stepped(void) {
         known = true;
         uart_putsP("     seated image: PROG_");
         uart_puts(PR_COVERAGE[img].name);
+        /* PROG_in's answer is not determined by the ROM alone — say which SW1
+           setting the expectation assumes, or a mismatch is unreadable. */
+        if (PR_COVERAGE[img].needs_sw) {
+            uart_putsP("   (assumes SW1 = 0x");
+            uart_puthex8(PR_COVERAGE[img].sw); uart_putsP(")");
+        }
         uart_putsP("\r\n");
     } else if (!known) {
         /* Name the near-misses. Half a fingerprint is the useful diagnosis:

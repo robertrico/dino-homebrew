@@ -1,10 +1,16 @@
 # DINO ISA — what a SCELBAL-shaped BASIC needs
 
-**2026-07-28. THEORETICAL. Nothing here is burned.**
+**2026-07-28, updated 2026-08-02. THEORETICAL EXCEPT WHERE MARKED.**
 
-Rule 2 (CLAUDE.md) gates ISA extension on the machine adding two numbers.
-This document is the design, not the reburn. Order of work stays: finish the
-block ladder, pass Block 6, then extend.
+Rule 2 (CLAUDE.md) gated ISA extension on the machine adding two numbers.
+**That gate is now open** — the ladder passed, blocks 1-5 are bench-proven,
+and the machine free-runs. Block 6 was dropped as pure repetition in favour
+of driving the machine interactively.
+
+**`IN` (0x52) is BUILT AND RUNNING as of 2026-08-02** — see the tier 0 table
+below. It cost one microword and no hardware, exactly as this document
+predicted, and it kept the opcode number this document proposed. Everything
+else here is still design, not reburn.
 
 **Companion: `dino_hardware_growth_plan.md`** — the board-level paths (I/O
 decode, UART, shifter, third microcode ROM, stack, index pair, timer) that
@@ -257,7 +263,7 @@ new families 6=move, 7=indirect.
 | 0x4B | `TST` | 1 | 0 | `dst=NONE sa=OR` |
 | 0x4C | `SHL` | 2 | 0 | clobbers B |
 | 0x51 | `OUT` | 1 | — | existing |
-| 0x52 | `IN` | 1 | 0 | `src=SW` — wired, decoded, and unreachable today |
+| 0x52 | `IN` | 1 | 0 | **BUILT 2026-08-02.** `END \| src=SW \| dst=REG_B` = `0x103A`. Netlist-verified first: `SWITCH-GATE1` is a plain buffer `IS0-7 -> W0-7` with no permutation, both halves on the one `~{SW_OUT}` net; and `U50` makes `LE_TMP_B = NOR(~{REG_B_LOAD}, CLK)`, so the shadow follows the LOAD STROBE rather than the `LDBI` opcode and `ADD` sees the switch byte with no extra row. Only U9 reburned (`0xAD70 -> 0x0FBB`) — the high byte already matched the safe-fill. Bench: `0x2F + 0x01 = 0x30`, `0x2F + 0x1E = 0x4D` |
 | 0x61-66 | `MOV` ×6 | 1 | 0 | makes `C` readable at last |
 | 0x71 | `LDAX` | 3 | 0 | **the one that unlocks BASIC** |
 | 0x72 | `STAX` | 3 | 0 | |
@@ -302,7 +308,8 @@ hardware on the critical path.
 
 ## 7. Build order, when the gate lifts
 
-1. Block ladder to Block 6, milestone green. **Rule 2 lifts here.**
+1. ~~Block ladder, milestone green.~~ **DONE 2026-08-02 — Rule 2 lifted.**
+   Blocks 1-5 bench-proven; block 6 dropped as repetition.
 2. Tier 0 microcode: `LDAX/STAX`, `JMPX`, `MOV`, `IN`, `CMP`. One reburn, no
    schematic change, and `microcode_gen`'s `check_word`/`check_table` police it.
 3. Coverage ROMs per new group, same pattern as `PROG_alu`/`PROG_mem`/

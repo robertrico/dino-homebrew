@@ -5,7 +5,10 @@ what to wire, where, what to type, what you should see, and what a failure
 means. Deeper rationale lives in `../../docs/notes/dino_test_bringup_design.md`
 (the spec); this document is the bench procedure.
 
-STATUS 2026-07-28: all ten module stages are DONE (bench-proven by
+STATUS 2026-08-02: all ten module stages AND all five integration
+blocks are DONE, and the ISA has its first interactive instruction (`IN`,
+opcode 0x52). Timing is retired — blocks 4 and 5 free-run at 1.024MHz with
+Y1 seated. The original module status follows (bench-proven by
 2026-07-26); stage 1 is closed as a diagnostic, not a gate. Live work is
 the integration BLOCK model at the end of this file. The per-stage
 "Approve the stage" footers below still name the retired INT-A..INT-E
@@ -1307,62 +1310,24 @@ The finickiest boards on the machine, and the ones with no datapath
 dependency at all. Nothing downstream can be trusted until the control
 unit says the right thing at the right time.
 
-### UNFINISHED WORK — none of this exists yet. Build it before wiring.
+### BLOCK TOOLING — DONE 2026-07-30
 
-Every module stage above was wired against a `pins <mod>` table the
-firmware prints from generated data. THERE IS NO EQUIVALENT FOR A BLOCK,
-and you cannot wire Block 1 against a table that cannot be produced yet.
+This section used to read "none of this exists yet, build it before
+wiring". It is built, and the whole ladder was wired against it.
 
-    [ ] BLOCK SUPPORT in kicad_contracts.py
-        The rig's bundles are PER MODULE, and root / microcode /
-        control_word REUSE THE SAME MEGA PINS — each was wired alone, so
-        nothing ever had to deduplicate them. A block needs one bundle
-        over the union of its members, derived by THE BLOCK LAW above:
+`kicad_contracts.py` carries a `BLOCKS` table and derives each block's
+surface from the netlist under THE BLOCK LAW above: COPPER / DRIVE /
+STRAP / SAMPLE, with `retire` and `strap` as dicts that must NAME the test
+that earned the retirement. It hard-errors rather than guessing — unknown
+member, a retirement naming a signal the block does not have,
+`sample_anyway` on a non-copper net, driving copper, a pin collision, or
+an unfed input it cannot classify. `pins block1`..`pins block5` print the
+hookup table the bench actually wires against, straps first.
 
-            BLOCKS = {
-                "control": {
-                    "members": ["root", "microcode", "control_word"],
-                    "retire": {          # single-member, already proven
-                        "CLK":      "root.clock",
-                        "~{CLK}":   "root.clock",
-                        "RESET":    "root.reset",
-                        "~{RESET}": "root.reset",
-                    },
-                    "strap": {"FLAG_Z": ("HIGH", "control_word.truth")},
-                    "sample_anyway": ["CW12=END", "CW15=HALT"],
-                },
-            }
+Host tests are in `docs/notes/test_kicad_blocks.py`, and they assert the
+LADDER SHAPE as well as the contents: driven 8,8,0,0,0 and sampled
+31,15,15,15,15, so the shape cannot drift back silently.
 
-          - COPPER (out of one member, in of another) is DROPPED, not
-            demoted to a probe. For this block that is T0-3 and CW0-8.
-            An earlier draft of this file kept them as sampled probes;
-            that was a module test wearing a block's clothes.
-          - `retire` is a DICT so every entry NAMES the test that earned
-            it. Hard-error if the named signal is not in the union.
-          - `strap` carries a LEVEL and a citation. Hard-error likewise.
-          - `sample_anyway` is the END/HALT exception, spelled out rather
-            than special-cased in code.
-          - COLLISION DETECTION across members, hard error, never a
-            silent last-writer-wins. Two modules claiming one pin is
-            exactly the class of bug this toolchain exists to prevent.
-          - PIN_ASSIGN still outranks everything (the bench pins win).
-          - Emit a FLOAT list: any IN of a member with no OUT in the block
-            and no strap entry. Every one is a hazard until it is named —
-            see WRITE_DIR under Block 2.
-    [ ] `pins control` in the shell, same contract as `pins <mod>`: the
-        printout IS the complete hookup.
-    [ ] mod_control.c + registry entries for the control.* tests below.
-    [ ] host test for the block bundle generator, same as
-        test_kicad_contracts_pinmap.py does for the per-module maps.
-        RED FIRST: assert copper is absent from BOTH lists, assert DRIVE
-        is exactly IRB0-7, assert a duplicate pin raises, assert a bogus
-        retire/strap name raises.
-    [ ] teach coverage_lint.py about blocks so it does not report a gap
-        for signals now covered at block level.
-
-Do the tooling first. Wiring three boards against a hand-written list is
-the one thing this project has never done, and the ALU slot-map evening
-is what it costs when the paper and the copper disagree.
 
 ### Wiring — 8 driven, 31 sampled, 39 jumpers + GND
 
@@ -1731,25 +1696,29 @@ The full datapath. FIRST BLOCK THAT COMPUTES THE SUM.
     REMOVE the FLAG_Z strap. U49.5 (flag register Q1) drives U62.3 now,
            and leaving the strap is a '273 output into a board tie.
 
-    TEST   Exactly 4 END pulses (LDAI, LDBI, ADD, OUT), then HALT high
-           forever and END never again — HALT's row is 0x8000 and carries
-           no END bit. OB reads PR_EXPECT_SUM = 0x08 from HALT onward.
+    TEST   Exactly 6 END pulses (LDAI, OUT, LDAI, LDBI, ADD, OUT), then
+           HALT high forever and END never again — HALT's row is 0x8000
+           and carries no END bit. OB reads PR_EXPECT_SUM = 0x4D onward.
 
-    MIRROR-WITNESS: bit-reverse(0x08) = 0x10, so a flipped OB ribbon reads
-    0x10 and self-names. The milestone value is self-witnessing; most
-    bytes are not.
+    MIRROR-WITNESS: bit-reverse(0x4D) = 0xB2 and nibble-swap(0x4D) = 0xD4,
+    so a flipped OR transposed OB ribbon self-names. Every coverage answer
+    is chosen this way; most bytes are not self-witnessing.
 
-    U35 HAS NO RESET. On a re-run OB may already be 0x08 before the
-    program starts, degenerating the assertion to "OB is 0x08". POWER
-    CYCLE before the run for the strong form. If OB reads 0x08 at trigger,
-    print INCONCLUSIVE and say so — do not print PASS.
+    U35 HAS NO RESET, and a POWER CYCLE DOES NOT HELP — the machine
+    free-runs at power-up and parks on its own answer, so OB always
+    already holds it. This is solved in the PROGRAM, not the test: the
+    leading LDAI 0xFF; OUT poisons OB, so any run that STARTS destroys the
+    previous answer and OB can only read 0x4D if this run reached the
+    second OUT. block4.stepped watches that 0x4D -> 0xFF -> 0x4D
+    transition and asserts it. The old INCONCLUSIVE note is gone; it fired
+    on every single run and told the operator nothing.
 
     SCOPE   CLK (U27.5) vs LE_TMP_A (U50.1). LE_TMP_A = NOR(~{REG_A_LOAD},
             CLK) must open for the full CLK-low half. BAD TRACE: a window
             narrower than the '373 needs, a runt, or one that never opens
             on ADD's T1.
 
-### BLOCK 5 — + io                     (driven 0, sampled 10, 10 jumpers)
+### BLOCK 5 — + io                     (driven 0, sampled 15, 15 jumpers)
 
 All ten boards. NOT single-stepped — see NOTHING IS EVER PULLED above.
 
@@ -1759,13 +1728,17 @@ All ten boards. NOT single-stepped — see NOTHING IS EVER PULLED above.
 
     STRAP  IS0-7 = SW1 at 0xF7 (switch 3 closed, rest open). Switches are
            10k pulled up and short to GND, so there is no driver to fight.
-           0xF7 is chosen as a WITNESS: ~{SW_OUT} never asserts in this
-           program so the '244 must stay off, and its only 0-bit is W3 —
-           exactly the bit of the answer 0x08. A leaking '244 turns OB
-           into 0x00 and names itself. Re-run at 0xFF as the control.
+           0xF7 is chosen as a WITNESS: ~{SW_OUT} never asserts in the
+           MILESTONE program so the '244 must stay off, and its only 0-bit
+           is W3 — a bit the answer 0x4D also sets. A leaking '244 turns
+           OB into 0x45 and names itself. Re-run at 0xFF as the control;
+           the answer MOVING between the two settings is the leak.
 
-    TEST   The milestone end to end across all ten boards: 4 ENDs, HALT,
-           OB = 0x08, stable for a full second of re-polling.
+           NOTE: with PROG_in seated the '244 is supposed to drive, and
+           SW1 becomes an operand rather than a leak witness. See below.
+
+    TEST   The milestone end to end across all ten boards: 6 ENDs, HALT,
+           OB = 0x4D, stable for a full second of re-polling.
 
     NO SCOPE WORK HERE. Every question is a logic value at 437-547ns
     granularity. Save the probe budget for the IN work.
