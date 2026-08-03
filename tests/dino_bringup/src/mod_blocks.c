@@ -989,86 +989,308 @@ void t_block2_dump(void) {
 }
 
 /* ---- block3 -------------------------------------------------------------
-   DRIVEN IS ZERO FROM HERE DOWN. The IR is real and the machine fetches its
-   own instruction bytes; IRB0-7 stays in the same holes and flips to sampled.
-   Sampling at the CONSUMER end (U16) makes it the MIRROR-WITNESS for the U25
-   bridge: block2 read that same byte at MDR, BEFORE it crossed U25 and U34, so
-   a permutation that a MDR-side read cancels out shows up here and nowhere
-   else.
+   DRIVEN IS ZERO FROM HERE DOWN. The IR is real, so the machine fetches its
+   own instruction bytes and IRB0-7 stops being forced — it stays in the SAME
+   HOLES at U16 and flips from rig output to rig input.
 
-   This is also the first block where INSTRUCTION LENGTH is observable: block2
-   forced IRB constant, so the PC stride was constant and a length error was
-   invisible. Here a wrong length desyncs the very next fetch. */
+   Sampling at the CONSUMER end is what makes it the MIRROR-WITNESS for the U25
+   bridge: block2 read that same byte at MDR, BEFORE it crossed U25 and U34. A
+   bridge or IR permutation that a MDR-side read cancels out shows up here and
+   nowhere else. That is the fault class that flipped-PORTF hid from every
+   round-trip test on the registers board.
+
+   THE WALK IS SELF-STRIDING, and that is the point. Each fetched byte
+   determines its OWN instruction length via its PC_UP count, so the expected
+   next address depends on what was just fetched: 0x41 advances 1, 0x11
+   advances 2, 0x22 advances 3. A sequence of four fetches therefore encodes
+   both the bytes AND the lengths, and block2 could not test lengths at all
+   because it forced IRB constant. A wrong instruction length desyncs the very
+   next fetch. */
 static const char m_block3[] PROGMEM = "block3";
 
-/* Is this byte one of the implemented opcodes? Checked against the generated
-   list, because the image cannot answer it — see op_at(). */
-static bool op_known(uint8_t op) {
-    for (uint8_t i = 0; i < MC_OPCODE_COUNT; i++)
-        if (op_at(i) == op) return true;
+#define B3CAP 600
+
+/* NO CLK QUALIFICATION HERE, AND THAT IS THE POINT.
+   U6 is a '163, so T holds for the whole T-state. U34 (the IR) is a 74LS373,
+   which is a TRANSPARENT LATCH, not a register — and LE_IR = NOR(CLK,
+   ~{IR_LOAD}) at U22 gate 1, so it is open only while CLK is LOW during T0,
+   the one T-state that asserts IR_LOAD:
+
+       T0, CLK high   latch closed   IRB = the PREVIOUS opcode
+       T0, CLK low    latch OPEN     IRB follows W, the new opcode
+       T1..Tn         latch closed   IRB = the current opcode
+
+   SO IRB IS SAMPLED AT T1, NOT T0. At T0 it changes MID-T-STATE and an
+   unqualified read returns the previous instruction's opcode about half the
+   time, which would look like random corruption in the walk. At T1 the latch
+   is shut and holds the current opcode unambiguously, with no CLK needed —
+   and every instruction has a T1, since the shortest is fetch plus an END row.
+   (Rico caught this by asking whether LE_IR was really derived from CLK and
+   ~{IR_LOAD}; I had called the IR "registered" without working through the
+   transparency window. 2026-08-02.)
+
+   Dropping CLK takes the burst from three ports to two — 7 cycles, 437ns —
+   which is 2.24 samples per T-state instead of 0.71. That is the difference
+   between seeing EVERY T-state and seeing half of them. At 0.71 the sampler
+   missed roughly half, so two consecutive T0 captures could be two
+   INSTRUCTIONS apart and the walk would silently compare non-adjacent fetches
+   while looking perfectly healthy.
+
+   CLK and T0-3 stay wired — they are the standing timing set and other tests
+   use them. This burst simply does not need CLK. */
+static void cap2_pk(void) {
+    uint8_t *p = g_arena;
+    uint16_t n = B3CAP / 4;
+    uint8_t k, f;
+    __asm__ volatile(
+        "1:                     \n\t"
+        ".rept 4                \n\t"
+        "lds %[k], %[pink]      \n\t"   /* IRB0-7 at U16, the consumer end */
+        "in  %[f], %[pinf]      \n\t"   /* T0-3 in the top nibble */
+        "st  X+, %[k]           \n\t"
+        "st  X+, %[f]           \n\t"
+        ".endr                  \n\t"
+        "sbiw %[n], 1           \n\t"
+        "brne 1b                \n\t"
+        : [k] "=&r" (k), [f] "=&r" (f), [n] "+w" (n), "+x" (p)
+        : [pink] "i" (_SFR_MEM_ADDR(PINK)), [pinf] "I" (_SFR_IO_ADDR(PINF))
+        : "memory");
+}
+
+#define NOPS 4                          /* four fetches = 32 bits of constraint */
+
+/* Search both images for the start address whose walk reproduces the stream.
+   Shared by block3.free and block3.clocked so the two runs make EXACTLY the
+   same claim and differ only in how the stream was collected. */
+static uint16_t walk_match(const uint8_t *ops, uint8_t n, uint16_t *nmatch_out)
+{
+    uint16_t found = 0xFFFF, nmatch = 0;
+    uint8_t real_img = 0;
+    for (uint8_t img = 0; img < 2; img++)
+        for (uint32_t a = 0; a < PR_SIZE; a++) {
+            uint16_t pc = (uint16_t)a;
+            uint8_t ok = 1;
+            for (uint8_t i = 0; i < n; i++) {
+                uint8_t b = rom_byte(img, pc);
+                if (b != ops[i]) { ok = 0; break; }
+                if (b == MC_HALT_OPCODE) { ok = (i == n - 1); break; }
+                uint8_t jmp = 0;
+                for (uint8_t t = 0; t < 16; t++) {
+                    uint16_t w = mc_word(b, t);
+                    if (((w >> 6) & 7) == 2) jmp = 1;            /* misc=PC_LOAD */
+                    if (w & ((1u << 12) | (1u << 15))) break;
+                }
+                if (jmp)                                          /* PC <- MAR */
+                    pc = (uint16_t)(rom_byte(img, (uint16_t)(pc + 1)) |
+                                    ((uint16_t)rom_byte(img, (uint16_t)(pc + 2)) << 8));
+                else
+                    pc = (uint16_t)(pc + pc_stride(b));
+            }
+            if (!ok) continue;
+            if (found == 0xFFFF) { found = (uint16_t)a; real_img = img; }
+            if (nmatch < 0xFFFF) nmatch++;
+        }
+    if (found == 0xFFFF) {
+        uart_putsP("     no start address reproduces that stream in either "
+                   "image. Either the IR is\r\n     latching the wrong byte "
+                   "(U25 bridge or U34), or an instruction LENGTH is\r\n"
+                   "     wrong and the PC lands off the next opcode.\r\n");
+    } else {
+        uart_putsP("     self-striding walk matches the ");
+        if (real_img) uart_putsP("REAL"); else uart_putsP("DIAG");
+        uart_putsP(" image from 0x");
+        uart_puthex8((uint8_t)(found >> 8)); uart_puthex8((uint8_t)found);
+        uart_putsP(", at "); uart_putdec(nmatch);
+        uart_putsP(" address(es)\r\n");
+    }
+    if (nmatch_out) *nmatch_out = nmatch;
+    return found;
+}
+
+void t_block3_free(void) {
+    test_begin(m_block3, PSTR("free"));
+    pins_idle();                        /* the rig drives NOTHING from here down */
+
+    uint8_t ops[NOPS], have = 0, tseq[NOPS];
+    for (uint8_t attempt = 0; attempt < 8 && have < NOPS; attempt++) {
+        cap2_pk();
+        have = 0;
+        /* ACCEPT ON SEQUENCE, NOT ON SAMPLE COUNT. T is a '163 output, so it
+           can only advance by +1 or wrap to 0. Judging a T-state by how many
+           samples it got is wrong here: the burst is unrolled .rept 4 with the
+           loop overhead OUTSIDE, so the intervals are 437,437,437,687ns — NOT
+           uniform. A T-state landing on the long gap gets ONE sample instead of
+           two, a count-based debounce rejects it, `stable` never leaves 1, and
+           the NEXT T1 is discarded as a repeat. An entire INSTRUCTION vanishes
+           and the walk silently compares N against N+2.
+           That is exactly the ~30% pass rate seen on the bench — it worked
+           whenever four consecutive instructions dodged the long gap, and when
+           it did pass it matched at 4 addresses, the image's own structural
+           ambiguity, which is a genuine hit (2026-08-02).
+           The +1 rule tolerates a one-sample T-state and still rejects a
+           straddle caught while the '163 outputs settle, since a straddled read
+           almost never lands on precisely the next value. */
+        uint8_t last = 0xFF;
+        for (uint16_t x = 0; x < B3CAP && have < NOPS; x++) {
+            uint8_t t = (uint8_t)(g_arena[x * 2 + 1] >> 4);
+            if (t == last) continue;                 /* same T-state, still */
+            if (!(last == 0xFF || t == (uint8_t)(last + 1) || t == 0))
+                continue;                            /* out of sequence: straddle */
+            last = t;
+            /* IRB is read at T1, where the IR latch is shut and holds the
+               current opcode — at T0 it is transparent for half the T-state. */
+            if (t == 1) { tseq[have] = t; ops[have] = g_arena[x * 2]; have++; }
+        }
+    }
+    (void)tseq;
+    uart_putsP("     opcode stream: ");
+    for (uint8_t i = 0; i < have; i++) { uart_puthex8(ops[i]); uart_putc(' '); }
+    uart_putsP("\r\n");
+    test_check_u16(have, NOPS, PSTR("captured_consecutive_fetches"));
+    if (have < NOPS) {
+        uart_putsP("     could not catch four consecutive instructions. Each is "
+                   "read at T1, where\r\n     the IR latch is shut and holds "
+                   "the current opcode.\r\n");
+        test_end(); return;
+    }
+
+    uint16_t nmatch = 0;
+    uint16_t found = walk_match(ops, NOPS, &nmatch);
+    test_check_bool(found != 0xFFFF, true, PSTR("IR_fetches_ROM_with_right_lengths"));
+    test_check_bool(nmatch > 0 && nmatch <= PR_DIAG_TRIPLE_MAX, true,
+                    PSTR("match_is_within_the_images_own_ambiguity"));
+    test_end();
+}
+
+/* THE STEPPED TWIN. Same claim as block3.free, taken deterministically.
+
+   The rig drives CLKIN (A0 -> U20.2) with Y1 disabled at its EN pin, so it owns
+   the clock. U20's Q0 is /2 and U27's FF-A is /2, giving CLK = pulses/4 — but
+   step() SYNCS on CLK rather than counting, because U20's ~MR is tied high so
+   the divider has no reset and its power-up phase is arbitrary.
+
+   THIS IS AN INSTRUMENT, NOT THE ACCEPTANCE PATH. It drives one wire, so a
+   stepped run is 1 driven where the acceptance ladder is 0; the gate governs
+   acceptance, exactly as it does for the LA and the scope. Acceptance stays
+   free-run, because only free-run can retire timing.
+
+   What it buys over block3.free: every T-state is visited by construction, so
+   there is no sampling race, no adjacency question and no dropped instruction.
+   If free passes and clocked fails, the fault is in the rig's sampling. If
+   clocked passes and free fails INTERMITTENTLY, that is the sampler too. If
+   clocked fails outright, the machine is wrong — and that is a much stronger
+   statement than a free-run failure, because nothing was inferred. */
+static hwpin_t P_CLKIN, P_CLK;
+
+static bool bind_step(void) {
+    if (!sig_lookup("block3", "CLKIN", &P_CLKIN)) {
+        uart_putsP("     CLKIN not in the bundle\r\n");
+        return false;
+    }
+    if (!sig_lookup("block3", "CLK", &P_CLK)) {
+        uart_putsP("     CLK not in the bundle\r\n");
+        return false;
+    }
+    return true;
+}
+
+/* One CLK EDGE: pulse the divider until CLK changes. Returns false if it never
+   does, which means Y1 is still driving U20.2 and the rig is losing to it. */
+static bool step_edge(void) {
+    bool before = smp(&P_CLK);
+    for (uint8_t i = 0; i < 64; i++) {
+        drv(&P_CLKIN, true);  settle();
+        drv(&P_CLKIN, false); settle();
+        if (smp(&P_CLK) != before) return true;
+    }
     return false;
 }
 
-/* Walk the burned microcode to get the expected opcode sequence — instruction
-   lengths come from PC_UP counts in the ROM, never from a retyped table. */
-static uint8_t expect_opcodes(uint8_t *out, uint8_t max) {
-    uint16_t pc = 0;
-    uint8_t n = 0;
-    while (n < max && pc < PR_PROGRAM_LEN) {
-        uint8_t op = pgm_read_byte(&PR_PROGRAM[pc]);
-        out[n++] = op;
-        if (!op_known(op)) break;
-        uint16_t adv = 0;
-        for (uint8_t t = 0; t < 16; t++) {
-            uint16_t w = mc_word(op, t);
-            if (w & (1u << 13)) adv++;              /* PC_UP */
-            if (w & (1u << 15)) return n;           /* HALT: stream ends */
-            if (w & (1u << 12)) break;              /* END */
-        }
-        pc += adv ? adv : 1;
+void t_block3_clocked(void) {
+    test_begin(m_block3, PSTR("clocked"));
+    if (!bind_step()) { test_end(); return; }
+
+    /* Y1 MUST BE OFF. If it is still driving U20.2 the rig loses to it through
+       the series resistor and CLK simply will not follow — say so plainly
+       rather than reporting a machine fault. */
+    if (!step_edge()) {
+        uart_putsP("     CLK did not follow CLKIN in 64 pulses. Y1 is still "
+                   "driving U20.2 —\r\n     disable it at its EN pin (or open "
+                   "the Y1.8->U20.2 header) and retry.\r\n");
+        test_check_bool(false, true, PSTR("rig_owns_the_clock"));
+        test_end(); return;
     }
-    return n;
+
+    /* THE DIVIDER RATIO, which root.clock cannot test: it measures the
+       resulting frequency but cannot say which stage is wrong. Two pulses per
+       CLK edge is U20's Q0 (/2) feeding U27's toggle. */
+    uint8_t pulses = 0;
+    bool before = smp(&P_CLK);
+    for (uint8_t i = 0; i < 16 && pulses < 16; i++) {
+        drv(&P_CLKIN, true);  settle();
+        drv(&P_CLKIN, false); settle();
+        pulses++;
+        if (smp(&P_CLK) != before) break;
+    }
+    uart_putsP("     pulses per CLK edge: "); uart_putdec(pulses);
+    uart_putsP("  (U20 Q0 /2 then U27 /2)\r\n");
+    test_check_u16(pulses, 2, PSTR("divider_is_two_pulses_per_CLK_edge"));
+
+    /* Walk four instructions, reading IRB at T1 where the IR latch is shut. */
+    uint8_t ops[NOPS], have = 0, last = 0xFF;
+    for (uint16_t guard = 0; guard < 4000 && have < NOPS; guard++) {
+        if (!step_edge()) break;
+        uint8_t t = (uint8_t)(PINF >> 4);
+        if (t == last) continue;
+        last = t;
+        if (t == 1) ops[have++] = PINK;
+    }
+    uart_putsP("     opcode stream: ");
+    for (uint8_t i = 0; i < have; i++) { uart_puthex8(ops[i]); uart_putc(' '); }
+    uart_putsP("\r\n");
+    test_check_u16(have, NOPS, PSTR("stepped_four_instructions"));
+    if (have < NOPS) { test_end(); return; }
+
+    uint16_t nm = 0;
+    uint16_t found = walk_match(ops, NOPS, &nm);
+    test_check_bool(found != 0xFFFF, true, PSTR("IR_fetches_ROM_with_right_lengths"));
+    test_check_bool(nm > 0 && nm <= PR_DIAG_TRIPLE_MAX, true,
+                    PSTR("match_is_within_the_images_own_ambiguity"));
+    test_end();
 }
 
-void t_block3_opcodes(void) {
-    test_begin(m_block3, PSTR("opcodes"));
-    pins_idle();   /* driven count is zero from block3 down */
-    uart_putsP("     ARM: press RESET (10s)\r\n");
+/* Diagnostic: IRB by T-state, plus whether the machine is halted. */
+void t_block3_dump(void) {
+    test_begin(m_block3, PSTR("dump"));
+    pins_idle();
+    cap2_pk();
+    uint8_t seen[16], irb[16];
+    for (uint8_t t = 0; t < 16; t++) seen[t] = 0;
+    uint16_t nsamp = 0;
+    for (uint16_t i = 0; i < B3CAP; i++) {
+        uint8_t t = (uint8_t)(g_arena[i * 2 + 1] >> 4);
+        nsamp++;
+        if (!seen[t]) { seen[t] = 1; irb[t] = g_arena[i * 2]; }
+    }
+    /* HALT is read live rather than from the burst — this burst carries only
+       IRB and T, since both are registered and need no CLK qualification. */
     hwpin_t p_halt;
-    if (!sig_lookup("block3", "CW15=HALT", &p_halt)) {
-        test_check_bool(false, true, PSTR("HALT_pin_bound"));
-        test_end(); return;
+    uint8_t halted = sig_lookup("block3", "CW15=HALT", &p_halt) && smp(&p_halt);
+    uart_putsP("     samples: "); uart_putdec(nsamp);
+    uart_putsP("   HALT now: "); uart_putc(halted ? '1' : '0');
+    uart_putsP("\r\n     IRB by T: ");
+    for (uint8_t t = 0; t < 16; t++) {
+        if (!seen[t]) continue;
+        uart_putc('t'); uart_putc((char)('0' + t)); uart_putc('=');
+        uart_puthex8(irb[t]); uart_putc(' ');
     }
-    /* the machine sits halted; HALT falling is the run starting */
-    if (!await_level(&p_halt, false, 10000)) {
-        test_check_bool(false, true, PSTR("run_started_HALT_fell"));
-        test_end(); return;
-    }
-    cap_pl_pk();
-    frame_t f[MAXFR];
-    uint8_t n = frames(f, MAXFR);
-    uint8_t got[16], ng = 0;
-    for (uint8_t i = 0; i < n && ng < 16; i++)
-        if (ng == 0 || got[ng - 1] != f[i].b) got[ng++] = f[i].b;
-
-    uint8_t want[16];
-    uint8_t nw = expect_opcodes(want, 16);
-    uint8_t bad = 0;
-    for (uint8_t i = 0; i < nw; i++) {
-        if (i >= ng) {
-            uart_putsP("     missing opcode #"); uart_putc((char)('0' + i));
-            uart_putsP(" want=0x"); uart_puthex8(want[i]); uart_putsP("\r\n");
-            bad++; continue;
-        }
-        if (got[i] != want[i]) {
-            uart_putsP("     opcode #"); uart_putc((char)('0' + i));
-            uart_putsP(" got=0x"); uart_puthex8(got[i]);
-            uart_putsP(" want=0x"); uart_puthex8(want[i]); uart_putsP("\r\n");
-            bad++;
-        }
-    }
-    test_check_u16(bad, 0, PSTR("opcode_stream_mismatches"));
-    test_check_bool(smp(&p_halt), true, PSTR("HALT_high_at_end"));
+    uart_putsP("\r\n");
+    if (halted)
+        uart_putsP("     the machine is HALTED — with the REAL image it runs "
+                   "the milestone and stops\r\n     at 0xFF. Seat PROG_diag "
+                   "for a long free run: executed as instructions it\r\n"
+                   "     walks 300+ steps with varying strides.\r\n");
+    test_check_bool(true, true, PSTR("dump_printed"));
     test_end();
 }
 

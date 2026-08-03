@@ -51,6 +51,22 @@ static void print_pins(const char *module) {
                 uart_putsP("\r\n");
             }
         }
+        /* STRAPS FIRST, BEFORE ANY JUMPER. They are board ties with no rig
+           wire, so a table listing only jumpers gives no reason to believe
+           they exist — and WRITE_DIR and W0-7 simply did not get built.
+           WRITE_DIR floating high is a live RAM-write and U21-direction
+           hazard. A floating LS input reads high-ish with no noise margin,
+           which is the 1.67V class this project has already been bitten by. */
+        {
+            char st[80];
+            strncpy_P(st, mm.straps, sizeof st - 1);
+            st[sizeof st - 1] = 0;
+            if (st[0] && strcmp(st, "none") != 0) {
+                uart_putsP("BOARD STRAPS (no rig wire — fit these FIRST):\r\n  ");
+                uart_puts(st);
+                uart_putsP("\r\n");
+            }
+        }
         uart_putsP("hookup for "); uart_puts(module);
         uart_putsP(" (GND first, always):\r\n  GND -> commoned once, all boards\r\n");
         for (uint8_t i = 0; i < mm.n; i++) {

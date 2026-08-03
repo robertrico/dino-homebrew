@@ -270,8 +270,13 @@ def test_pinmap_has_block_bundles():
         check(m is not None, f"{b} bundle parses")
         if m:
             rows = m.group(1).count("{")
-            check_eq(rows, len(s["drive"]) + len(s["sample"]),
-                     f"{b} bundle row count == drive + sample")
+            # step_drive rides in the bundle so `pins <block>` shows it, but it
+            # is NOT part of the acceptance DRIVE set — the driven-wire gate
+            # governs the acceptance harness, and stepping is an instrument
+            # like the LA and the scope.
+            check_eq(rows,
+                     len(s["drive"]) + len(s["sample"]) + len(s.get("step_drive", {})),
+                     f"{b} bundle row count == drive + sample + step_drive")
 
 
 def test_block1_port_alignment():
@@ -340,6 +345,25 @@ def test_owner_board_is_where_the_wire_lands():
         check_eq(o5[s], "io", f"block5 {s} moves to the io end")
 
 
+def test_step_drive_is_not_in_the_acceptance_gate():
+    """CLKIN appears in block3's bundle so the hookup table shows it, but the
+    ladder's driven count must stay 8/8/0/0/0/0. Stepping drives one wire, and
+    a stepped run is 1 driven where acceptance is 0 — the gate governs
+    acceptance, exactly as it does for the LA and the scope."""
+    print("step_drive stays out of the acceptance gate")
+    check_eq([len(SURF[b]["drive"]) for b in SURF], [8, 8, 0, 0, 0, 0],
+             "driven ladder unchanged by adding a step wire")
+    check_eq(set(SURF["block3"]["step_drive"]), {"CLKIN"},
+             "block3 declares CLKIN as a step-only drive")
+    for b in SURF:
+        if b == "block3":
+            continue
+        check_eq(SURF[b].get("step_drive", {}), {}, f"{b} declares no step drive")
+    pins = {s: p for s, p, _d, _o in kc.block_pins(CONTRACTS, "block3")}
+    check_eq(pins.get("CLKIN"), "PF0/A0",
+             "CLKIN on A0 — the same port read as T, and PF0-3 is free here")
+
+
 def test_timing_set_never_moves():
     """CLK and T0-3 must be in the SAME HOLES in every block. Five wires that
     never move are five wires that cannot be re-landed wrong — the same reason
@@ -372,6 +396,7 @@ if __name__ == "__main__":
                test_every_unfed_input_is_classified, test_hard_errors,
                test_pinmap_has_block_bundles, test_block1_port_alignment,
                test_owner_board_is_where_the_wire_lands,
+               test_step_drive_is_not_in_the_acceptance_gate,
                test_timing_set_never_moves,
                test_end_halt_never_move):
         fn()

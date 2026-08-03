@@ -1686,6 +1686,18 @@ instruction bytes, and IRB0-7 stops being forced.
     REMOVE the WRITE_DIR and W0-7 straps BEFORE landing the mdr board.
            U37.4 is a '04 output; a hard GND strap on it is a dead short.
 
+    SAMPLE IRB AT T1, NOT T0. U34 is a 74LS373 — a TRANSPARENT LATCH, not a
+    register — and LE_IR = NOR(CLK, ~{IR_LOAD}) at U22 gate 1, so it is open
+    only while CLK is LOW during T0, the one T-state asserting IR_LOAD:
+        T0, CLK high   latch closed   IRB = the PREVIOUS opcode
+        T0, CLK low    latch OPEN     IRB follows W, the new opcode
+        T1..Tn         latch closed   IRB = the current opcode
+    So IRB changes MID-T0. An unqualified read there returns the previous
+    instruction's opcode about half the time and looks like random corruption.
+    At T1 the latch is shut and holds the current opcode unambiguously, needing
+    no CLK qualification — and every instruction has a T1, the shortest being
+    fetch plus an END row.
+
     WHY SAMPLE IRB AT U16 (the consumer end): it is the MIRROR-WITNESS for
     the U25 bridge. Block 2 read that same byte at MDR, BEFORE it crossed
     U25 and U34. A bridge or IR permutation that a MDR-side read cancels

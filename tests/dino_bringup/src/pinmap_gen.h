@@ -19,7 +19,7 @@ typedef struct { const char *signal; const char *megapin; char dir;
    member, so `pins block1` opens by telling you which boards have to
    be on the bench before a single jumper goes in. */
 typedef struct { const char *module; const sigpin_t *sig; uint8_t n;
-                 const char *members; } modmap_t;
+                 const char *members; const char *straps; } modmap_t;
 
 static const char pm_s0[] PROGMEM = "~{RESET}";
 static const char pm_s1[] PROGMEM = "PB0/D53";
@@ -206,17 +206,22 @@ static const char pm_s181[] PROGMEM = "~{REG_OUT_LE}";
 static const char pm_s182[] PROGMEM = "~{A_EN}";
 static const char pm_s183[] PROGMEM = "~{B_EN}";
 static const char pm_s184[] PROGMEM = "~{C_EN}";
-static const char pm_s185[] PROGMEM = "block1";
-static const char pm_s186[] PROGMEM = "root, microcode, control_word";
-static const char pm_s187[] PROGMEM = "block2";
-static const char pm_s188[] PROGMEM = "root, microcode, control_word, pc, mar, memory";
-static const char pm_s189[] PROGMEM = "block3";
-static const char pm_s190[] PROGMEM = "root, microcode, control_word, pc, mar, memory, mdr";
-static const char pm_s191[] PROGMEM = "block4";
-static const char pm_s192[] PROGMEM = "root, microcode, control_word, pc, mar, memory, mdr, registers, alu";
-static const char pm_s193[] PROGMEM = "block5";
-static const char pm_s194[] PROGMEM = "root, microcode, control_word, pc, mar, memory, mdr, registers, alu, io";
-static const char pm_s195[] PROGMEM = "block6";
+static const char pm_s185[] PROGMEM = "CLKIN";
+static const char pm_s186[] PROGMEM = "";
+static const char pm_s187[] PROGMEM = "block1";
+static const char pm_s188[] PROGMEM = "root, microcode, control_word";
+static const char pm_s189[] PROGMEM = "FLAG_Z=HIGH";
+static const char pm_s190[] PROGMEM = "block2";
+static const char pm_s191[] PROGMEM = "root, microcode, control_word, pc, mar, memory";
+static const char pm_s192[] PROGMEM = "FLAG_Z=HIGH; W0=PULLDOWN10K; W1=PULLDOWN10K; W2=PULLDOWN10K; W3=PULLDOWN10K; W4=PULLDOWN10K; W5=PULLDOWN10K; W6=PULLDOWN10K; W7=PULLDOWN10K; WRITE_DIR=LOW";
+static const char pm_s193[] PROGMEM = "block3";
+static const char pm_s194[] PROGMEM = "root, microcode, control_word, pc, mar, memory, mdr";
+static const char pm_s195[] PROGMEM = "block4";
+static const char pm_s196[] PROGMEM = "root, microcode, control_word, pc, mar, memory, mdr, registers, alu";
+static const char pm_s197[] PROGMEM = "none";
+static const char pm_s198[] PROGMEM = "block5";
+static const char pm_s199[] PROGMEM = "root, microcode, control_word, pc, mar, memory, mdr, registers, alu, io";
+static const char pm_s200[] PROGMEM = "block6";
 
 static const sigpin_t sig_root[] PROGMEM = {
     {pm_s0, pm_s1, 'I', pm_s2},
@@ -592,7 +597,8 @@ static const sigpin_t sig_block3[] PROGMEM = {
     {pm_s5, pm_s145, 'I', pm_s2},
     {pm_s7, pm_s147, 'I', pm_s2},
     {pm_s13, pm_s149, 'I', pm_s2},
-    {pm_s15, pm_s151, 'I', pm_s2}
+    {pm_s15, pm_s151, 'I', pm_s2},
+    {pm_s185, pm_s159, 'O', pm_s2}
 };
 static const sigpin_t sig_block4[] PROGMEM = {
     {pm_s19, pm_s27, 'I', pm_s2},
@@ -646,22 +652,22 @@ static const sigpin_t sig_block6[] PROGMEM = {
 };
 
 static const modmap_t MODMAPS[] PROGMEM = {
-    {pm_s2, sig_root, 10, pm_s2},
-    {pm_s22, sig_alu, 28, pm_s22},
-    {pm_s66, sig_control_word, 33, pm_s66},
-    {pm_s101, sig_mar, 32, pm_s101},
-    {pm_s123, sig_mdr, 38, pm_s123},
-    {pm_s160, sig_memory, 33, pm_s160},
-    {pm_s165, sig_microcode, 28, pm_s165},
-    {pm_s167, sig_io, 17, pm_s167},
-    {pm_s176, sig_pc, 23, pm_s176},
-    {pm_s178, sig_registers, 31, pm_s178},
-    {pm_s185, sig_block1, 39, pm_s186},
-    {pm_s187, sig_block2, 23, pm_s188},
-    {pm_s189, sig_block3, 15, pm_s190},
-    {pm_s191, sig_block4, 15, pm_s192},
-    {pm_s193, sig_block5, 15, pm_s194},
-    {pm_s195, sig_block6, 14, pm_s194}
+    {pm_s2, sig_root, 10, pm_s2, pm_s186},
+    {pm_s22, sig_alu, 28, pm_s22, pm_s186},
+    {pm_s66, sig_control_word, 33, pm_s66, pm_s186},
+    {pm_s101, sig_mar, 32, pm_s101, pm_s186},
+    {pm_s123, sig_mdr, 38, pm_s123, pm_s186},
+    {pm_s160, sig_memory, 33, pm_s160, pm_s186},
+    {pm_s165, sig_microcode, 28, pm_s165, pm_s186},
+    {pm_s167, sig_io, 17, pm_s167, pm_s186},
+    {pm_s176, sig_pc, 23, pm_s176, pm_s186},
+    {pm_s178, sig_registers, 31, pm_s178, pm_s186},
+    {pm_s187, sig_block1, 39, pm_s188, pm_s189},
+    {pm_s190, sig_block2, 23, pm_s191, pm_s192},
+    {pm_s193, sig_block3, 16, pm_s194, pm_s189},
+    {pm_s195, sig_block4, 15, pm_s196, pm_s197},
+    {pm_s198, sig_block5, 15, pm_s199, pm_s197},
+    {pm_s200, sig_block6, 14, pm_s199, pm_s197}
 };
 #define MODMAP_COUNT 16
 

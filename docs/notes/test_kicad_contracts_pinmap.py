@@ -46,9 +46,23 @@ for tok, rows in modules.items():
 # MODMAPS must be PROGMEM and reference the module name strings + arrays.
 mm = re.search(r'static const modmap_t MODMAPS\[\] PROGMEM = \{(.*?)\};', t, re.S)
 assert mm, "MODMAPS must be PROGMEM"
-_rows = re.findall(r'\{(pm_s\d+), sig_(\w+), (\d+), (pm_s\d+)\}', mm.group(1))
-mod_names = [strings[s] for s, _tok, _n, _m in _rows]
-for s, tok, n, memsym in _rows:
+_rows = re.findall(r'\{(pm_s\d+), sig_(\w+), (\d+), (pm_s\d+), (pm_s\d+)\}', mm.group(1))
+mod_names = [strings[s] for s, _tok, _n, _m, _st in _rows]
+# A block that declares straps must SAY SO in its bundle. Straps are board ties
+# with no rig wire, so a hookup table listing only jumpers gives no reason to
+# believe they exist — and on the bench they did not get built (2026-08-01).
+import kicad_contracts as _kc
+_surf = _kc.build_blocks(_kc.build_contracts(
+    os.path.join(HERE, "..", "..", "dino_v0_0_2", "dino_v0_0_2.kicad_sch")))
+for _s, _tok, _n, _m, _stsym in _rows:
+    if not _tok.startswith("block"):
+        continue
+    _want, _got = _surf[_tok]["strap"], strings[_stsym]
+    for _sig in _want:
+        assert _sig in _got, f"{_tok}: strap {_sig} missing from bundle: {_got!r}"
+    if not _want:
+        assert _got == "none", f"{_tok}: no straps but bundle says {_got!r}"
+for s, tok, n, memsym, _st in _rows:
     assert strings[s] == tok, f"MODMAPS name {strings[s]} != array token {tok}"
     assert int(n) == len(modules[tok]), f"MODMAPS count mismatch for {tok}"
     members = [x.strip() for x in strings[memsym].split(",")]

@@ -537,6 +537,7 @@ BLOCKS = {
         "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
                     "mdr"],
         "primary": "opcodes",
+        "steppable": True,          # A0 -> U20.2 available for a stepped run
         "drive": [],
         "retire": {},
         "strap": {"FLAG_Z": ("HIGH", "control_word.truth")},
@@ -703,6 +704,15 @@ def _member_io(contracts, members):
     return ins, outs
 
 
+# Signals the rig drives ONLY in a stepped diagnostic run. They appear in the
+# bundle so `pins <block>` shows them, but they are NOT part of the block's
+# DRIVE set: the driven-wire gate governs the ACCEPTANCE harness, and stepping
+# is an instrument like the LA and the scope. CLKIN is not a contract net —
+# Y1.8->U20.2 is anonymous — so it is declared here with its pin, the same way
+# PIN_PROBES declares rig-internal probes.
+STEP_DRIVE = {"CLKIN": ("PF0/A0", "U20.2, with Y1 disabled at its EN pin")}
+
+
 def block_surface(contracts, name, spec, retired_by=None):
     """Classify one block's signals per THE BLOCK LAW.
 
@@ -785,10 +795,15 @@ def block_surface(contracts, name, spec, retired_by=None):
         pick = cons if sig in anyway else prod
         fallback = prod if sig in anyway else cons
         owner[sig] = sorted(pick.get(sig) or fallback.get(sig) or {"?"})[0]
+    # CLKIN is not a contract net (Y1.8->U20.2 is anonymous), so name its board
+    # explicitly — it lands on root, at the divider input.
+    for sig in STEP_DRIVE:
+        owner[sig] = "root"
 
     return {"name": name, "members": members, "primary": spec.get("primary", ""),
             "owner": owner,
             "copper": sorted(copper), "drive": drive, "strap": strap,
+            "step_drive": dict(STEP_DRIVE) if spec.get("steppable") else {},
             "sample": sample, "qualify": qualify, "floats": floats,
             "retired": sorted(retired_by), "retired_by": retired_by}
 
@@ -829,8 +844,11 @@ def block_pins(contracts, name, surf=None):
     pool = [p for p in POOL if p not in set(assign.values())]
     rows, used = [], {}
     for sig, d in ([(s, 'O') for s in surf["drive"]] +
-                   [(s, 'I') for s in surf["sample"]]):
-        if sig in assign:
+                   [(s, 'I') for s in surf["sample"]] +
+                   [(s, 'O') for s in surf.get("step_drive", {})]):
+        if sig in surf.get("step_drive", {}):
+            pin = surf["step_drive"][sig][0]
+        elif sig in assign:
             pin = assign[sig]
         else:
             bp = bus_pin(sig)
@@ -889,7 +907,7 @@ def emit_pinmap(contracts, out_path):
              "   member, so `pins block1` opens by telling you which boards have to",
              "   be on the bench before a single jumper goes in. */",
              "typedef struct { const char *module; const sigpin_t *sig; uint8_t n;",
-             "                 const char *members; } modmap_t;", ""]
+             "                 const char *members; const char *straps; } modmap_t;", ""]
     interned, strdefs = {}, []
 
     def sym(s):
@@ -956,7 +974,7 @@ def emit_pinmap(contracts, out_path):
         arr = ",\n    ".join(f"{{{sym(s)}, {sym(p)}, '{d}', {sym(tok)}}}"
                              for s, p, d in rows)
         mod_blocks.append(f"static const sigpin_t sig_{tok}[] PROGMEM = {{\n    {arr}\n}};")
-        mods.append((tok, len(rows), tok))
+        mods.append((tok, len(rows), tok, ""))
 
     # Block bundles ride the same MODMAPS machinery — `pins block1`,
     # `run block1.decode`, sig_lookup() and coverage_lint all work unchanged.
@@ -966,10 +984,20 @@ def emit_pinmap(contracts, out_path):
                              for s, p, d, o in rows)
         mod_blocks.append(
             f"static const sigpin_t sig_{bname}[] PROGMEM = {{\n    {arr}\n}};")
-        mods.append((bname, len(rows), ", ".join(surf["members"])))
+        # STRAPS BELONG IN THE HOOKUP TABLE. They are board ties with no rig
+        # wire, so a table that lists only jumpers gives no reason to believe
+        # they exist — and on the bench they simply did not get built
+        # (2026-08-01) — specifically WRITE_DIR and W0-7. WRITE_DIR floating
+        # high is a live RAM-write and U21-direction hazard. FLAG_Z was fitted
+        # all along (1k pull-high at U62.3); an earlier note here claimed it was
+        # floating, which came from over-reading "I haven't done any strapping"
+        # as covering all three. Corrected 2026-08-02.
+        st = "; ".join(f"{sig}={lvl}" for sig, (lvl, _cite)
+                       in sorted(surf["strap"].items())) or "none"
+        mods.append((bname, len(rows), ", ".join(surf["members"]), st))
 
-    arr = ",\n    ".join(f'{{{sym(t)}, sig_{t}, {n}, {sym(mem)}}}'
-                         for t, n, mem in mods)
+    arr = ",\n    ".join(f'{{{sym(t)}, sig_{t}, {n}, {sym(mem)}, {sym(st)}}}'
+                         for t, n, mem, st in mods)
     lines += strdefs + [""] + mod_blocks
     lines += ["", f"static const modmap_t MODMAPS[] PROGMEM = {{\n    {arr}\n}};",
               f"#define MODMAP_COUNT {len(mods)}", "", "#endif"]
