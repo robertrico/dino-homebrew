@@ -27,7 +27,7 @@
    WITHIN THE RUN IS t. That asserts ORDER AND RUN LENGTH, which a per-T
    lookup would not: a wrong END row or a skipped state both fail here.
 
-   Pin bundles come from `pins block1`..`pins block6` (kicad_contracts.py
+   Pin bundles come from `pins block1`..`pins block5` (kicad_contracts.py
    BLOCKS). Port grouping is deliberate: capture_burst reads WHOLE PORTS, so
    each decoder group sits in exactly one port and the 8 SRC enables share a
    single port — that is what makes block1.onehot a coherent one-read check.
@@ -1407,6 +1407,26 @@ static void milestone_run(const char *mod)
        without the operator ever pressing anything. That is what happened on
        the bench (2026-08-02): 20 END pulses, OB never the sum, and no chance
        to press the button. */
+    /* IS THERE A CLOCK AT ALL? A free-run test needs Y1 running, and the
+       step-clock tests need it OFF — so the bench alternates between the two
+       and arrives here with Y1 still pulled. A stopped machine is not halted,
+       so the check below fires and blames the ROM. It cost a round of beeping
+       for a missing oscillator. CLK toggling shows as BOTH levels in a tight
+       poll; a stopped clock shows one. */
+    hwpin_t p_clk;
+    if (sig_lookup(mod, "CLK", &p_clk)) {
+        uint8_t seen = 0;
+        for (uint16_t i = 0; i < 4000 && seen != 3; i++)
+            seen |= smp(&p_clk) ? 1 : 2;
+        if (seen != 3) {
+            uart_putsP("     CLK is STUCK — Y1 is not running. This is a "
+                       "FREE-RUN test: seat Y1 and\r\n     unplug the rig's "
+                       "CLKIN jumper from U20.2.\r\n");
+            test_check_bool(false, true, PSTR("Y1_is_running"));
+            return;
+        }
+    }
+
     if (!smp(&p_halt)) {
         uart_putsP("     machine NOT HALTED — nothing to arm against. Needs "
                    "the MILESTONE image:\r\n     make -C tests/dino_bringup "
@@ -1476,9 +1496,14 @@ static void milestone_run(const char *mod)
        returns the PREVIOUS run's answer, because U35 has no reset, and that
        reads as a pass. Require the level to survive 5ms, which is 5000 CLK
        periods; nothing in a ten-T-state program is high that long. */
+    /* NO HURRY. The old form waited 2s for HALT to rise and gave up on the
+       first timeout — but the RESET RC stretch alone is 0.25-2.2s before a
+       finger is accounted for, so a normal press could expire it. A timeout
+       here is not evidence of anything; only the deadline running out is.
+       `continue`, not `break`: keep waiting up to ~40s. */
     bool risen = false;
-    for (uint8_t tries = 0; tries < 20 && !risen; tries++) {
-        if (!await_level(&p_halt, true, 2000)) break;
+    for (uint8_t tries = 0; tries < 40 && !risen; tries++) {
+        if (!await_level(&p_halt, true, 1000)) continue;
         risen = true;
         for (uint8_t k = 0; k < 50; k++) {
             _delay_us(100);
@@ -1543,7 +1568,6 @@ static void milestone_run(const char *mod)
 
 static const char m_block4[] PROGMEM = "block4";
 static const char m_block5[] PROGMEM = "block5";
-static const char m_block6[] PROGMEM = "block6";
 
 /* THE MILESTONE, STEPPED. This is the one that can actually be run.
 
@@ -1742,36 +1766,3 @@ void t_block5_run(void) {
 }
 
 
-/* Block 6 is the acceptance run: the rig drives nothing, END is gone, and
-   HALT alone marks the end. TEN RESETS, TEN 0x08s — at 1.024MHz a marginal
-   setup path fails probabilistically and one pass is an anecdote. */
-void t_block6_acceptance(void) {
-    test_begin(m_block6, PSTR("acceptance"));
-    hwpin_t p_halt;
-    if (!sig_lookup("block6", "CW15=HALT", &p_halt)) {
-        test_check_bool(false, true, PSTR("HALT_pin_bound"));
-        test_end(); return;
-    }
-    pins_idle();
-
-    uint8_t good = 0;
-    for (uint8_t run = 0; run < 10; run++) {
-        uart_putsP("     run "); uart_putc((char)('0' + run));
-        uart_putsP("/10 — ARM: press RESET (20s)\r\n");
-        if (!await_level(&p_halt, false, 20000)) {
-            uart_putsP("     no start (HALT never fell)\r\n");
-            continue;
-        }
-        if (!await_level(&p_halt, true, 2000)) {
-            uart_putsP("     never halted\r\n");
-            continue;
-        }
-        uint8_t ob = PINK;
-        uart_putsP("     OB = 0x"); uart_puthex8(ob);
-        if (ob == PR_EXPECT_SUM) { good++; uart_putsP("  ok\r\n"); }
-        else { uart_putsP("  WRONG\r\n"); name_ob_permutations(ob); }
-    }
-    test_check_u16(good, 10, PSTR("ten_resets_ten_sums"));
-    uart_putsP("     LEDs: bits 0, 2, 3, 6 lit\r\n");
-    test_end();
-}

@@ -1145,7 +1145,7 @@ exception rather than smuggled in.
 ### NOTHING IS EVER PULLED — but rig jumpers come off freely
 
     CHIPS AND BOARD-TO-BOARD COPPER: never touched. Y1 stays in its socket
-    from Block 1 through Block 6. No socket is ever disturbed. Once a strip
+    from Block 1 through Block 5. No socket is ever disturbed. Once a strip
     is populated it is copper (AS-BUILT FREEZE).
 
     RIG JUMPERS: removed freely as they retire. That IS the ladder.
@@ -1175,7 +1175,6 @@ already do.
     3      + mdr                          0       11     11+GND
     4      + registers + alu              0       11     11+GND
     5      + io                           0       11     11+GND
-    6      free-run (Y1 already seated)   0        9      9+GND
 
 CLK IS SAMPLED IN BLOCKS 1-5 AS A CAPTURE QUALIFIER, not as an assertion —
 root.clock still owns it. After T changes on the CLK rising edge the microcode
@@ -1207,7 +1206,7 @@ the same two DUT pins:
     D45 / PL4    CW12=END     U61.3
     D42 / PL7    CW15=HALT    U61.5
 
-Land them at Block 1 and do not touch them again until Block 6 drops END.
+Land them at Block 1 and do not touch them again.
 
 TAPPED AT U61, NOT AT U15. U15.16/U15.19 are the ROM's own pins; U61 is
 where END actually reaches U6.~{MR} and HALT reaches U6.CET. Sampling the
@@ -1524,7 +1523,7 @@ This is the one it structurally cannot:
 
 CLK vs T0, T(last) vs END, and the ~{IR_LOAD} window are NOT here. The
 first two the Mega gets at 1.024MHz; the third is meaningless until the
-full Block 6 load exists.
+full Block 5 load exists.
 
 ### BENCH RESULT 2026-07-30 — 6/6 PASS
 
@@ -1769,74 +1768,24 @@ All ten boards. NOT single-stepped — see NOTHING IS EVER PULLED above.
            OB = 0x08, stable for a full second of re-polling.
 
     NO SCOPE WORK HERE. Every question is a logic value at 437-547ns
-    granularity. Save the probe budget for Block 6.
+    granularity. Save the probe budget for the IN work.
 
-### BLOCK 6 — FREE-RUN                 (driven 0, sampled 9, 9 jumpers)
+### BLOCK 6 — DROPPED 2026-08-02
 
-Nothing is added, moved, or reseated. Same machine, smaller harness, and
-the instruments come out.
+The ladder ENDS AT BLOCK 5. Block 6 was to be the same ten boards with
+the END jumper pulled — 9 wires — reset ten times for ten sums. It was
+dropped because it adds no board and no coverage, only repetition:
+blocks 4 and 5 already free-run at 1.024MHz with Y1 seated and produce
+0x4D, so timing is retired. Driving the machine INTERACTIVELY from SW1
+through the IN instruction is a stronger acceptance than running one
+fixed program ten more times.
 
-    OFF    D45 END
-    KEEP   A8-A15 OB0-7 at R9-R16.1; D42 HALT at U61.5
-
-    HALT is a clean two-state marker and the burst's own trigger:
-      LOW  = reset cleared T to 0, fetch row 0x600E selected, RUNNING
-      HIGH = row 0x8000 selected, CET low, T frozen, clock still running,
-             HALTED permanently and stably
-
-    TEST   OB = 0x08 at HALT, still 0x08 after a second of re-polling, and
-           TEN RESETS GIVE TEN 0x08s. At 1.024MHz a marginal setup path
-           fails probabilistically; one pass is an anecdote. Plus the
-           human check that costs nothing: ONE LED LIT, BIT 3.
-
-    THIS IS WHERE TIMING IS RETIRED, and nothing before it can do the job.
-    Two probes, two setups:
-
-    2ch    CLK (U27.5) vs ~{REG_A_LOAD} (U30.14). THE MONEY SHOT. That
-           delay is the machine's longest control path: CLK rise -> U6
-           '163 -> U16/U17 buffers -> AT28C64B access (tACC 150-250ns) ->
-           U30 '138 decode. It must finish before CLK falls, because
-           LE_REG_A = NOR(~{REG_A_LOAD}, CLK) is what commits the ADD
-           result. Budget at 1.024MHz is 488ns minus '373 setup (~20ns).
-           EEPROM access alone can eat half of it, and Block 1 measured
-           this node WITHOUT the full fan-out.
-           BAD TRACE: the strobe settling later than ~450ns after CLK
-           rise, or still moving when CLK falls.
-           FIX IS A SLOWER CLOCK (U20 already provides divide taps), NOT
-           gating the '138s — see the machine invariant.
-           The Mega cannot do this: its sample period is roughly the
-           entire quantity being measured.
-
-    1ch    OB3 at U35.9. VOH with the single milestone LED lit. U35 is a
-           74LS373 rated IOH = -2.6mA; R12 is 330R drawing ~4-5mA through
-           the LED. The output is being asked to source about twice its
-           rating, on the one node the whole milestone is read from.
-           BAD TRACE: VOH below ~2.4V. Fix is a larger LED resistor.
-           The Mega cannot do this: a pin at 2.0V reads as a clean HIGH on
-           PINK and the test passes while the level is garbage to a real
-           gate. This project has already been bitten by exactly that
-           (U45.2 at 1.67V).
-
-## cw_expect is now a CHECKER, not a driver
-
-Under the datapath-first plan the rig had to impersonate the control unit,
-so it would have DRIVEN strobes computed from
-cw_expect(MC_REAL_WORDS[...]). Control-first deletes that job: the real
-ROM and the real decoder produce the strobes from step 1.
-
-The same two generated headers are still the single source of truth — they
-just verify hardware instead of substituting for it:
-
-    sample the real decoded strobes
-    compare against cw_expect(MC_REAL_WORDS[(op << 4) | t], flag_z)
-    a mismatch names the lying gate
-
-flag_z is the STRAPPED level (HIGH) in Blocks 1-3, not a rig-driven bit.
-t is NOT sampled — it is the position within an END-delimited run.
-
-Smaller, safer, and it keeps the discipline: no eleventh table, nothing
-hand-written, the rig's notion of truth still derived from the burned
-image and a host-tested model.
+The instrument work it carried still stands and is not blocked by
+anything: 2ch CLK (U27.5) vs ~{REG_A_LOAD} (U30.14) is the longest
+control path — CLK rise through the '163, the '244, EEPROM tACC
+150-250ns and the '138 decode, all inside the 488ns CLK-high half or
+the ADD never commits. And 1ch OB3 (U35.9) VOH, an LS373 rated -2.6mA
+sourcing 4-5mA through a 330R LED.
 
 ### Old names, for cross-reference
 

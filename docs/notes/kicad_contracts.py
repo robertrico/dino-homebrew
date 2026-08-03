@@ -589,19 +589,6 @@ BLOCKS = {
         "sample_anyway": (["CW12=END", "CW15=HALT"] +
                           [f"OB{i}" for i in range(8)]),
     },
-    "block6": {
-        "qualify": _TIMING,
-        "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
-                    "mdr", "registers", "alu", "io"],
-        "primary": "acceptance",
-        "drive": [],
-        "retire": {},
-        "strap": {},          # SW1=0xF7 is a bench setting, not a contract net
-        # END drops here: block5 proved the 4-END-then-HALT sequence, so its
-        # only job is done. HALT stays — it is the terminal marker AND the
-        # burst's own trigger.
-        "sample_anyway": ["CW15=HALT"] + [f"OB{i}" for i in range(8)],
-    },
 }
 
 # Blocks whose signals do not land where the fixed bus rules would put them.
@@ -627,7 +614,6 @@ BLOCK_PIN_ASSIGN = {
     "block3": dict(_CLK_PIN),
     "block4": dict(_CLK_PIN),
     "block5": dict(_CLK_PIN),
-    "block6": dict(_CLK_PIN),
     "block1": {
         # DST group -> PORTA, D22..D28
         "~{REG_A_LOAD}":   "PA0/D22",

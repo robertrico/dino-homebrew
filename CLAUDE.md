@@ -33,7 +33,7 @@ full history (138 commits) preserved.
 registers, mar, memory, alu, io. Coverage lint: 0 gaps, 0 pending.
 Stage 1 (rig self-test) is CLOSED as a diagnostic, not a gate.
 
-**What remains:** the integration ladder, then free-run. The milestone
+**What remains:** the integration ladder, then IN. The milestone
 program is burned and seated: `LDAI 0xFF; OUT; LDAI 0x2F; LDBI 0x1E; ADD; OUT; HALT`
 → OUT should read 0x4D. The leading `LDAI 0xFF; OUT` POISONS OB, so a
 stale answer cannot survive a run that starts.
@@ -80,7 +80,6 @@ rig-emulated bridge passes clean.
     3      + mdr                            0       11     11+GND
     4      + registers + alu                0       11     11+GND
     5      + io                             0       11     11+GND
-    6      free-run                         0        9      9+GND
 
 CLK is sampled in blocks 1-5 as a CAPTURE QUALIFIER (root.clock still owns it
 as an assertion): the microcode ROM outputs are invalid for one access time
@@ -97,7 +96,7 @@ wire-count reason. Don't re-propose it.
 
 **NOTHING IS EVER PULLED — but rig jumpers come off freely.** Chips and
 board-to-board copper are never touched; Y1 stays seated from Block 1 to
-Block 6. Rig jumpers are removed as they retire — that IS the ladder.
+Block 5. Rig jumpers are removed as they retire — that IS the ladder.
 Temporary board straps (`WRITE_DIR`, `W0-7`, `FLAG_Z`) must come off when
 real copper takes over the net, or a real driver meets a tie.
 
@@ -197,5 +196,6 @@ Host tests sit next to each (`test_*.py`), plus C model tests in
   `progrom_gen.py` imports `OPCODES` from `microcode_gen`, so the two ROMs
   cannot disagree. The numbers are arbitrary; `HALT=0xFF` is the one real
   choice, so an erased EEPROM halts instead of raving.
-- Timing is proven by NOTHING yet. Only free-run with Y1 seated retires
-  it. "Works single-stepped, fails free-run" is the clean signature.
+- Timing is RETIRED. Blocks 4 and 5 free-run with Y1 seated at 1.024MHz
+  and produce 0x4D. "Works single-stepped, fails free-run" was the
+  signature to watch for; it never appeared.

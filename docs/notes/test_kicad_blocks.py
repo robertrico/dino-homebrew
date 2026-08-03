@@ -76,7 +76,7 @@ JMP4 = {"~{PC_CLEAR}", "~{MDR_OUT}", "~{REG_OUT_LOAD}", "~{PC_LOAD}"}
 SA3 = {"CW9=SA2", "CW10=SA1", "CW11=SA0"}
 PCBITS = {"CW13=PC_UP", "CW14=PC_MAR_MUX"}
 ENDHALT = {"CW12=END", "CW15=HALT"}
-# CLK is sampled in blocks 1-5 as a CAPTURE QUALIFIER, never as an assertion:
+# CLK is sampled in every block as a CAPTURE QUALIFIER, never as an assertion:
 # the ROM outputs are invalid for one access time after T changes, and a blind
 # sampler splits one T-state into several frames. Gating on CLK low samples
 # after the ROM has settled. root.clock still owns CLK as an assertion.
@@ -100,33 +100,32 @@ TIMING = QUAL | T03
 def test_block_names_and_order():
     print("block ladder shape")
     names = list(SURF)
-    check_eq(names, ["block1", "block2", "block3", "block4", "block5", "block6"],
-             "six blocks, in ladder order")
+    check_eq(names, ["block1", "block2", "block3", "block4", "block5"],
+             "five blocks, in ladder order")
     check_eq(SURF["block1"]["members"], ["root", "microcode", "control_word"],
              "block1 members")
-    check_eq(set(SURF["block5"]["members"]), set(SURF["block6"]["members"]),
-             "block6 adds no board — same members as block5")
-    check_eq(len(SURF["block5"]["members"]), 10, "block5 is all ten modules")
+    check_eq(len(SURF["block5"]["members"]), 10,
+             "block5 is all ten modules — the ladder ENDS here")
 
 
 def test_driven_gate():
     """The gate: driven-wire count may never rise."""
     print("driven-wire gate")
     counts = [len(SURF[b]["drive"]) for b in SURF]
-    check_eq(counts, [8, 8, 0, 0, 0, 0], "driven ladder 8,8,0,0,0,0")
+    check_eq(counts, [8, 8, 0, 0, 0], "driven ladder 8,8,0,0,0")
     check(all(b <= a for a, b in zip(counts, counts[1:])),
           "driven count never rises between consecutive blocks")
     check_eq(set(SURF["block1"]["drive"]), IRB, "block1 drives exactly IRB0-7")
     check_eq(set(SURF["block2"]["drive"]), IRB, "block2 drives exactly IRB0-7")
-    for b in ("block3", "block4", "block5", "block6"):
+    for b in ("block3", "block4", "block5"):
         check_eq(set(SURF[b]["drive"]), set(), f"{b} drives nothing")
 
 
 def test_sample_counts():
     print("sample ladder")
     counts = [len(SURF[b]["sample"]) for b in SURF]
-    check_eq(counts, [31, 15, 15, 15, 15, 14],
-             "sampled ladder 31,15,15,15,15,14 (CLK+T0-3 in every block)")
+    check_eq(counts, [31, 15, 15, 15, 15],
+             "sampled ladder 31,15,15,15,15 (CLK+T0-3 in every block)")
     for b in SURF:
         check_eq(SURF[b]["qualify"], ["CLK", "T0", "T1", "T2", "T3"],
                  f"{b} carries the standing timing set")
@@ -198,19 +197,22 @@ def test_block4_surface():
     check(all(i not in s["sample"] for i in IRB), "IRB retired by block3")
 
 
-def test_block5_and_6():
-    print("block5 / block6")
-    s5, s6 = SURF["block5"], SURF["block6"]
+def test_block5_is_the_last_rung():
+    """Block 5 is the end of the ladder. There WAS a block 6 — the same ten
+    boards again, END unjumpered, ten resets for ten sums. It was dropped
+    (2026-08-02): it added no board and no coverage, only repetition, and
+    running the machine INTERACTIVELY off the switches via IN is a stronger
+    acceptance than running the same fixed program ten more times."""
+    print("block5 — the last rung")
+    s5 = SURF["block5"]
     check_eq(set(s5["sample"]), OB | ENDHALT | TIMING,
              "block5 samples OB0-7 + END/HALT + CLK + T0-3")
     check(OB <= set(s5["copper"]), "OB is copper at block5 — io is present")
     check_eq(set(s5["strap"]), set(),
              "block5 straps nothing — IS0-7 never crosses a sheet, so SW1=0xF7 "
              "is a bench setting, not a contract strap")
-    check_eq(set(s6["sample"]), OB | {"CW15=HALT"} | TIMING,
-             "block6 samples OB0-7 + HALT + the timing set")
-    check("CW12=END" not in s6["sample"], "block6 drops the END jumper")
-    check_eq(len(s6["sample"]), 14, "block6 is fourteen sampled wires")
+    check_eq(len(s5["sample"]), 15, "block5 is fifteen sampled wires")
+    check_eq(len(SURF), 5, "the ladder has no sixth rung")
 
 
 def test_every_unfed_input_is_classified():
@@ -347,11 +349,11 @@ def test_owner_board_is_where_the_wire_lands():
 
 def test_step_drive_is_not_in_the_acceptance_gate():
     """CLKIN appears in block3's bundle so the hookup table shows it, but the
-    ladder's driven count must stay 8/8/0/0/0/0. Stepping drives one wire, and
+    ladder's driven count must stay 8/8/0/0/0. Stepping drives one wire, and
     a stepped run is 1 driven where acceptance is 0 — the gate governs
     acceptance, exactly as it does for the LA and the scope."""
     print("step_drive stays out of the acceptance gate")
-    check_eq([len(SURF[b]["drive"]) for b in SURF], [8, 8, 0, 0, 0, 0],
+    check_eq([len(SURF[b]["drive"]) for b in SURF], [8, 8, 0, 0, 0],
              "driven ladder unchanged by adding a step wire")
     # Blocks 3, 4 and 5 are steppable. Block 4 needs it most: the milestone is
     # ten T-states, ~10us, and NO POLLING TRIGGER CAN WIN THAT RACE — with the
@@ -359,7 +361,7 @@ def test_step_drive_is_not_in_the_acceptance_gate():
     for b in ("block3", "block4", "block5"):
         check_eq(set(SURF[b]["step_drive"]), {"CLKIN"},
                  f"{b} declares CLKIN as a step-only drive")
-    for b in ("block1", "block2", "block6"):
+    for b in ("block1", "block2"):
         check_eq(SURF[b].get("step_drive", {}), {}, f"{b} declares no step drive")
     for b in ("block3", "block4", "block5"):
         pins = {s: p for s, p, _d, _o in kc.block_pins(CONTRACTS, b)}
@@ -395,7 +397,7 @@ def test_end_halt_never_move():
 if __name__ == "__main__":
     for fn in (test_block_names_and_order, test_driven_gate, test_sample_counts,
                test_block1_surface, test_block2_surface, test_block3_surface,
-               test_block4_surface, test_block5_and_6,
+               test_block4_surface, test_block5_is_the_last_rung,
                test_every_unfed_input_is_classified, test_hard_errors,
                test_pinmap_has_block_bundles, test_block1_port_alignment,
                test_owner_board_is_where_the_wire_lands,

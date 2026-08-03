@@ -195,7 +195,6 @@ BLOCK 2   + pc + mar + memory                      8       11     19+GND
 BLOCK 3   + mdr        (real IR — it fetches)      0       11     11+GND
 BLOCK 4   + registers + alu    (the sum happens)   0       11     11+GND
 BLOCK 5   + io                                     0       11     11+GND
-BLOCK 6   free-run, crystal already seated         0        9      9+GND
 ```
 
 The ordering is not arbitrary. Every rig wire is a wire that can be one
