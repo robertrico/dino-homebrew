@@ -241,7 +241,27 @@ def emit_header(real, crcs, path):
     for i in range(0, 4096, 8):
         row = ", ".join(f"0x{w:04X}" for w in real[i:i + 8])
         lines.append(f"    {row},")
-    lines += ["};", "", "#endif", ""]
+    # THE IMPLEMENTED OPCODE LIST. Cannot be inferred from the image: T0 is
+    # the universal FETCH row for ALL 256 opcodes, and NOP's T1 is a bare END
+    # identical to the FILL written at every unimplemented opcode. A rig that
+    # guesses "is this opcode real?" from the words will walk all 256 and
+    # compare 238 of them against fill. (Cost one Block 1 bench run to learn,
+    # 2026-07-30.)
+    ops = sorted(OPCODES.items(), key=lambda kv: kv[1])
+    lines += [
+        "};",
+        "",
+        "/* Every opcode the microcode actually implements, ascending. */",
+        f"#define MC_OPCODE_COUNT {len(ops)}u",
+        "static const uint8_t MC_OPCODES[MC_OPCODE_COUNT] PROGMEM = {",
+        "    " + ", ".join(f"0x{v:02X}" for _n, v in ops) + ",",
+        "};",
+        "",
+        "/* Opcodes whose last row carries HALT instead of END. END-segmented",
+        "   capture cannot bracket these — the sequencer stops. */",
+        "#define MC_HALT_OPCODE 0x%02Xu" % OPCODES["HALT"],
+        "",
+        "#endif", ""]
     with open(path, "w") as f:
         f.write("\n".join(lines))
 

@@ -30,7 +30,8 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from microcode_gen import OPCODES, INSTRUCTIONS   # noqa: E402  single source
+from microcode_gen import (OPCODES, INSTRUCTIONS, DST, SRC, MISC,  # noqa: E402
+                           SA)                                   # single source
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROMS = os.path.normpath(os.path.join(HERE, "..", "..", "roms"))
@@ -80,25 +81,334 @@ class BuildError(Exception):
     pass
 
 
-def assemble(program):
+class Ref:
+    """A forward/backward label reference. Expands to two operand bytes,
+    LO then HI, so it satisfies the microcode's declared length for the
+    MAR-consuming instructions (LDA/STA/JMP/JNZ)."""
+
+    def __init__(self, name):
+        self.name = name
+
+    def __repr__(self):
+        return f"Ref({self.name!r})"
+
+
+def assemble(program, base=0):
     """Symbolic steps -> bytes. Operand count and range are validated
     against the microcode table's declared instruction length; operands
-    are emitted LO then HI (little-endian, 8008 lineage)."""
-    out = bytearray()
+    are emitted LO then HI (little-endian, 8008 lineage).
+
+    A bare string in the step list is a LABEL definition. A Ref in an
+    operand position is a label reference and counts as TWO operands,
+    which is what the _MARFILL prefix fetches."""
+    # pass 1 — addresses. Instruction lengths come from the microcode table,
+    # never from a retyped constant.
+    addr, labels = base, {}
     for step in program:
-        name, operands = step[0], list(step[1:])
+        if isinstance(step, str):
+            if step in labels:
+                raise BuildError(f"duplicate label {step!r}")
+            labels[step] = addr
+            continue
+        name = step[0]
         if name not in OPCODES or name not in INSTRUCTIONS:
             raise BuildError(f"unknown mnemonic {name!r}")
-        want = INSTRUCTIONS[name][0] - 1        # length includes the opcode
-        if len(operands) != want:
-            raise BuildError(
-                f"{name}: {len(operands)} operands, microcode declares {want}")
+        addr += INSTRUCTIONS[name][0]
+
+    # pass 2 — emit
+    out = bytearray()
+    for step in program:
+        if isinstance(step, str):
+            continue
+        name, operands = step[0], list(step[1:])
+        flat = []
         for v in operands:
+            if isinstance(v, Ref):
+                if v.name not in labels:
+                    raise BuildError(f"{name}: undefined label {v.name!r}")
+                a = labels[v.name]
+                flat += [a & 0xFF, (a >> 8) & 0xFF]
+            else:
+                flat.append(v)
+        want = INSTRUCTIONS[name][0] - 1        # length includes the opcode
+        if len(flat) != want:
+            raise BuildError(
+                f"{name}: {len(flat)} operands, microcode declares {want}")
+        for v in flat:
             if not 0 <= v <= 0xFF:
                 raise BuildError(f"{name}: operand {v} out of byte range")
         out.append(OPCODES[name])
-        out.extend(operands)
+        out.extend(flat)
     return bytes(out)
+
+
+# ---- interpreter: driven BY THE MICROCODE, not by a restatement of it ----
+# Every semantic below is read out of the burned microcode word, so the
+# expectation and the hardware cannot disagree. Same discipline as
+# cw_expect/MC_REAL_WORDS on the rig side: no eleventh table.
+_DST = {v: k for k, v in DST.items()}
+_SRC = {v: k for k, v in SRC.items()}
+_MISC = {v: k for k, v in MISC.items()}
+_SA = {v: k for k, v in SA.items()}
+
+RAM_BASE = 0x8000       # M15 selects: ROM 0x0000-0x7FFF, RAM 0x8000-0xFFFF
+
+
+def sim_supports(name):
+    """Can the interpreter execute every row of this instruction?"""
+    if name not in INSTRUCTIONS:
+        return False
+    for w in INSTRUCTIONS[name][1]:
+        if _DST.get(w & 7) is None or _SRC.get((w >> 3) & 7) is None:
+            return False
+        if _MISC.get((w >> 6) & 7) is None:
+            return False
+    return True
+
+
+def _alu_op(op, a, b):
+    if op == "CLR":
+        return 0, 0
+    if op == "SET":
+        return 0xFF, 0
+    if op == "ADD":
+        r = a + b
+        return r & 0xFF, (r >> 8) & 1
+    if op == "SUB":
+        r = a - b
+        return r & 0xFF, 1 if r < 0 else 0
+    if op == "BSUB":
+        r = b - a
+        return r & 0xFF, 1 if r < 0 else 0
+    if op == "XOR":
+        return a ^ b, 0
+    if op == "OR":
+        return a | b, 0
+    if op == "AND":
+        return a & b, 0
+    raise BuildError(f"interpreter has no model for SA={op}")
+
+
+def simulate(program, max_steps=100000, switches=0x00):
+    """Execute an assembled image by interpreting its microcode rows.
+
+    Returns a dict of observables. `out` is what OB would read — the only
+    datapath observable the block ladder has, which is why every coverage
+    image ends OUT; HALT."""
+    code = assemble(program)
+    poison = {i for i, _ in _poison_spans(program)}
+    ram = {}
+    A = B = C = 0
+    tmp_a = tmp_b = 0
+    pc = 0
+    mar = 0
+    out = None
+    flag_z = 0
+    st = {"ram_writes": 0, "ram_reads": 0, "branches_taken": 0,
+          "branches_not_taken": 0, "hit_poison": False, "stored": None,
+          "steps": 0}
+
+    def rd(a):
+        if a < SIZE:
+            return code[a] if a < len(code) else SAFE_FILL
+        return ram.get(a, 0)
+
+    while st["steps"] < max_steps:
+        st["steps"] += 1
+        if pc in poison:
+            st["hit_poison"] = True
+        op = rd(pc)
+        pc = (pc + 1) & 0xFFFF                      # T0 FETCH: IR <- ROM, PC++
+        name = {v: k for k, v in OPCODES.items()}.get(op)
+        if name is None or name not in INSTRUCTIONS:
+            raise BuildError(f"pc=0x{pc-1:04X}: no instruction for 0x{op:02X}")
+        for w in INSTRUCTIONS[name][1]:
+            dst, src = _DST[w & 7], _SRC[(w >> 3) & 7]
+            misc, sa = _MISC[(w >> 6) & 7], _SA[(w >> 9) & 7]
+            halt, pc_up = (w >> 15) & 1, (w >> 13) & 1
+
+            val = None
+            if src == "ROM":
+                val = rd(pc)
+            elif src == "RAM":
+                val = rd(mar)
+                st["ram_reads"] += 1
+            elif src == "REG_A":
+                val = A
+            elif src == "REG_B":
+                val = B
+            elif src == "REG_C":
+                val = C
+            elif src == "SW":
+                val = switches
+            elif src == "ALU":
+                val, _c = _alu_op(sa, tmp_a, tmp_b)
+                flag_z = 1 if val == 0 else 0       # U48 mux: commits only
+                                                    # while ~{ALU_OUT} is low
+            if pc_up:
+                pc = (pc + 1) & 0xFFFF
+
+            if dst == "REG_A":
+                A = val
+                tmp_a = val                         # TMP_A restamps on A load
+            elif dst == "REG_B":
+                B = val
+                tmp_b = val
+            elif dst == "REG_C":
+                C = val
+            elif dst == "MAR_LO":
+                mar = (mar & 0xFF00) | val
+            elif dst == "MAR_HI":
+                mar = (mar & 0x00FF) | (val << 8)
+            elif dst == "RAM":
+                ram[mar] = val
+                st["ram_writes"] += 1
+                st["stored"] = val
+
+            if misc == "PC_CLEAR":
+                pc = 0
+            elif misc == "PC_LOAD":
+                pc = mar
+            elif misc == "COND":
+                # COND_TAKEN = NOR(~{COND}, FLAG_Z): taken when NOT zero
+                if not flag_z:
+                    pc = mar
+                    st["branches_taken"] += 1
+                else:
+                    st["branches_not_taken"] += 1
+            elif misc == "REG_OUT_LOAD":
+                out = A
+
+            if halt:
+                st.update(out=out, halted=True, A=A, B=B, C=C, flag_z=flag_z)
+                return st
+            if (w >> 12) & 1:                       # END
+                break
+    st.update(out=out, halted=False, A=A, B=B, C=C, flag_z=flag_z)
+    return st
+
+
+def _poison_spans(program):
+    """Addresses of labels named `poison*` — code a correct machine must
+    never reach. The flow image uses one to prove the JMP actually jumped
+    rather than merely falling through to the same place."""
+    addr, spans = 0, []
+    for step in program:
+        if isinstance(step, str):
+            if step.startswith("poison"):
+                spans.append((addr, 1))
+            continue
+        addr += INSTRUCTIONS[step[0]][0]
+    return spans
+
+
+# ---- progressive ISA-coverage images ------------------------------------
+# The block ladder proves the machine EXECUTES. These prove it executes the
+# WHOLE of the current ISA. Each image ends OUT; HALT because OB is the only
+# datapath observable on the ladder, and each answer is chosen so its
+# BIT-REVERSED read is a different byte — the flipped-ribbon fault that only
+# registers.outreg ever caught (mirror-witness rule).
+#
+# Earliest block each can run at:
+#   flow  -> block 3   (JMP needs MAR loaded from ROM through the U25 bridge;
+#                       witnessed on the IRB opcode stream)
+#   alu   -> block 4   (needs real registers + a real ALU)
+#   mem   -> block 4   (RAM round-trip, witnessed on OB)
+#   loop  -> block 4   (needs a real FLAG_Z for the JNZ taken arm)
+#
+# NOTE for blocks 1-3: FLAG_Z is STRAPPED HIGH, so COND_TAKEN is pinned low
+# and JNZ is NEVER taken there. Block 3 exercises JMP and the NOT-TAKEN arm
+# only; the taken arm needs a real ALU flag and therefore block 4.
+
+RAM_SCRATCH = RAM_BASE          # first RAM byte, past the M15 boundary
+RAM_ACC = RAM_BASE + 1
+RAM_CNT = RAM_BASE + 2
+
+
+def _addr(a):
+    return (a & 0xFF, (a >> 8) & 0xFF)
+
+
+# alu — every one of the eight SA codes, chained so a wrong code corrupts
+# the final signature rather than being masked by a later operation.
+ALU_PROGRAM = [
+    ("LDAI", 0x5A), ("LDBI", 0x3C),
+    ("XOR",),               # A = 0x5A ^ 0x3C = 0x66
+    ("OR",),                # A = 0x66 | 0x3C = 0x7E
+    ("AND",),               # A = 0x7E & 0x3C = 0x3C
+    ("ADD",),               # A = 0x3C + 0x3C = 0x78
+    ("SUB",),               # A = 0x78 - 0x3C = 0x3C
+    ("BSUB",),              # A = 0x3C - 0x3C = 0x00
+    ("SET",),               # A = 0xFF   (both rails touched, deliberately)
+    ("CLR",),               # A = 0x00
+    ("LDBI", 0x39), ("OR",),   # A = 0x39 — a witness, not a rail
+    ("OUT",), ("HALT",),
+]
+
+# mem — absolute store then load-back through RAM. This is ALSO the
+# MAR-AS-LATCH witness: LDA/STA are the only instructions that load MAR, and
+# the milestone contains none of them (see BRINGUP.md block 2 named gap).
+MEM_PROGRAM = [
+    ("LDAI", 0xC5),
+    ("STA", *_addr(RAM_SCRATCH)),
+    ("LDAI", 0x00),                     # clobber A so the read-back is real
+    ("LDA", *_addr(RAM_SCRATCH)),
+    ("OUT",), ("HALT",),
+]
+
+# flow — JMP over a poison byte, then a JNZ that must NOT be taken.
+FLOW_PROGRAM = [
+    ("JMP", Ref("main")),
+    "poison_never",
+    ("HALT",),                          # reaching this means the JMP failed
+    "main",
+    ("LDAI", 0x01), ("LDBI", 0x01),
+    ("SUB",),                           # A = 0 -> Z set
+    ("JNZ", Ref("bad")),                # must fall through
+    ("LDAI", 0x39), ("OUT",), ("HALT",),
+    "bad",
+    ("LDAI", 0xE7), ("OUT",), ("HALT",),
+]
+
+# loop — the JNZ TAKEN arm, iterating an exact number of times. The counter
+# lives in RAM because there is no third register to spare: C is write-only
+# until MOV exists. A wrong iteration count changes the accumulator, so the
+# answer proves the count rather than merely proving the loop exited.
+LOOP_N = 3
+LOOP_STEP = 7
+LOOP_EXPECT = LOOP_N * LOOP_STEP        # 21 = 0x15, mirror 0xA8
+
+LOOP_PROGRAM = [
+    ("LDAI", LOOP_N), ("STA", *_addr(RAM_CNT)),
+    ("LDAI", 0x00), ("STA", *_addr(RAM_ACC)),
+    "loop",
+    ("LDA", *_addr(RAM_ACC)), ("LDBI", LOOP_STEP), ("ADD",),
+    ("STA", *_addr(RAM_ACC)),
+    ("LDA", *_addr(RAM_CNT)), ("LDBI", 0x01), ("SUB",),
+    ("STA", *_addr(RAM_CNT)),           # flags HOLD across STA (U48.1 =
+                                        # ~{ALU_OUT}), which is what makes
+                                        # this loop writable at all
+    ("JNZ", Ref("loop")),
+    ("LDA", *_addr(RAM_ACC)),
+    ("OUT",), ("HALT",),
+]
+
+COVERAGE = {
+    "real": PROGRAM,
+    "alu": ALU_PROGRAM,
+    "mem": MEM_PROGRAM,
+    "flow": FLOW_PROGRAM,
+    "loop": LOOP_PROGRAM,
+}
+
+
+def build_image(program):
+    code = assemble(program)
+    if len(code) > SIZE:
+        raise BuildError("program larger than the ROM")
+    if code[0] == DIAG_ZERO:
+        raise BuildError("program byte 0 collides with the diag signature")
+    return code + bytes([SAFE_FILL]) * (SIZE - len(code))
 
 
 def build_real():
@@ -122,7 +432,7 @@ def crc16(data):
 
 
 # ---- rig expect header --------------------------------------------------
-def emit_header(real, crcs, path):
+def emit_header(real, crcs, path, cov=None):
     code_len = len(assemble(PROGRAM))
     lines = [
         "/* GENERATED by docs/notes/progrom_gen.py — do not edit.",
@@ -177,6 +487,18 @@ def emit_header(real, crcs, path):
         "#endif",
         "",
     ]
+    if cov:
+        lines += ["", "/* progressive ISA-coverage images. Each ends OUT; HALT",
+                  "   because OB is the only datapath observable on the block",
+                  "   ladder. Burn as needed; PROG.bin (the milestone) is never",
+                  "   regenerated under another name. */",
+                  f"#define PR_COV_COUNT {len(cov)}u",
+                  "typedef struct { const char *name; uint16_t crc; "
+                  "uint8_t expect_ob; } prcov_t;",
+                  "static const prcov_t PR_COVERAGE[PR_COV_COUNT] = {"]
+        for tag, (crc, ob) in cov.items():
+            lines.append(f'    {{"{tag}", 0x{crc:04X}u, 0x{ob:02X}u}},')
+        lines.append("};")
     with open(path, "w") as f:
         f.write("\n".join(lines))
 
@@ -190,11 +512,26 @@ def main():
         with open(os.path.join(ROMS, fn), "wb") as f:
             f.write(img)
         crcs[f"PR_CRC_{tag}"] = crc16(img)
-    emit_header(real, crcs, HDR)
-    print(f"wrote 2x {SIZE}B bins -> {ROMS}")
+    # progressive ISA-coverage images. "real" is already written above as
+    # PROG.bin — the milestone image is never regenerated under another name,
+    # because block 6 must accept on exactly the image it was specified
+    # against.
+    cov = {}
+    for tag, prog in COVERAGE.items():
+        if tag == "real":
+            continue
+        img = build_image(prog)
+        with open(os.path.join(ROMS, f"PROG_{tag}.bin"), "wb") as f:
+            f.write(img)
+        cov[tag] = (crc16(img), simulate(prog)["out"])
+    emit_header(real, crcs, HDR, cov)
+    print(f"wrote {2 + len(cov)}x {SIZE}B bins -> {ROMS}")
     print(f"wrote expect header -> {HDR}")
     print("burn order: DIAG first (rom.order proves 15 address lines),")
     print("            then REAL (the milestone program)")
+    print("  coverage images (burn as needed; each ends OUT; HALT):")
+    for tag, (crc, ob) in cov.items():
+        print(f"    PROG_{tag}.bin  crc=0x{crc:04X}  OB should read 0x{ob:02X}")
     print(f"  program: {' '.join(s[0] for s in PROGRAM)}"
           f"  -> OUT should show 0x{EXPECT_SUM:02X}")
     for name, val in crcs.items():

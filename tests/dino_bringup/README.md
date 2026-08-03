@@ -70,36 +70,53 @@ serial, `pins <module>`.
 - [x] 9 memory — PASSING on bench 2026-07-23, BOTH burns, 11/11 with the power test (DIAG crc 0xDFE7, REAL crc 0xF501 — both exact). The '121 is GONE: memory.window proves the RAM write pulse is now NAND(WRITE_DIR, ~CLK), a gate off the clock phase. memory.idle retired schematic bug 2. Added after a deliberate power-off run scored 7/10: memory.power, a phantom-power check that runs FIRST (rig sources nothing, so an unpowered '00 cannot hold its HIGH outputs). Bring-up: ONE fault, one run — MDR5<->MDR6 crossed (D48/D47), decoded from the byte-0 arithmetic alone (0xA5 -> 0xC5 = exactly a bit-5/6 exchange). ramrw/window/idle all passed THROUGH the swap because they round-trip the rig's own bytes — only the asymmetric ROM path could see it (mirror-witness rule earning its keep). Firmware (mod_memory.c, 10 tests; U51 gate model host-tested in hosttest/test_mem_expect.c; netlist-verified 2026-07-23), BENCH PENDING. v0.0.2 board updated to v0.0.3: the '121 one-shot is gone, the RAM write pulse is a gate (NAND(WRITE_DIR, ~CLK)) — memory.window is its test. memory.idle retires schematic bug 2 (U21 CE = AND(~RAM_OUT, ~WRITE_DIR)). NEW TOOLING: docs/notes/progrom_gen.py (host-tested, 16 tests) emits roms/PROG_diag.bin (self-naming address proof over 15 lines) + roms/PROG.bin (THE MILESTONE PROGRAM: LDAI 5; LDBI 3; ADD; OUT; HALT, safe-filled HALT) + CRCs + src/progrom_expect.h; assembler validates operand counts against microcode_gen's instruction table. Burn: make burn-prog-diag / burn-prog. Pin layout is ribbon-first per Rico's bench call: both byte buses in one unbroken 24-pin run D53->D30 (MDR0-7 = D53-D46, M0-M15 = D45-D30), signals on D29-D22 + D19 — neither bus is byte-aligned, so this module drives/samples per pin. See BRINGUP.md stage 9.
 - [x] 6 alu — PASSING on bench 2026-07-26 (10/10). Board wiring was sound; the bring-up cost was process, not copper (see the ledger: slot renumbering mid-wiring, and a map reconstructed from inference instead of read off the board). Real fault: swapped rig ribbon wires on the FLAG_Z/FLAG_V pair. Test bugs found and fixed: alu.shadow's held-value assertions called compute(), which reloads the operands it was checking; alu.power claimed UNPOWERED on a partial collapse. '382 C/V on the logic codes came back operand-dependent (XOR 3/10, OR 1/10, CLR & AND 10/10, SET 0/10) with C and V always agreeing — deterministic but not constant, so not worth a baseline. Original: (mod_alu.c, 10 tests; arithmetic + gate model host-tested in hosttest/test_alu_expect.c, exhaustive over the operand grid; netlist-verified 2026-07-24), BENCH PENDING. Most probed board on the machine: 10 of 20 control wires are probes (both shadow stamps, ALU_CIN, the CRY nibble ripple, ALU_C/ALU_V/Z combinational AND FLAG_C/V/N registered — so a flag FAIL says whether the arithmetic or the commit lied). C/V asserted only on the three arithmetic codes ('382 leaves them undefined for logic). See BRINGUP.md stage 6.
 - [x] 11 io — PASSING on bench 2026-07-26 (5/5, FIRST RUN — the only module to pass first time). Guided tests: io.switches prompts per-switch open/closed (pull-ups + switch-to-GND mean a CLOSED switch reads 0, so the prompt spells it out rather than naming a byte); io.leds walks a single LED twice then lights all eight, two y/n questions. Patterns 0xC5/0x3A chosen non-palindromic per the mirror-witness rule. io.tristate is the one that matters downstream — the '244 must truly release W for the ALU/MAR/MDR to share the bus.
-Integration is BLOCK-BASED and CONTROL-FIRST (2026-07-28, supersedes
-INT-A..INT-E — see BRINGUP.md "Integration — CONTROL FIRST"). Make the
-control unit real first; every later block then gets its strobes free, in
-copper, and the rig only sheds wires.
+Integration is BLOCK-BASED, CONTROL-FIRST, and BLACK-BOX (2026-07-28,
+supersedes INT-A..INT-E — see BRINGUP.md "THE BLOCK LAW" and
+"Integration — CONTROL FIRST"). Make the control unit real first; every
+later block then gets its strobes free, in copper, and the rig only sheds.
 
-THE GATE IS DRIVEN-WIRE COUNT, AND IT MAY NEVER GO UP. Fewer rig wires ==
-fewer rig-introduced error modes; they are the same goal. Risk is not
+THE BLOCK LAW: sample a signal at block level ONLY if its value depends on
+more than one member of the block. Module coverage is already extensive —
+a block that re-samples what a module test retired is a module test with
+more wires. COPPER (out of one member, in of another) is DROPPED, not
+probed. STRAP what needs a safe level but no stimulus. Every retirement
+NAMES the test that earned it. END/HALT are the one accepted exception:
+copper, but sampled in every block because nothing else segments the
+instruction stream.
+
+THE GATE IS DRIVEN-WIRE COUNT, AND IT MAY NEVER GO UP. Risk is not
 symmetric: a wrong SAMPLED wire is a false FAIL, a wrong DRIVEN wire can
 fight a real driver, and a wrong driven STROBE is worst of all because
-strobes are enables — that is exactly how two boards end up driving one
-bus. So minimize rig-driven strobes hardest. The control unit has the
-highest fan-out in the machine, so a rig standing in for it would build
-the largest and most dangerous harness of the project. Make it real
-instead.
+strobes are enables.
 
-THREE INSTRUMENTS, THREE QUESTIONS: the rig answers WHAT (logic, topology,
-exhaustive, but rig-speed only — it CANNOT see timing); the DSLogic LA
-answers WHEN (16ch at real speed — enable overlap, one-hot T, END->T
-clear, decode glitches); the scope answers HOW (analog — edge quality,
-ringing, marginal levels). The Mega can stand in as a first look (PINA is
-a true 8ch 62.5ns snapshot, ~3 MSa/s burst, Timer1 input capture at 62.5ns)
-but it CANNOT catch a 10-30ns decode glitch at a ~300ns sample period,
-sees nothing analog, and has no pulse-width trigger. Order: rig, then Mega
-burst-capture, then LA, then scope.
-- [ ] BLOCK 1 — CONTROL: root + microcode + control_word. TOOLING FIRST, NONE OF IT EXISTS YET: the rig's bundles are PER MODULE and these three REUSE THE SAME MEGA PINS, so there is no `pins <block>` and no table to wire against. Needs a BLOCKS table in kicad_contracts.py (union of members, drop what becomes copper between them — T0-3 and CW0-15 — but KEEP those as sampled probes so a FAIL names the lying gate; hard-error on pin collisions; PIN_ASSIGN still outranks), `pins block1` in the shell, mod_control.c + registry entries, a host test for the block generator, and coverage_lint taught about blocks. See BRINGUP.md "UNFINISHED WORK". Then: ~11 driven (CLK, RESET, IRB0-7, FLAG_Z). The finickiest boards, and no datapath dependency. Tests: decode (every opcode x T, sampled strobes vs cw_expect(MC_REAL_WORDS[(op<<4)|t], flag_z) — the model is a CHECKER now, not a driver), onehot, seq (END clears T, HALT freezes, RESET recovers), cond (FLAG_Z both ways -> both U62 arms, closes branch coverage with NO reburn), stability. Then the timing half on LA/scope: two SRC enables on two channels triggered on both-low (the money shot — a skewed '138 decode is a bus fight the rig can never see), CLK vs T0, T(last) vs END, CLK vs ~{IR_LOAD} stamp window, HALT freeze. Retires: microcode EXECUTED for the first time (only the SA field was previously proven, via alu.ops), tap runs, decode in copper at speed, END/HALT/T contract, both branch arms, enable overlap.
-- [ ] BLOCK 2 — + pc + mar + memory. Driven count UNCHANGED at ~11 — three boards for free, because M0-15 is copper and strobes come from the real decoder. LA: PC_MAR_MUX vs M0 (strike-6 tri-state handoff), address settle vs ROM ~OE.
-- [ ] BLOCK 3 — + mdr. Driven 11 -> 6: IR is real, the machine fetches its own instructions, rig stops forcing IRB. LA: BUS_DIR vs ~{MDR_EN} on U25 (the bug-4 chip) — direction must settle BEFORE the bridge enables.
-- [ ] BLOCK 4 — + registers + alu. Driven 6 -> 2: real flags, FLAG_Z stops being a rig bit. Scope: LE_TMP_A/B stamp windows vs CLK, flag commit vs result valid.
-- [ ] BLOCK 5 — + io, everything single-stepped. Rig owns CLK + RESET, moves to watching OB.
-- [ ] BLOCK 6 — FREE-RUN. Y1 in socket, rig drives nothing: 8 wires + GND + HALT, OB reads 0x08. THIS is where timing is finally retired — nothing before it can do that job.
+NOTHING IS EVER PULLED — no chip leaves its socket, no board-to-board
+copper is ever removed, Y1 stays seated from Block 1 to Block 6. Rig
+jumpers come off freely as they retire; that IS the ladder. Temporary
+board straps must come off when real copper takes over the net.
+CONSEQUENCE: CLK (U27.5) and RESET (U27.9) are '74 outputs the rig cannot
+drive without contention, so EVERY BLOCK FREE-RUNS AT 1.024MHz AND
+NOTHING IS SINGLE-STEPPED. Every test is burst-capture-and-decode.
+
+THREE INSTRUMENTS, THREE QUESTIONS: the rig answers WHAT (logic and
+topology, exhaustive, but it CANNOT see timing); the DSLogic LA answers
+WHEN; the scope answers HOW (analog — edge quality, ringing, marginal
+levels). The Mega burst-captures two ports at 437ns/sample (547ns if
+either is PH/PJ/PK/PL — extended I/O needs lds, not in), which is enough
+for every logic-value question on this ladder and useless for a 10-30ns
+decode glitch. Order: rig, then Mega burst-capture, then LA, then scope.
+
+END and HALT are the same two wires in ALL SIX BLOCKS — D45/D42, tapped at
+U61.3/U61.5 (the CONSUMER end, where END reaches U6.~MR and HALT reaches
+U6.CET). Land them at Block 1 and do not touch them again.
+
+- [x] BLOCK 1 — CONTROL: root + microcode + control_word. **PASSING on bench 2026-07-30, 6/6.** 8 driven, 31 sampled, 39 jumpers + GND. `block1.decode` compared **29043 control words** against MC_REAL_WORDS with **zero mismatches and zero transients**; `block1.opmap` read **17/17** of the implemented opcode map straight off the hardware. RETIRES: the microcode ROM EXECUTED for the first time (only the SA field was previously proven, via alu.ops), the tap runs from ROM to decoder, decode correctness in copper at 1.024MHz, the END/HALT/T-state contract with the real ring counter, RESET recovery, and ENABLE OVERLAP — never tested at any level before now.
+  ONE HARDWARE FAULT, and it was rig-side: **the IRB ribbon was reversed end-for-end**, bit N landing on bit 7-N. Only 0x00 and 0xFF are bit-reversal-invariant, so HALT=0xFF masked it completely and every early run passed `seq` while decoding nothing. The mirror-witness rule again: a flipped bank is invisible to any symmetric test. `block1.opmap` — force all 256 IRB values, report which produce a non-fill row — is the asymmetric probe that named it, and it is why opmap now runs BEFORE decode.
+  EVERY OTHER FAULT WAS THE RIG. In order: opcode enumeration guessed from the image (T0 is FETCH for all 256, so 238 fakes were walked); a uint8 mismatch counter that wrapped 1060 to 39; a two-confirming-sample rule that was arithmetically impossible (CLK-low is 488ns = 7.8 cycles, one sample per T-state at most) and emitted zero frames while onehot and stability reported PASS on nothing; run alignment inferred from frame POSITION, which needs the fetch frame to be unique — it is not, since LDA's T0/T1/T2 differ only in DST; a capture that read CLK before the group port so samples straddled the rising edge; a sampler too slow to fit the CLK-low window, yielding 2 samples in 68000 attempts; and a phase-locked loop that never reached half the T-states. The fix for the last three was Rico's original proposal: SAMPLE T0-3 AND LET EVERY SAMPLE LABEL ITSELF.
+- [ ] BLOCK 2 — + pc + mar + memory. 8 driven (unchanged), 10 sampled, 18 jumpers. Three boards for free: 26 sample wires come off, MDR0-7 goes on at U19.18..11. STRAPS: WRITE_DIR to GND at U51.1 (floating it sets the U21 '245 direction AND fires a real RAM write every clock low — a live hazard), W0-7 on 10k PULLDOWNS at U55, never a hard tie. Both removed at Block 3. RUN PROG_diag.bin FIRST: diag_byte is injective over the first 32 addresses so every byte names its own address, and MDR0-7 is the only address witness here. HONEST SCOPE: this does NOT prove PC->MAR->ROM — with no W driver the MAR loads latch garbage; LDA/STA/JMP reach MAR only through the absent bridge. It proves the PC_MAR_MUX handoff and ~{RAM_EN}=INV(M15).
+- [ ] BLOCK 3 — + mdr. DRIVEN GOES TO ZERO: the IR is real and the machine fetches its own instruction bytes. IRB0-7 stays in the same holes at U16 and flips from rig output to rig input — sampling the CONSUMER end makes it the mirror-witness for the U25 bridge, since Block 2 read that same byte before it crossed. Remove the WRITE_DIR and W0-7 straps BEFORE landing the board (U37.4 is a '04 output; a GND strap on it is a dead short). Test: opcode stream 0x11 0x12 0x41 0x51 0xFF with PC stride 2,2,1,1,1 — first block where instruction LENGTH is observable. LA: BUS_DIR (U39.8) vs ~{MDR_EN} (U22.4) on the bug-4 chip.
+- [ ] BLOCK 4 — + registers + alu. FIRST BLOCK THAT COMPUTES 5+3. IRB comes off, OB0-7 goes on at U35.2/5/6/9/12/15/16/19 (the '373 zigzag — count chip pins). Remove the FLAG_Z strap: U49.5 drives U62.3 now. Test: exactly 4 END pulses then HALT forever, OB = 0x08. bit-reverse(0x08) = 0x10 so a flipped ribbon self-names. U35 HAS NO RESET — power-cycle before the run or the assertion degenerates; print INCONCLUSIVE, never PASS.
+- [ ] BLOCK 5 — + io. All ten boards, NOT single-stepped. OB0-7 moves to the io end (R9-R16 pin 1), same Mega pins. STRAP IS0-7 = SW1 at 0xF7: its only 0-bit is W3, exactly the bit of the answer, so a leaking '244 turns OB into 0x00 and names itself. No scope work here — save the probe budget.
+- [ ] BLOCK 6 — FREE-RUN. Nothing added, moved, or reseated. Drop the END jumper: 9 wires + GND. HALT is its own burst trigger (LOW = running, HIGH = row 0x8000, T frozen, clock still running). TEN RESETS, TEN 0x08s — at 1.024MHz a marginal path fails probabilistically and one pass is an anecdote. Plus one LED lit, bit 3. THIS is where timing is retired: 2ch CLK (U27.5) vs ~{REG_A_LOAD} (U30.14) — the longest control path, CLK rise through '163, '244, EEPROM tACC 150-250ns, '138 decode, all inside the 488ns CLK-high half or the ADD never commits; and 1ch OB3 (U35.9) VOH, an LS373 rated -2.6mA sourcing ~4-5mA through a 330R LED.
 
 ALL TEN MODULES BENCH-PROVEN as of 2026-07-26: root, pc, microcode, control_word, mdr, registers, mar, memory, alu, io. Coverage lint reports 0 gaps and 0 pending. What remains is the integration ladder and free-run — the milestone program (LDAI 5; LDBI 3; ADD; OUT; HALT) is already burned and seated in the program ROM.
 

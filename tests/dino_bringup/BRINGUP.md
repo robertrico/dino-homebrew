@@ -1100,31 +1100,123 @@ datapath board at once: the largest and most dangerous harness the project
 could possibly build.
 
 Make it REAL first and that harness never exists. The rig's whole job
-becomes CLK, RESET, and a couple of forced bits.
+becomes eight forced instruction bits, and from Block 3 it drives nothing
+at all.
 
 This is also what the original spec said — "control/microcode first
 because INT-A is the highest-risk seam and needs no datapath." The
 datapath-core plan drifted off that. Control-first restores it.
 
+### THE BLOCK LAW — what a block may touch (2026-07-28)
+
+Blocks are BLACK-BOX tests. All ten modules are bench-proven and module
+coverage is extensive; a block that re-samples a signal a module test
+already retired is just a module test with more wires and more ways to be
+wrong.
+
+    SAMPLE A SIGNAL AT BLOCK LEVEL ONLY IF ITS VALUE DEPENDS ON MORE THAN
+    ONE MEMBER OF THE BLOCK.
+
+If one module alone determines it, the module test owns it. If an earlier
+block already sampled it, that block owns it. What is left is exactly the
+behaviour that has never existed before — the seam.
+
+Four categories, all DERIVED from the netlist, none hand-written:
+
+    COPPER  OUT of one member AND IN of another member.
+            Dropped entirely. Wired board-to-board; the rig never touches
+            it. This is where the wire savings come from.
+    DRIVE   IN of a member, OUT of no member, and genuinely needed as
+            stimulus. Rig drives it, 220-470R series.
+    STRAP   IN of a member, OUT of no member, but NOT needed as stimulus.
+            Tied ON THE BOARD to a safe level. NOT a rig wire.
+    SAMPLE  OUT of a member, not copper, not retired by a module test or
+            an earlier block.
+
+Every retirement must NAME the test that earned it. That is the reviewable
+part, and it is why the retire list is a dict and not a list.
+
+ACCEPTED EXCEPTION: END and HALT are copper (microcode -> root) but are
+sampled anyway in every block. Nothing else can segment the instruction
+stream or observe the freeze from outside. Two wires, stated as an
+exception rather than smuggled in.
+
+### NOTHING IS EVER PULLED — but rig jumpers come off freely
+
+    CHIPS AND BOARD-TO-BOARD COPPER: never touched. Y1 stays in its socket
+    from Block 1 through Block 6. No socket is ever disturbed. Once a strip
+    is populated it is copper (AS-BUILT FREEZE).
+
+    RIG JUMPERS: removed freely as they retire. That IS the ladder.
+
+    TEMPORARY BOARD STRAPS: removed when real copper takes over the net.
+    A strap left in place meets a real driver — see the Block 3 and Block 4
+    prerequisites below.
+
+Consequence, and it kills an older plan in this file: CLK is U27.5 and
+RESET is U27.9, both '74 totem-pole outputs. The rig cannot drive either
+without fighting a real driver, and the only non-contending injection
+point (U20.2) needs Y1 out of its socket. So:
+
+    THE RIG NEVER OWNS THE CLOCK. EVERY BLOCK FREE-RUNS AT 1.024MHz.
+    THERE IS NO SINGLE-STEPPING ANYWHERE ON THIS LADDER.
+
+Every block test is burst-capture-and-decode, not step-and-sample. Reset
+is the physical button plus an `ARM ...` prompt, exactly as the root tests
+already do.
+
 ### The wire budget
 
-    STEP  WIRE IN                        RIG DRIVES                  ~N
-    ----  ----------------------------   -------------------------   --
-    1     root + microcode +             CLK, RESET, IRB0-7,         11
-          control_word                   FLAG_Z
-    2     + pc + mar + memory            same — M0-15 and every      11
-                                         strobe are copper now
-    3     + mdr                          IRB DROPS: real IR, the      6
-                                         machine fetches itself
-    4     + registers + alu              FLAG_Z DROPS: real flags     2
-    5     + io                           rig moves to watching OB     2
-    6     Y1 in socket = FREE-RUN        nothing                      0
+    BLOCK  WIRE IN                     DRIVEN  SAMPLED  JUMPERS
+    -----  --------------------------  ------  -------  -------
+    1      root+microcode+control_word    8       27     35+GND
+    2      + pc + mar + memory            8       11     19+GND
+    3      + mdr                          0       11     11+GND
+    4      + registers + alu              0       11     11+GND
+    5      + io                           0       11     11+GND
+    6      free-run (Y1 already seated)   0        9      9+GND
 
-Step 2 is the payoff: THREE BOARDS JOIN AT ZERO NEW DRIVEN WIRES, because
-M0-15 comes from PC/MAR and every strobe comes from the real decoder.
+CLK IS SAMPLED IN BLOCKS 1-5 AS A CAPTURE QUALIFIER, not as an assertion —
+root.clock still owns it. After T changes on the CLK rising edge the microcode
+ROM outputs are invalid for one access time (tACC 150-250ns) and the decoded
+strobes glitch through it. The MACHINE does not care (everything commits on
+CLK low), but a blind sampler emits TWO frames for one T-state and loses
+`t = position within the run`, which is the whole basis of the decode test.
+Gating on CLK low samples after the ROM has settled. It is SAMPLED, so the
+driven count is unchanged and the gate holds. Block 1's first bench run failed
+exactly this way — the same opcode read 0x60/0x10/0x60 for one T across three
+passes (2026-07-30).
+
+Block 2 is the payoff: THREE BOARDS JOIN AT ZERO NEW DRIVEN WIRES, and the
+sample count falls from 26 to 10, because M0-15 comes from PC/MAR and
+every strobe comes from the real decoder.
+
+Block 3 takes DRIVEN TO ZERO — the real IR fetches the machine's own
+instruction bytes, so IRB0-7 stops being forced. From there the rig drives
+nothing at all, ever again, and cannot fight anything by construction.
 
 RULE: a proposed block that raises the driven count is the wrong block.
 Re-cut it.
+
+### END and HALT never move
+
+Both are sampled in ALL SIX BLOCKS, on the same two Mega pins, tapped at
+the same two DUT pins:
+
+    D45 / PL4    CW12=END     U61.3
+    D42 / PL7    CW15=HALT    U61.5
+
+Land them at Block 1 and do not touch them again until Block 6 drops END.
+
+TAPPED AT U61, NOT AT U15. U15.16/U15.19 are the ROM's own pins; U61 is
+where END actually reaches U6.~{MR} and HALT reaches U6.CET. Sampling the
+source end proves the ROM pin and nothing about the two-board run that
+does the work. This is the STRIKE-7 TAP RULE and it is easy to get wrong —
+three independent passes over this ladder all picked the source end first.
+
+Note this makes END and HALT both COPPER (a physical wire U15.16->U61.3
+and U15.19->U61.5 that you must build) AND SAMPLED. Listing them only
+under SAMPLE is exactly how a board-to-board wire goes missing.
 
 ---
 
@@ -1159,17 +1251,26 @@ two — but know the edges:
     IT CAN
       read a whole port in one instruction — PINA is a genuine 8-channel
         simultaneous snapshot, 62.5ns wide
-      burst-capture one port in a tight loop at roughly 3 MSa/s
-        (~4-6 cycles per sample at 16MHz)
+      burst-capture two ports back-to-back at 7 cycles/sample = 437ns
+        (capture_burst() in mod_root.c, already written and proven)
       timestamp with Timer1 at 62.5ns resolution; Input Capture measures
         a pulse width directly
       hold maybe 3-4KB of samples => on the order of 1ms of capture
 
+    MIND WHICH PORT. PINA..PING are low I/O and reachable with `in`
+      (1 cycle). PINH, PINJ, PINK and PINL are EXTENDED I/O on the 2560
+      and need `lds` (2 cycles), so a two-port burst touching them costs
+      about 8.75 cycles = ~547ns per sample instead of 437ns. Still ample:
+      the shortest thing any block asserts is a one-T END pulse at 977ns,
+      and any pulse at least as long as the sample period yields at least
+      one uniform sample. But do not put a fast-moving signal on PL and
+      then quote root's 437ns figure.
+
     IT CANNOT
       see a decode glitch. An LS '138 output can glitch for 10-30ns; the
-        Mega's sample period is ~300ns. It will MISS the event outright or
-        alias it. This matters because decode glitches are the exact fault
-        we brought the LA in to hunt.
+        Mega's sample period is 437-547ns. It will MISS the event outright
+        or alias it. This matters because decode glitches are the exact
+        fault we brought the LA in to hunt.
       see anything analog. No edge quality, no ringing, no marginal level.
         A pin sitting at 2.0V reads as a clean HIGH.
       trigger on a fault. No pulse-width or runt trigger — you cannot ask
@@ -1216,25 +1317,46 @@ and you cannot wire Block 1 against a table that cannot be produced yet.
         The rig's bundles are PER MODULE, and root / microcode /
         control_word REUSE THE SAME MEGA PINS — each was wired alone, so
         nothing ever had to deduplicate them. A block needs one bundle
-        over the union of its members, which means:
-          - a BLOCKS table: block name -> member modules
-          - drop the signals that become COPPER between members. For this
-            block that is T0-3 (root -> microcode address) and CW0-15
-            (microcode -> control_word). The rig stops DRIVING them.
-          - but KEEP THEM AS SAMPLED PROBES. Sampling is cheap and
-            low-risk (a bad sample wire is a false FAIL, never a fight),
-            and CW0-15 captured alongside the decoded strobes is what
-            lets a FAIL name the lying gate instead of the lying board.
-          - COLLISION DETECTION across members, and a hard error rather
-            than a silent last-writer-wins. Two modules claiming one pin
-            is exactly the class of bug this whole toolchain exists to
-            make impossible.
+        over the union of its members, derived by THE BLOCK LAW above:
+
+            BLOCKS = {
+                "control": {
+                    "members": ["root", "microcode", "control_word"],
+                    "retire": {          # single-member, already proven
+                        "CLK":      "root.clock",
+                        "~{CLK}":   "root.clock",
+                        "RESET":    "root.reset",
+                        "~{RESET}": "root.reset",
+                    },
+                    "strap": {"FLAG_Z": ("HIGH", "control_word.truth")},
+                    "sample_anyway": ["CW12=END", "CW15=HALT"],
+                },
+            }
+
+          - COPPER (out of one member, in of another) is DROPPED, not
+            demoted to a probe. For this block that is T0-3 and CW0-8.
+            An earlier draft of this file kept them as sampled probes;
+            that was a module test wearing a block's clothes.
+          - `retire` is a DICT so every entry NAMES the test that earned
+            it. Hard-error if the named signal is not in the union.
+          - `strap` carries a LEVEL and a citation. Hard-error likewise.
+          - `sample_anyway` is the END/HALT exception, spelled out rather
+            than special-cased in code.
+          - COLLISION DETECTION across members, hard error, never a
+            silent last-writer-wins. Two modules claiming one pin is
+            exactly the class of bug this toolchain exists to prevent.
           - PIN_ASSIGN still outranks everything (the bench pins win).
-    [ ] `pins block1` / `pins control` in the shell, same contract as
-        `pins <mod>`: the printout IS the complete hookup, probes included.
+          - Emit a FLOAT list: any IN of a member with no OUT in the block
+            and no strap entry. Every one is a hazard until it is named —
+            see WRITE_DIR under Block 2.
+    [ ] `pins control` in the shell, same contract as `pins <mod>`: the
+        printout IS the complete hookup.
     [ ] mod_control.c + registry entries for the control.* tests below.
     [ ] host test for the block bundle generator, same as
         test_kicad_contracts_pinmap.py does for the per-module maps.
+        RED FIRST: assert copper is absent from BOTH lists, assert DRIVE
+        is exactly IRB0-7, assert a duplicate pin raises, assert a bogus
+        retire/strap name raises.
     [ ] teach coverage_lint.py about blocks so it does not report a gap
         for signals now covered at block level.
 
@@ -1242,85 +1364,187 @@ Do the tooling first. Wiring three boards against a hand-written list is
 the one thing this project has never done, and the ALU slot-map evening
 is what it costs when the paper and the copper disagree.
 
-### Wiring
+### Wiring — 8 driven, 31 sampled, 39 jumpers + GND
 
-Three boards to each other: microcode ROM outputs CW0-15 to the control
-word decoder inputs; root's T-state counter to the microcode address
-lines; END and HALT back to root.
+Y1 STAYS IN ITS SOCKET. The machine free-runs at 1.024MHz for this and
+every later block. RESET is the physical button on an `ARM ...` prompt.
 
-    RIG DRIVES     CLK, ~{RESET}, IRB0-7 (forces the instruction),
-                   FLAG_Z (one bit, standing in for the ALU)
-    RIG SAMPLES    every decoded strobe, T0-3, END, HALT, plus the
-                   control_word probes already in the bundle
+`pins block1` prints a [board] tag on every line — with three boards on the
+bench the ribbon has to reach the right one, and the tag is NOT always the
+producer: END/HALT land on ROOT at U61 (the consumer end, strike-7), while
+SA/PC_UP/PC_MAR_MUX land on MICROCODE at U15. Breakout-strip slot numbers are
+looked up against that owning board, since slot maps are per module and a
+block has none of its own.
+
+RIG DRIVES (series R in every one):
+
+    A8-A15   IRB0-7    U16.2 .4 .6 .8 .11 .13 .15 .17
+
+That is the whole drive list. Note the 1A/2A split on the '244 — the pins
+are NOT monotonic.
+
+RIG SAMPLES — grouped BY PORT, because capture_burst() reads whole ports
+and a group split across two ports cannot be read coherently:
+
+    PF   A4  T0           U6.14       SAMPLE LABEL — see below
+         A5  T1           U6.13
+         A6  T2           U6.12
+         A7  T3           U6.11
+
+    T0-3 IS SAMPLED AS A LABEL, NOT AS AN ASSERTION. root.tstates still owns
+    the counter. Reading T means EVERY SAMPLE CARRIES THE T-STATE THAT
+    PRODUCED IT, so the rig never has to infer t from position in a captured
+    sequence. That inference cost an entire bench evening: it required the
+    fetch frame to be unique, and in the SRC pass it is not (LDA's T0/T1/T2 are
+    all mux_pc+pc_up+src=ROM and differ ONLY in DST), and it broke whenever a
+    single T-state happened to get no sample. Four sampled wires make both
+    failure modes structurally impossible. Driven is unchanged, so the gate
+    holds. Rico proposed this shape at the outset — settle, sample, check,
+    move on — and the free-running clock is the only reason it was not built
+    that way first.
+
+    PL   D49 CLK          U27.5       CAPTURE QUALIFIER — samples taken
+                                     while CLK is HIGH are DISCARDED (the
+                                     ROM access window). Not an assertion.
+         D48 SA2          U15.12      anchor port, read in EVERY pass
+         D47 SA1          U15.13
+         D46 SA0          U15.15
+         D45 END          U61.3       <- consumer end, not U15.16
+         D44 PC_UP        U15.17
+         D43 PC_MAR_MUX   U15.18
+         D42 HALT         U61.5       <- consumer end, not U15.19
+
+    PA   D22 ~{REG_A_LOAD}    U30.14  dst group, 7 bits
+         D23 ~{REG_B_LOAD}    U30.13
+         D24 ~{REG_C_LOAD}    U30.12
+         D25 ~{MAR_LO_LOAD}   U30.11
+         D26 ~{MAR_HI_LOAD}   U30.10
+         D27 ~{IR_LOAD}       U30.9
+         D28 ~{RAM_LOAD}      U30.7
+
+    PC   D30 SRC_ACTIVE       U28.15  src group, all 8 bits in ONE port
+         D31 ~{ROM_OUT}       U28.14  so control.onehot is coherent in a
+         D32 ~{RAM_OUT}       U28.13  single read
+         D33 ~{REG_A_OUT}     U28.12
+         D34 ~{REG_B_OUT}     U28.11
+         D35 ~{REG_C_OUT}     U28.10
+         D36 ~{ALU_OUT}       U28.9
+         D37 ~{SW_OUT}        U28.7
+
+    PF   A0  ~{PC_CLEAR}      U29.14  jmp group
+         A1  ~{MDR_OUT}       U29.11
+         A2  ~{REG_OUT_LOAD}  U29.9
+         A3  ~{PC_LOAD}       U62.10
+
+    THREE BURST PASSES: (PL,PA) dst, (PL,PC) src, (PL,PF) jmp.
+    IRB is held across all three and the machine repeats, so the passes
+    are comparable. PL is extended I/O — ~547ns/sample, not 437ns.
+
+BOARD STRAP (not a rig wire):
+
+    FLAG_Z   HIGH, 1k to +5V, at U62.3.
+             COND_TAKEN = NOR(~{COND}, FLAG_Z), so FLAG_Z high pins
+             COND_TAKEN low and ~{PC_LOAD} = NOR(COND_TAKEN, PC_LOAD_JMP)
+             can then only be pulled by a real JMP decode. The milestone
+             program has no JMP or JNZ, so ~{PC_LOAD} must stay HIGH for
+             the whole run. STRAPPING LOW IS THE DANGEROUS CHOICE: a
+             spurious ~{COND} would take a branch into a garbage MAR.
+             1k rather than a hard tie so a strap forgotten at Block 4
+             meets U49.5 as a 5mA pull, not a short.
+
+COPPER YOU MUST PHYSICALLY WIRE (rig never touches these):
+
+    T0-3     U6.14 .13 .12 .11  ->  U17.2 .4 .6 .8
+    CW0-8    U9.11 .12 .13 .15 .16 .17 .18 .19 + U15.11
+                                ->  U30.1 .2 .3, U28.1 .2 .3, U29.1 .2 .3
+    END      U15.16 -> U61.3
+    HALT     U15.19 -> U61.5
+
+WHY NO CW0-8 PROBES. Beyond the block law: the 19 sampled control_word
+outputs are an INVERTIBLE encoding of CW0-8 for every word microcode_gen
+actually emits. U28.O0 is wired (SRC_ACTIVE) so all 8 SRC codes read
+back; U30 code 0 reads all-high and is unambiguous; U29's only aliased
+codes are 5 and 7 and MISC never emits either. CW9-15 are separately
+sampled. So CW0-15 is fully reconstructible with zero CW0-8 wires.
 
 ### Tests (control.*)
 
-    decode     For every implemented opcode x every T: force IRB, step T,
-               sample the decoded strobes, compare against
-                   cw_expect(MC_REAL_WORDS[(op << 4) | t], flag_z)
-               This is the old INT-A. Note the model is now a CHECKER, not
-               a driver — see below.
-    onehot     Never two SRC enables low at once. Never two DST loads low
-               at once. The rig can only catch SUSTAINED overlap; the LA
-               catches the transient. Both are run.
-    seq        Real T-state counter: END clears T at the documented state,
-               HALT freezes it, RESET recovers. The old INT-D.
-    cond       FLAG_Z forced both ways on a JNZ row: assert both U62 arms
-               (taken and not-taken). This closes the branch coverage the
-               ADD-only program ROM cannot reach — no reburn needed.
-    stability  Repeat the decode walk N times, assert identical results.
+The stimulus is the same for all of them: force IRB, let the machine
+free-run, burst-capture, decode offline.
 
-### Scope / LA checks — the timing half
+    decode     Cut the captured stream at each END. The frame after a cut
+               is t=0 and POSITION WITHIN THE RUN IS t. Compare the run
+               against MC_REAL_WORDS[(op<<4)|t] for t=0..END.
+               This asserts ORDER AND RUN LENGTH, not just contents — a
+               wrong END row or a skipped state fails here, and a per-T
+               lookup would miss both. T0-3 is NOT sampled; it is copper.
+               The model is a CHECKER, not a driver — see below.
+    onehot     Never two SRC enables low at once, never two DST loads at
+               once. All 8 SRC bits are on PC so one read decides it.
+               The rig catches SUSTAINED overlap only; the transient is
+               the scope's job.
+    seq        Force HALT's opcode: the run freezes and never resumes.
+               RESET (button) recovers. The old INT-D.
+    stability  Repeat the walk N times, assert identical results.
 
-Run these AFTER control.* is green. The rig proved WHAT; these prove WHEN.
+    control.cond IS DELETED. control_word.truth already swept FLAG_Z both
+    ways against the real U62 at module level. Re-driving it here would be
+    a passed module test with more wires — precisely what the block law
+    exists to stop. Branch coverage stays retired to control_word.truth.
 
-    LA, 16ch    CW0-15 + T0-3 captured together while the rig walks
-                control.decode. Compare each frame against the microcode
-                row. This is control.decode at real speed.
+### Scope / LA check — ONE, two probes
 
-    LA or 2ch   ~{ROM_OUT} and ~{RAM_OUT} on two channels, trigger on both
-                low. Characterise the decode glitch: after T changes on the
-                CLK rising edge, the microcode ROM outputs are invalid for
-                one access time and U28 decodes that garbage into transient
-                enables. Measure WHETHER it happens, HOW WIDE, and on which
-                transitions.
-                THIS IS A SUPPLY MEASUREMENT, NOT A CORRECTNESS ONE. See
-                "Machine invariant: EVERYTHING COMMITS ON CLK LOW" — no
-                state-changing path can be reached during CLK high, so the
-                worst case is two drivers fighting: current spike and
-                supply noise, never wrong data.
-                In BLOCK 1 it is harmless in the strongest sense — no
-                datapath boards are wired, so the '138 outputs go to rig
-                sample pins and there is literally nothing to fight. Best
-                possible place to measure it.
-                ACT ON IT only if the supply misbehaves (see the strobe-
-                HIGH check below). Do NOT gate the '138s pre-emptively.
+Everything else Block 1 asks is a logic-value question the Mega answers.
+This is the one it structurally cannot:
 
-    scope 2ch   CLK vs T0. T must advance on one defined edge, one state
-                per clock, no double-step.
-                BAD TRACE: T moving on both edges, or a runt T pulse.
+    2ch    ~{ROM_OUT} (U28.14) and ~{RAM_OUT} (U28.13), trigger BOTH LOW.
+           Characterise the decode glitch: after T changes on the CLK
+           rising edge the microcode ROM outputs are invalid for one
+           access time and U28 decodes that garbage into transient
+           enables. Measure WHETHER, HOW WIDE, and on which transitions.
+           The Mega samples at 437-547ns and has no pulse-width trigger,
+           so it cannot see a 10-30ns event at all.
 
-    scope 2ch   T(last) vs END. NOTE: U6 is a '163, so its clear is
-                SYNCHRONOUS — END does not clear T the instant it appears,
-                it clears on the next rising edge. That is by design and is
-                not a race. HALT works the same way through CET.
-                What to confirm: END asserts during the correct state, and
-                T clears on the FOLLOWING edge — exactly one state later.
-                BAD TRACE: END asserting a state early or late; T clearing
-                without END; T failing to clear on the next edge.
+           THIS IS A SUPPLY MEASUREMENT, NOT A CORRECTNESS ONE. See
+           "Machine invariant: EVERYTHING COMMITS ON CLK LOW" — no
+           state-changing path is reachable during CLK high, so the worst
+           case is two drivers fighting: current spike and supply noise,
+           never wrong data.
+           In BLOCK 1 it is harmless in the strongest sense — no datapath
+           boards are wired, so the '138 outputs go to rig sample pins and
+           there is literally nothing to fight. Best possible place to
+           measure it.
+           ACT ON IT only if the supply misbehaves. Do NOT gate the '138s
+           pre-emptively.
 
-    scope 2ch   CLK vs ~{IR_LOAD} — the LE_IR = NOR(CLK, ~IR_LOAD) window.
-                Confirm it is a real pulse and measure its width against
-                the '373 setup requirement.
-                BAD TRACE: a window narrower than the latch needs, or one
-                that never opens.
+    1ch    REACTIVE ONLY. Any strobe whose HIGH looks soft. Breadboard
+           runs plus fan-out can leave an enable at a level that reads as
+           valid to the Mega and is marginal to a real gate.
 
-    scope 1ch   HALT asserted: T frozen, clock still running. Confirm the
-                freeze is clean and not a slow droop.
+CLK vs T0, T(last) vs END, and the ~{IR_LOAD} window are NOT here. The
+first two the Mega gets at 1.024MHz; the third is meaningless until the
+full Block 6 load exists.
 
-    scope       Any strobe whose HIGH looks soft. Breadboard runs plus
-                fan-out can leave an enable sitting at a level that reads
-                as valid to the Mega and is marginal to a real gate.
+### BENCH RESULT 2026-07-30 — 6/6 PASS
+
+    block1.frames      diagnostic, textbook: (60,5F) (70,7E) alternating
+    block1.opmap       17/17 — the complete implemented opcode map
+    block1.decode      29043 samples, 0 mismatches, 0 TRANSIENTS
+    block1.onehot      no sustained SRC or DST overlap
+    block1.seq         T freezes on the HALT row; RESET clears T to 0
+    block1.stability   per-T table identical across 8 repeats
+
+THE DECODE GLITCH DID NOT PRODUCE A SINGLE BAD SAMPLE in 29043 reads. That is
+a measurement, not a prediction: gating the capture on CLK LOW rejects the ROM
+access window completely. It does NOT retire the scope check below — the rig
+samples at 437ns and cannot see a 10-30ns event at all, so "zero transients"
+means the glitch never reaches a sampling instant, not that it does not exist.
+
+ONE HARDWARE FAULT, RIG-SIDE: the IRB ribbon was reversed end-for-end, bit N
+landing on bit 7-N. 0x00 and 0xFF are the only bit-reversal-invariant bytes,
+so HALT=0xFF masked it entirely and block1.seq passed for hours while nothing
+decoded. block1.opmap is the asymmetric probe that named it, which is why it
+now runs BEFORE decode.
 
 ### What Block 1 retires
 
@@ -1329,60 +1553,215 @@ Run these AFTER control.* is green. The rig proved WHAT; these prove WHEN.
     the tap runs from ROM to decoder
     decode correctness in copper, at speed
     END / HALT / T-state contract with the real ring counter
-    both branch arms
     enable overlap — never tested at any level before now
 
 ---
 
 ## BLOCKS 2-6 — the accretion
 
-Each row is one wiring session. The rig only sheds.
+Each row is one wiring session. The rig only ever sheds. END and HALT
+stay on D45/D42 at U61.3/U61.5 throughout and are never re-landed.
 
-### BLOCK 2 — + pc + mar + memory     (driven wires: unchanged, 11)
+### BLOCK 2 — + pc + mar + memory      (driven 8, sampled 10, 18 jumpers)
 
-Three boards for free. M0-15 becomes copper between PC/MAR and memory;
-every strobe already comes from the real decoder. A real PC -> MAR -> ROM
-read loop, with the rig still forcing IRB.
+Three boards for free. M0-15 becomes copper between PC/MAR and memory,
+and every strobe already comes from the real decoder — so 26 sample wires
+come off and 8 go on.
+
+    OFF    the 26 control/microcode sample wires
+    ON     A0-A7  MDR0-7   U19.18 .17 .16 .15 .14 .13 .12 .11
+    KEEP   A8-A15 IRB0-7 driven; D45/D42 END/HALT
+
+    STRAPS, both removed at Block 3:
+      WRITE_DIR -> GND at U51.1. Forces ~{RAM_WRITE_EN} = NAND(0,~CLK) = 1
+        so no write ever fires, while ~{RAM_MDR_EN} = ~{RAM_OUT} keeps RAM
+        reads working. FLOATING IT IS A LIVE HAZARD: it also sets the U21
+        '245 direction, and a floating HIGH gives a real RAM write every
+        clock low into whatever W is floating at.
+      W0-7 -> 10k PULLDOWNS at U55.3 .4 .7 .8 .13 .14 .17 .18. NEVER a
+        hard tie — U25 drives this bus from Block 3 and a hard tie meets a
+        real driver.
+
+    TEST   The bytes appearing on MDR0-7 are the ROM image IN ADDRESS
+           ORDER, because a real PC drove a real MAR drove a real ROM.
+           Checked against progrom_expect.h.
+
+    RUN PROG_diag.bin FIRST. diag_byte = ((addr*0x9D)^(addr>>5))&0xFF is
+    injective over the first 32 addresses, so every fetched byte NAMES ITS
+    OWN ADDRESS. MDR0-7 is the only address witness in this block (M0-15
+    is copper), and the real image's 0xFF safe-fill tail names nothing.
+    Then re-run on PROG.bin.
+
+    HONEST SCOPE. This block does NOT prove "PC -> MAR -> ROM". With no W
+    driver present, ~{MAR_LO_LOAD}/~{MAR_HI_LOAD} latch garbage — LDA,
+    STA, JMP and JNZ reach MAR only through the absent U25 bridge. What it
+    proves is the PC_MAR_MUX handoff on M and the ~{RAM_EN} = INV(M15)
+    decode.
 
     SCOPE/LA   PC_MAR_MUX vs M0 — the tri-state handoff, strike-6
                territory. BAD TRACE: any overlap where PC and MAR both
                drive M.
-               Address settle vs ROM ~OE: the address must be stable
-               BEFORE the enable falls, or you read the previous byte.
 
-### BLOCK 3 — + mdr                   (driven wires: 11 -> 6)
+    NAMED GAP — MAR IS NEVER PROVEN AS A LATCH ON THIS LADDER.
+    LDA, STA, JMP and JNZ are the ONLY instructions that load MAR
+    (MAR_LO at T1, MAR_HI at T2). The milestone program is
+    LDAI 5; LDBI 3; ADD; OUT; HALT and contains NONE of them. So MAR
+    spends every block in PC_MAR_MUX passthrough, forwarding the PC to M.
+    It is proven as a MUX and never as a LATCH, at block 2, 3, 4, 5 or 6.
 
-IR becomes real, so the machine fetches its own instructions and the rig
-stops forcing IRB. Biggest single drop in rig involvement.
+    This is NOT resolved by a later block. Block 3 makes the path
+    electrically live (W becomes copper through the U25 bridge) but no
+    instruction in the image ever walks it.
 
-    SCOPE/LA   BUS_DIR vs ~{MDR_EN} on U25 — the bug-4 chip. Direction
-               must settle BEFORE the bridge enables. BAD TRACE: enable
-               asserting while DIR is still moving = a momentary fight
-               across the W/MDR boundary.
+    MAR's latch stays retired to mar.logic / mar.hold, which are real
+    module tests but RIG-DRIVEN ones — the ladder never upgrades them to
+    copper.
 
-### BLOCK 4 — + registers + alu       (driven wires: 6 -> 2)
+    CLOSING IT COSTS A TL866 MINUTE AND ZERO WIRES: a second image
+    containing a JMP self-witnesses through the opcode stream, because
+    JMP is (T1 MAR_LO<-ROM, T2 MAR_HI<-ROM, T3 PC_LOAD). MAR latches the
+    target through the real bridge, PC loads from MAR, and the next
+    opcode fetched is at the target — visible on IRB0-7, which block 3
+    ALREADY SAMPLES. A wrong MAR diverges the instruction stream
+    immediately. A STA/LDA round-trip through RAM is the other witness
+    and lands on OB.
+    Earliest block is 3, not 2: MAR is loaded src=ROM, so the byte's path
+    is ROM -> MDR -> U25 -> W -> MAR, and the bridge is on the mdr board.
+    No program can make MAR latch a real byte at block 2.
 
-Real flags, so FLAG_Z stops being a rig-driven bit. The full datapath.
+    See docs/notes/dino_isa_for_basic.md for the instruction detail.
 
-    SCOPE/LA   LE_TMP_A / LE_TMP_B stamp windows against CLK — the
-               two-edge discipline, measured rather than assumed.
-               Flag commit vs result valid: the flags must latch AFTER
-               the '382 outputs settle.
+### BLOCK 3 — + mdr                    (driven 0, sampled 10, 10 jumpers)
 
-### BLOCK 5 — + io, single-stepped
+DRIVEN GOES TO ZERO. The IR is real, the machine fetches its own
+instruction bytes, and IRB0-7 stops being forced.
 
-Everything wired. Rig owns CLK and RESET only, and moves to watching OB.
-Run the milestone program one clock at a time.
+    OFF    A0-A7 MDR0-7
+    FLIP   A8-A15 IRB0-7 stay in the SAME HOLES at U16 and change from
+           rig output to rig input. Leave the series resistors in: they
+           are harmless on a sampled line and they are the only thing
+           between a stale bundle and U34 driving into a rig output.
+    KEEP   D45/D42 END/HALT
+    REMOVE the WRITE_DIR and W0-7 straps BEFORE landing the mdr board.
+           U37.4 is a '04 output; a hard GND strap on it is a dead short.
 
-### BLOCK 6 — FREE-RUN
+    WHY SAMPLE IRB AT U16 (the consumer end): it is the MIRROR-WITNESS for
+    the U25 bridge. Block 2 read that same byte at MDR, BEFORE it crossed
+    U25 and U34. A bridge or IR permutation that a MDR-side read cancels
+    out shows up here and nowhere else.
 
-Y1 in the socket. Rig drives nothing — 8 wires on OB0-7, plus GND and
-HALT. The milestone program runs at real speed and OB reads 0x08.
+    TEST   The IRB opcode stream is 0x11 0x12 0x41 0x51 0xFF, with PC
+           stride 2,2,1,1,1 derived from PC_UP counts in the burned
+           microcode — no new table. Block 2 forced IRB constant, so the
+           stride was constant and an instruction-length error was
+           invisible; here a wrong length desyncs the very next fetch.
 
-THIS is where timing is finally retired, and nothing before it can do
-that job.
+    SCOPE/LA   BUS_DIR (U39.8) vs ~{MDR_EN} (U22.4) on the U25 bug-4 chip.
+               Direction must settle BEFORE the bridge enables. BAD TRACE:
+               ~{MDR_EN} falling while BUS_DIR is still moving = a
+               momentary fight across the W/MDR boundary.
 
----
+    EXPECTED, NOT A FAULT: during ADD's T1, src=ALU asserts ~{ALU_OUT},
+    BUS_DIR flips to W->MDR, and U25 drives MDR from a floating W (no ALU
+    board yet). Nothing else drives MDR in that window, so it is
+    indeterminate data, not a fight. Same during OUT's T1.
+
+### BLOCK 4 — + registers + alu        (driven 0, sampled 10, 10 jumpers)
+
+The full datapath. FIRST BLOCK THAT COMPUTES 5+3.
+
+    OFF    A8-A15 IRB0-7
+    ON     A8-A15 OB0-7   U35.2 .5 .6 .9 .12 .15 .16 .19
+                          (the '373 zigzag — count chip pins, not header
+                           order)
+    KEEP   D45/D42 END/HALT
+    REMOVE the FLAG_Z strap. U49.5 (flag register Q1) drives U62.3 now,
+           and leaving the strap is a '273 output into a board tie.
+
+    TEST   Exactly 4 END pulses (LDAI, LDBI, ADD, OUT), then HALT high
+           forever and END never again — HALT's row is 0x8000 and carries
+           no END bit. OB reads PR_EXPECT_SUM = 0x08 from HALT onward.
+
+    MIRROR-WITNESS: bit-reverse(0x08) = 0x10, so a flipped OB ribbon reads
+    0x10 and self-names. The milestone value is self-witnessing; most
+    bytes are not.
+
+    U35 HAS NO RESET. On a re-run OB may already be 0x08 before the
+    program starts, degenerating the assertion to "OB is 0x08". POWER
+    CYCLE before the run for the strong form. If OB reads 0x08 at trigger,
+    print INCONCLUSIVE and say so — do not print PASS.
+
+    SCOPE   CLK (U27.5) vs LE_TMP_A (U50.1). LE_TMP_A = NOR(~{REG_A_LOAD},
+            CLK) must open for the full CLK-low half. BAD TRACE: a window
+            narrower than the '373 needs, a runt, or one that never opens
+            on ADD's T1.
+
+### BLOCK 5 — + io                     (driven 0, sampled 10, 10 jumpers)
+
+All ten boards. NOT single-stepped — see NOTHING IS EVER PULLED above.
+
+    MOVE   OB0-7 from U35 to the io end: R9-R16 pin 1. Same Mega pins.
+           Far-end tap, because that harness is what this block adds.
+    KEEP   D45/D42 END/HALT
+
+    STRAP  IS0-7 = SW1 at 0xF7 (switch 3 closed, rest open). Switches are
+           10k pulled up and short to GND, so there is no driver to fight.
+           0xF7 is chosen as a WITNESS: ~{SW_OUT} never asserts in this
+           program so the '244 must stay off, and its only 0-bit is W3 —
+           exactly the bit of the answer 0x08. A leaking '244 turns OB
+           into 0x00 and names itself. Re-run at 0xFF as the control.
+
+    TEST   The milestone end to end across all ten boards: 4 ENDs, HALT,
+           OB = 0x08, stable for a full second of re-polling.
+
+    NO SCOPE WORK HERE. Every question is a logic value at 437-547ns
+    granularity. Save the probe budget for Block 6.
+
+### BLOCK 6 — FREE-RUN                 (driven 0, sampled 9, 9 jumpers)
+
+Nothing is added, moved, or reseated. Same machine, smaller harness, and
+the instruments come out.
+
+    OFF    D45 END
+    KEEP   A8-A15 OB0-7 at R9-R16.1; D42 HALT at U61.5
+
+    HALT is a clean two-state marker and the burst's own trigger:
+      LOW  = reset cleared T to 0, fetch row 0x600E selected, RUNNING
+      HIGH = row 0x8000 selected, CET low, T frozen, clock still running,
+             HALTED permanently and stably
+
+    TEST   OB = 0x08 at HALT, still 0x08 after a second of re-polling, and
+           TEN RESETS GIVE TEN 0x08s. At 1.024MHz a marginal setup path
+           fails probabilistically; one pass is an anecdote. Plus the
+           human check that costs nothing: ONE LED LIT, BIT 3.
+
+    THIS IS WHERE TIMING IS RETIRED, and nothing before it can do the job.
+    Two probes, two setups:
+
+    2ch    CLK (U27.5) vs ~{REG_A_LOAD} (U30.14). THE MONEY SHOT. That
+           delay is the machine's longest control path: CLK rise -> U6
+           '163 -> U16/U17 buffers -> AT28C64B access (tACC 150-250ns) ->
+           U30 '138 decode. It must finish before CLK falls, because
+           LE_REG_A = NOR(~{REG_A_LOAD}, CLK) is what commits the ADD
+           result. Budget at 1.024MHz is 488ns minus '373 setup (~20ns).
+           EEPROM access alone can eat half of it, and Block 1 measured
+           this node WITHOUT the full fan-out.
+           BAD TRACE: the strobe settling later than ~450ns after CLK
+           rise, or still moving when CLK falls.
+           FIX IS A SLOWER CLOCK (U20 already provides divide taps), NOT
+           gating the '138s — see the machine invariant.
+           The Mega cannot do this: its sample period is roughly the
+           entire quantity being measured.
+
+    1ch    OB3 at U35.9. VOH with the single milestone LED lit. U35 is a
+           74LS373 rated IOH = -2.6mA; R12 is 330R drawing ~4-5mA through
+           the LED. The output is being asked to source about twice its
+           rating, on the one node the whole milestone is read from.
+           BAD TRACE: VOH below ~2.4V. Fix is a larger LED resistor.
+           The Mega cannot do this: a pin at 2.0V reads as a clean HIGH on
+           PINK and the test passes while the level is garbage to a real
+           gate. This project has already been bitten by exactly that
+           (U45.2 at 1.67V).
 
 ## cw_expect is now a CHECKER, not a driver
 
@@ -1397,6 +1776,9 @@ just verify hardware instead of substituting for it:
     sample the real decoded strobes
     compare against cw_expect(MC_REAL_WORDS[(op << 4) | t], flag_z)
     a mismatch names the lying gate
+
+flag_z is the STRAPPED level (HIGH) in Blocks 1-3, not a rig-driven bit.
+t is NOT sampled — it is the position within an END-delimited run.
 
 Smaller, safer, and it keeps the discipline: no eleventh table, nothing
 hand-written, the rig's notion of truth still derived from the burned
@@ -1415,7 +1797,16 @@ image and a host-tested model.
 
 The burned REAL image is the milestone: LDAI 5; LDBI 3; ADD; OUT; HALT.
 Test against what you will actually free-run, so Block 5 is a true dress
-rehearsal. Branch coverage does NOT need the countdown image — control.cond
-forces FLAG_Z both ways in Block 1 and proves both U62 arms with no reburn.
+rehearsal.
+
+BRANCH COVERAGE IS RETIRED TO control_word.truth, which swept FLAG_Z both
+ways against the real U62 at module level and proved both arms. An earlier
+draft of this file assigned that job to a Block 1 test called control.cond;
+THAT TEST IS DELETED — re-driving FLAG_Z at block level would be a passed
+module test with more wires, which is exactly what the block law forbids.
+
 The countdown/JNZ image stays available, a TL866 minute away, whenever a
-full-program branch test is wanted.
+full-program branch test is wanted. Note what that would buy that
+control_word.truth does not: the branch arms exercised by a REAL microcode
+row with a REAL flag from the ALU, rather than by a rig-forced bit. That
+is a Block 4-or-later question, and it is not owed by the milestone.

@@ -38,11 +38,24 @@ static void print_pins(const char *module) {
         modmap_t mm;
         memcpy_P(&mm, &MODMAPS[m], sizeof mm);
         if (strcmp_P(module, mm.module) != 0) continue;
+        /* Which boards have to be on the bench, before a single jumper.
+           A block spans several; a module bundle spans only itself, so the
+           line would be noise and is suppressed. */
+        {
+            char members[64];
+            strncpy_P(members, mm.members, sizeof members - 1);
+            members[sizeof members - 1] = 0;
+            if (strcmp(members, module) != 0) {
+                uart_putsP("modules: ");
+                uart_puts(members);
+                uart_putsP("\r\n");
+            }
+        }
         uart_putsP("hookup for "); uart_puts(module);
-        uart_putsP(" (GND first, always):\r\n  GND -> module GND rail\r\n");
+        uart_putsP(" (GND first, always):\r\n  GND -> commoned once, all boards\r\n");
         for (uint8_t i = 0; i < mm.n; i++) {
             sigpin_t sp;
-            char sig[48];
+            char sig[48], own[24];
             memcpy_P(&sp, &mm.sig[i], sizeof sp);
             uart_putsP("  ");
             uart_puts_p(sp.megapin);
@@ -51,8 +64,18 @@ static void print_pins(const char *module) {
             uart_puts_p(sp.dir == 'O' ? PSTR("  (rig drives)")
                         : sp.dir == 'I' ? PSTR("  (rig samples)")
                         : PSTR("  (bidir)"));
+            /* WHICH BOARD the wire lands on. For a block this is the whole
+               point — three boards on the bench and the ribbon has to reach
+               the right one. Not always the producer: END/HALT land at
+               root's U61, IRB at microcode's U16 (strike-7 far-end rule). */
+            strcpy_P(own, sp.owner);
+            uart_putsP("  [");
+            uart_puts(own);
+            uart_putsP("]");
             strcpy_P(sig, sp.signal);
-            uint8_t slot = slot_of(module, sig);
+            /* slots are per MODULE, so a block bundle must look them up
+               against the owning board, never against the block name */
+            uint8_t slot = slot_of(own, sig);
             if (slot) {
                 uart_putsP("  slot ");
                 uart_putdec(slot);

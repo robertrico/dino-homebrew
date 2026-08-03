@@ -1,0 +1,362 @@
+#!/usr/bin/env python3
+"""Host tests for the BLOCK surface derivation in kicad_contracts.py.
+
+A block is an integration step: several bench-proven modules wired to each
+other, with the rig touching only what the combination newly determines.
+THE BLOCK LAW (BRINGUP.md): sample a signal at block level only if its
+value depends on more than one member. Everything else is copper, strapped,
+or already retired by a module test or an earlier block.
+
+These tests are the RED half of that work. They assert the derivation, the
+retirement cascade, and — most importantly — that the classifier HARD-ERRORS
+rather than silently guessing, because a silently-misclassified input is how
+a floating WRITE_DIR fires real RAM writes.
+"""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import kicad_contracts as kc
+
+ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     "..", "..", "dino_v0_0_2", "dino_v0_0_2.kicad_sch"))
+
+FAILS = []
+
+
+def check(cond, label):
+    if cond:
+        print(f"  ok   {label}")
+    else:
+        print(f"  FAIL {label}")
+        FAILS.append(label)
+
+
+def check_eq(got, want, label):
+    if got == want:
+        print(f"  ok   {label}")
+    else:
+        print(f"  FAIL {label}")
+        print(f"         got  {sorted(got) if isinstance(got, (set, frozenset)) else got}")
+        print(f"         want {sorted(want) if isinstance(want, (set, frozenset)) else want}")
+        FAILS.append(label)
+
+
+def check_raises(fn, needle, label):
+    try:
+        fn()
+    except SystemExit as e:
+        if needle in str(e):
+            print(f"  ok   {label}")
+            return
+        print(f"  FAIL {label} — wrong message: {e}")
+        FAILS.append(label)
+        return
+    except Exception as e:                       # noqa: BLE001
+        print(f"  FAIL {label} — wrong exception type: {type(e).__name__}: {e}")
+        FAILS.append(label)
+        return
+    print(f"  FAIL {label} — no error raised")
+    FAILS.append(label)
+
+
+CONTRACTS = kc.build_contracts(ROOT)
+SURF = kc.build_blocks(CONTRACTS)
+
+IRB = {f"IRB{i}" for i in range(8)}
+MDR = {f"MDR{i}" for i in range(8)}
+OB = {f"OB{i}" for i in range(8)}
+T03 = {f"T{i}" for i in range(4)}
+CW08 = {f"CW{i}" for i in range(9)}
+DST7 = {"~{REG_A_LOAD}", "~{REG_B_LOAD}", "~{REG_C_LOAD}", "~{MAR_LO_LOAD}",
+        "~{MAR_HI_LOAD}", "~{IR_LOAD}", "~{RAM_LOAD}"}
+SRC8 = {"SRC_ACTIVE", "~{ROM_OUT}", "~{RAM_OUT}", "~{REG_A_OUT}", "~{REG_B_OUT}",
+        "~{REG_C_OUT}", "~{ALU_OUT}", "~{SW_OUT}"}
+JMP4 = {"~{PC_CLEAR}", "~{MDR_OUT}", "~{REG_OUT_LOAD}", "~{PC_LOAD}"}
+SA3 = {"CW9=SA2", "CW10=SA1", "CW11=SA0"}
+PCBITS = {"CW13=PC_UP", "CW14=PC_MAR_MUX"}
+ENDHALT = {"CW12=END", "CW15=HALT"}
+# CLK is sampled in blocks 1-5 as a CAPTURE QUALIFIER, never as an assertion:
+# the ROM outputs are invalid for one access time after T changes, and a blind
+# sampler splits one T-state into several frames. Gating on CLK low samples
+# after the ROM has settled. root.clock still owns CLK as an assertion.
+QUAL = {"CLK"}
+# T0-3 joins CLK as a block1 SAMPLE LABEL, not an assertion: root.tstates still
+# owns the counter. Reading T means every sample carries the T-state that
+# produced it, so the rig never infers t from position in a captured sequence.
+# That inference required the fetch frame to be unique — and in the SRC pass it
+# is not, since LDA's T0/T1/T2 are all mux_pc+pc_up+src=ROM and differ only in
+# DST. Block1 only: block2 fills PF with MDR0-7, and blocks 2-6 do not decode
+# per-T.
+QUAL1 = QUAL | T03
+
+
+def test_block_names_and_order():
+    print("block ladder shape")
+    names = list(SURF)
+    check_eq(names, ["block1", "block2", "block3", "block4", "block5", "block6"],
+             "six blocks, in ladder order")
+    check_eq(SURF["block1"]["members"], ["root", "microcode", "control_word"],
+             "block1 members")
+    check_eq(set(SURF["block5"]["members"]), set(SURF["block6"]["members"]),
+             "block6 adds no board — same members as block5")
+    check_eq(len(SURF["block5"]["members"]), 10, "block5 is all ten modules")
+
+
+def test_driven_gate():
+    """The gate: driven-wire count may never rise."""
+    print("driven-wire gate")
+    counts = [len(SURF[b]["drive"]) for b in SURF]
+    check_eq(counts, [8, 8, 0, 0, 0, 0], "driven ladder 8,8,0,0,0,0")
+    check(all(b <= a for a, b in zip(counts, counts[1:])),
+          "driven count never rises between consecutive blocks")
+    check_eq(set(SURF["block1"]["drive"]), IRB, "block1 drives exactly IRB0-7")
+    check_eq(set(SURF["block2"]["drive"]), IRB, "block2 drives exactly IRB0-7")
+    for b in ("block3", "block4", "block5", "block6"):
+        check_eq(set(SURF[b]["drive"]), set(), f"{b} drives nothing")
+
+
+def test_sample_counts():
+    print("sample ladder")
+    counts = [len(SURF[b]["sample"]) for b in SURF]
+    check_eq(counts, [31, 11, 11, 11, 11, 9],
+             "sampled ladder 31,11,11,11,11,9 (CLK everywhere, T0-3 in block1)")
+    check_eq(SURF["block1"]["qualify"], ["CLK", "T0", "T1", "T2", "T3"],
+             "block1 qualifies on CLK and labels every sample with T")
+    for b in ("block2", "block3", "block4", "block5"):
+        check_eq(SURF[b]["qualify"], ["CLK"], f"{b} qualifies capture on CLK")
+    check_eq(SURF["block6"]["qualify"], [],
+             "block6 polls rather than frame-decoding — no qualifier needed")
+
+
+def test_block1_surface():
+    print("block1 — control")
+    s = SURF["block1"]
+    want = DST7 | SRC8 | JMP4 | SA3 | PCBITS | ENDHALT | QUAL1
+    check_eq(set(s["sample"]), want,
+             "block1 samples the 26 + CLK + T0-3 as sample labels")
+    check(T03 <= set(s["copper"]), "T0-3 is copper")
+    check(CW08 <= set(s["copper"]), "CW0-8 is copper")
+    check(ENDHALT <= set(s["copper"]), "END/HALT are copper as well as sampled")
+    for sig in CW08:
+        check(sig not in s["sample"] and sig not in s["drive"],
+              f"copper {sig} is in neither drive nor sample")
+    check(T03 <= set(s["copper"]), "T0-3 is still copper — sampled as a LABEL")
+    for sig in T03:
+        check(sig not in s["drive"], f"{sig} is sampled, never driven")
+    check_eq(set(s["strap"]), {"FLAG_Z"}, "block1 straps exactly FLAG_Z")
+    check_eq(s["strap"]["FLAG_Z"][0], "HIGH", "FLAG_Z strapped HIGH")
+    check_eq(set(s["floats"]), set(), "block1 has no unclassified floating input")
+    for sig in ("CLK", "~{CLK}", "RESET", "~{RESET}"):
+        check(sig in s["retired"], f"{sig} retired at block1")
+        if sig != "CLK":
+            check(sig not in s["sample"], f"{sig} not sampled at block1")
+
+
+def test_block2_surface():
+    print("block2 — + pc + mar + memory")
+    s = SURF["block2"]
+    check_eq(set(s["sample"]), MDR | ENDHALT | QUAL,
+             "block2 samples MDR0-7 + END/HALT + CLK")
+    check(all(f"M{i}" in s["copper"] for i in range(15)), "M0-14 are copper")
+    check("M15=ROM_EN" in s["copper"], "M15=ROM_EN is copper")
+    check_eq(set(s["strap"]), {"FLAG_Z", "WRITE_DIR"} | {f"W{i}" for i in range(8)},
+             "block2 straps FLAG_Z + WRITE_DIR + W0-7")
+    check_eq(s["strap"]["WRITE_DIR"][0], "LOW", "WRITE_DIR strapped LOW")
+    check_eq(set(s["floats"]), set(), "block2 has no unclassified floating input")
+    # the retirement cascade: everything block1 sampled is gone here
+    for sig in DST7 | SRC8 | SA3:
+        check(sig not in s["sample"], f"{sig} retired by block1, not resampled")
+    check_eq(s["retired_by"].get("SRC_ACTIVE"), "block1.decode",
+             "block1 retirements are cited to the block, not a module")
+    check_eq(s["retired_by"].get("~{RESET}"), "root.reset",
+             "module retirements keep their module citation")
+
+
+def test_block3_surface():
+    print("block3 — + mdr")
+    s = SURF["block3"]
+    check_eq(set(s["sample"]), IRB | ENDHALT | QUAL,
+             "block3 samples IRB0-7 + END/HALT + CLK")
+    check(IRB <= set(s["copper"]), "IRB is copper now — the IR is real")
+    check(all(f"W{i}" in s["copper"] for i in range(8)), "W0-7 is copper now")
+    check("WRITE_DIR" in s["copper"], "WRITE_DIR is copper now")
+    check_eq(set(s["strap"]), {"FLAG_Z"}, "only FLAG_Z still strapped at block3")
+    check(all(m not in s["sample"] for m in MDR), "MDR retired by block2")
+
+
+def test_block4_surface():
+    print("block4 — + registers + alu")
+    s = SURF["block4"]
+    check_eq(set(s["sample"]), OB | ENDHALT | QUAL,
+             "block4 samples OB0-7 + END/HALT + CLK")
+    check("FLAG_Z" in s["copper"], "FLAG_Z is copper now — real flags")
+    check_eq(set(s["strap"]), set(), "block4 straps nothing")
+    check(all(i not in s["sample"] for i in IRB), "IRB retired by block3")
+
+
+def test_block5_and_6():
+    print("block5 / block6")
+    s5, s6 = SURF["block5"], SURF["block6"]
+    check_eq(set(s5["sample"]), OB | ENDHALT | QUAL,
+             "block5 samples OB0-7 + END/HALT + CLK")
+    check(OB <= set(s5["copper"]), "OB is copper at block5 — io is present")
+    check_eq(set(s5["strap"]), set(),
+             "block5 straps nothing — IS0-7 never crosses a sheet, so SW1=0xF7 "
+             "is a bench setting, not a contract strap")
+    check_eq(set(s6["sample"]), OB | {"CW15=HALT"}, "block6 samples OB0-7 + HALT only")
+    check("CW12=END" not in s6["sample"], "block6 drops the END jumper")
+    check_eq(len(s6["sample"]), 9, "block6 is nine wires")
+
+
+def test_every_unfed_input_is_classified():
+    """The WRITE_DIR lesson: an input with no driver is a hazard until named."""
+    print("no silent floats anywhere on the ladder")
+    for name, s in SURF.items():
+        check_eq(set(s["floats"]), set(), f"{name}: every unfed input is drive or strap")
+
+
+def test_hard_errors():
+    print("hard errors, never last-writer-wins")
+    good = kc.BLOCKS["block1"]
+
+    def bad_retire():
+        kc.block_surface(CONTRACTS, "x", dict(good, retire={"NO_SUCH_SIGNAL": "t"}))
+    check_raises(bad_retire, "NO_SUCH_SIGNAL", "retire naming an absent signal raises")
+
+    def bad_strap():
+        kc.block_surface(CONTRACTS, "x", dict(good, strap={"NOPE": ("LOW", "t")}))
+    check_raises(bad_strap, "NOPE", "strap naming an absent signal raises")
+
+    def bad_anyway():
+        kc.block_surface(CONTRACTS, "x", dict(good, sample_anyway=["~{PC_LOAD}"]))
+    check_raises(bad_anyway, "~{PC_LOAD}", "sample_anyway on a non-copper signal raises")
+
+    def bad_drive():
+        kc.block_surface(CONTRACTS, "x", dict(good, drive=["T0"]))
+    check_raises(bad_drive, "T0", "driving a copper signal raises")
+
+    def unclassified():
+        kc.block_surface(CONTRACTS, "x", dict(good, strap={}))
+    check_raises(unclassified, "FLAG_Z", "an unfed input left unclassified raises")
+
+    def bad_member():
+        kc.block_surface(CONTRACTS, "x", dict(good, members=["root", "nosuchmod"]))
+    check_raises(bad_member, "nosuchmod", "unknown member module raises")
+
+
+def test_pinmap_has_block_bundles():
+    """Blocks ride the existing MODMAPS machinery — no parallel code path."""
+    print("pinmap integration")
+    import io
+    import re
+    tmp = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".blocks_test.h")
+    try:
+        kc.emit_pinmap(CONTRACTS, tmp)
+        text = open(tmp).read()
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    for b in SURF:
+        check(f"sig_{b}[]" in text, f"{b} emits a bundle into pinmap_gen.h")
+    # every block bundle must carry exactly its drive+sample rows
+    for b, s in SURF.items():
+        m = re.search(r"static const sigpin_t sig_%s\[\] PROGMEM = \{(.*?)\n\};" % b,
+                      text, re.S)
+        check(m is not None, f"{b} bundle parses")
+        if m:
+            rows = m.group(1).count("{")
+            check_eq(rows, len(s["drive"]) + len(s["sample"]),
+                     f"{b} bundle row count == drive + sample")
+
+
+def test_block1_port_alignment():
+    """capture_burst() reads whole ports; a group split across two cannot be
+    read coherently. The SRC group in particular decides control.onehot."""
+    print("block1 port alignment")
+    pins = {s: p for s, p, _d, _o in kc.block_pins(CONTRACTS, "block1")}
+
+    def port_of(sig):
+        return pins[sig].split("/")[0][:2]
+    check_eq(pins["CLK"], "PL0/D49",
+             "CLK on PL0 — the qualifier arrives in the SAME READ as its frame")
+    for i, pin in enumerate(("PF4/A4", "PF5/A5", "PF6/A6", "PF7/A7")):
+        check_eq(pins[f"T{i}"], pin,
+                 f"T{i} on {pin} — one PF read gives jmp strobes AND the T label")
+    for grp, label in ((SRC8, "SRC"), (DST7, "DST"), (JMP4, "JMP"),
+                       (SA3 | PCBITS | ENDHALT | QUAL, "anchor"),
+                       (T03, "T label")):
+        ports = {port_of(s) for s in grp}
+        check_eq(len(ports), 1, f"{label} group sits in exactly one port")
+    check_eq(port_of("SRC_ACTIVE"), "PC", "SRC group on PORTC")
+    check_eq(port_of("~{REG_A_LOAD}"), "PA", "DST group on PORTA")
+    check_eq(port_of("CW12=END"), "PL", "anchor group on PORTL")
+    check_eq(pins["CW12=END"], "PL4/D45", "END on D45, all six blocks")
+    check_eq(pins["CW15=HALT"], "PL7/D42", "HALT on D42, all six blocks")
+
+
+def test_owner_board_is_where_the_wire_lands():
+    """`pins <block>` has to say WHICH BOARD, because a block is three-plus
+    boards on the bench. The owner is NOT always the producer: a far-end tap
+    lands on the consumer, and that is deliberate (strike-7)."""
+    print("owner board resolution")
+
+    def owners(b):
+        return {s: o for s, _p, _d, o in kc.block_pins(CONTRACTS, b)}
+
+    o1 = owners("block1")
+    for s in DST7 | SRC8 | JMP4:
+        check_eq(o1[s], "control_word", f"block1 {s} lands on control_word")
+    for s in SA3 | PCBITS:
+        check_eq(o1[s], "microcode", f"block1 {s} lands on microcode")
+    check_eq(o1["CLK"], "root", "block1 CLK qualifier lands on root's U27")
+    for i in range(4):
+        check_eq(o1[f"T{i}"], "root", f"block1 T{i} label lands on root's U6")
+    for s in ENDHALT:
+        check_eq(o1[s], "root",
+                 f"block1 {s} lands on ROOT (U61, the consumer end) not microcode")
+    for s in IRB:
+        check_eq(o1[s], "microcode", f"block1 {s} driven into microcode's U16")
+
+    # block3: IRB is copper now, produced by mdr, but tapped at the CONSUMER
+    # end (U16) because that is what makes it the U25 bridge mirror-witness
+    o3 = owners("block3")
+    for s in IRB:
+        check_eq(o3[s], "microcode",
+                 f"block3 {s} sampled at microcode's U16, not at mdr")
+
+    # block4 has no io board, so OB is sampled at its producer (U35)
+    o4 = owners("block4")
+    for s in OB:
+        check_eq(o4[s], "registers", f"block4 {s} sampled at registers' U35")
+
+    # block5 adds io, so the tap moves to the far end
+    o5 = owners("block5")
+    for s in OB:
+        check_eq(o5[s], "io", f"block5 {s} moves to the io end")
+
+
+def test_end_halt_never_move():
+    print("END/HALT never move")
+    for b in SURF:
+        pins = {s: p for s, p, _d, _o in kc.block_pins(CONTRACTS, b)}
+        if "CW12=END" in pins:
+            check_eq(pins["CW12=END"], "PL4/D45", f"{b}: END on D45")
+        check_eq(pins["CW15=HALT"], "PL7/D42", f"{b}: HALT on D42")
+
+
+if __name__ == "__main__":
+    for fn in (test_block_names_and_order, test_driven_gate, test_sample_counts,
+               test_block1_surface, test_block2_surface, test_block3_surface,
+               test_block4_surface, test_block5_and_6,
+               test_every_unfed_input_is_classified, test_hard_errors,
+               test_pinmap_has_block_bundles, test_block1_port_alignment,
+               test_owner_board_is_where_the_wire_lands,
+               test_end_halt_never_move):
+        fn()
+    if FAILS:
+        print(f"\n{len(FAILS)} FAILED")
+        for f in FAILS:
+            print(f"  - {f}")
+        sys.exit(1)
+    print("\nblock surface: OK")

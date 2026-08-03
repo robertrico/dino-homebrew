@@ -376,14 +376,32 @@ copper, with the rig retiring a slice per session.
 
 The live plan is BRINGUP.md, "Integration — CONTROL FIRST". Summary:
 
-  BLOCK 1  root + microcode + control_word (THE CONTROL UNIT). ~11 driven
-           wires: CLK, RESET, IRB0-7, FLAG_Z. No datapath dependency.
-  BLOCK 2  + pc + mar + memory   driven count UNCHANGED — three boards
-           join for free, M0-15 and every strobe are copper
-  BLOCK 3  + mdr                 11 -> 6 driven: real IR, machine fetches
-  BLOCK 4  + registers + alu     6 -> 2 driven: real flags
-  BLOCK 5  + io, single-stepped
-  BLOCK 6  FREE-RUN, Y1 in socket, 0 driven — 8 wires + GND + HALT
+  BLOCK 1  root + microcode + control_word (THE CONTROL UNIT). 8 driven
+           (IRB0-7 only), 26 sampled. No datapath dependency.
+  BLOCK 2  + pc + mar + memory   driven UNCHANGED at 8 — three boards
+           join for free, M0-15 and every strobe are copper. 10 sampled.
+  BLOCK 3  + mdr                 8 -> 0 DRIVEN: real IR, machine fetches
+  BLOCK 4  + registers + alu     0 driven, real flags, 5+3 happens here
+  BLOCK 5  + io                  0 driven. NOT single-stepped.
+  BLOCK 6  FREE-RUN, 0 driven — 8 wires + GND + HALT
+
+REVISED 2026-07-28. Two rules were added after this section was written,
+and they change the numbers above from what an earlier draft claimed:
+
+  THE BLOCK LAW. Blocks are BLACK-BOX. Sample a signal only if its value
+  depends on MORE THAN ONE MEMBER of the block. Copper (out of one member,
+  in of another) is DROPPED, not kept as a probe. Everything a module test
+  already retired stays retired, and every retirement names its test.
+  CLK, RESET and FLAG_Z are therefore not rig wires at any block: the
+  first two are single-member (root.clock / root.reset) and FLAG_Z was
+  swept both ways by control_word.truth.
+
+  NOTHING IS EVER PULLED. No chip leaves its socket; Y1 stays seated from
+  Block 1 through Block 6. Rig JUMPERS come off freely as they retire.
+  Since CLK is U27.5 and RESET is U27.9 — both '74 totem-pole outputs —
+  the rig cannot own either without contention, so EVERY BLOCK FREE-RUNS
+  AT 1.024MHz and nothing on this ladder is single-stepped. Every test is
+  burst-capture-and-decode; reset is the button on an ARM prompt.
 
 THE GATE IS DRIVEN-WIRE COUNT AND IT MAY NEVER GO UP. Fewer rig wires ==
 fewer rig-introduced error modes: the same goal. Risk is asymmetric — a

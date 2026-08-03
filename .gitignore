@@ -18,7 +18,18 @@ tests/dino_bringup/build/
 
 # (compiled host-test binaries: see tests/dino_bringup/hosttest/.gitignore)
 
-# Obsidian per-machine editor state
-docs/notes/.obsidian/workspace.json
+# Obsidian per-machine editor state. The vault config lives at
+# docs/.obsidian/ (an earlier entry here pointed at docs/notes/.obsidian/
+# and never matched anything). Scoped to the .obsidian/ config dir ONLY —
+# Obsidian keeps notes in the vault proper, never inside .obsidian/, so
+# this cannot swallow a .md. Do NOT broaden it to the vault directory.
+**/.obsidian/
 
 .DS_Store
+
+# Bench capture files. These are SESSION ARTEFACTS, not project record — a
+# `git add -A` once swept screenlog.0 into a commit, and a later `git checkout`
+# then restored the stale copy over a fresh run (2026-07-30). Findings belong
+# in BRINGUP.md and in commit messages, not in a raw serial dump.
+screenlog.*
+*.log

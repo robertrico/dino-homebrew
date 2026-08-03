@@ -1190,8 +1190,13 @@ Control-first deletes that job: the real ROM and decoder produce the
 strobes from step 1, and the model verifies them instead. No handover to
 engineer, nothing to unplug.
 
-BRANCH COVERAGE no longer needs a ROM reburn. control.cond forces FLAG_Z
-both ways in Block 1 and proves both U62 arms. The burned image stays the
+BRANCH COVERAGE no longer needs a ROM reburn. SUPERSEDED 2026-07-28: this
+originally credited a Block 1 test called control.cond, which is now
+DELETED — under the block law, re-driving FLAG_Z at block level is a
+passed module test with more wires. Branch coverage is retired to
+control_word.truth, which swept FLAG_Z both ways against the real U62 and
+proved both arms. FLAG_Z is a board STRAP (HIGH) in Blocks 1-3 and becomes
+real copper from U49.5 at Block 4. The burned image stays the
 milestone program (LDAI 5; LDBI 3; ADD; OUT; HALT), so Block 5 is a true
 dress rehearsal for free-run rather than a rehearsal of a different
 program. The countdown/JNZ image remains a TL866 minute away if a

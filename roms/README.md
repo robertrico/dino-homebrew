@@ -21,6 +21,40 @@ the generator and hope OPCODES has not moved."
     PROG_diag.bin                program ROM, DIAG (self-naming addresses)
                                  CRC 0xDFE7
 
+### Progressive ISA-coverage images
+
+The block ladder proves the machine EXECUTES. These prove it executes the
+WHOLE of the current ISA. Each ends OUT; HALT because OB is the only
+datapath observable on the ladder, and every answer is a MIRROR-WITNESS —
+its bit-reversed read is a different byte, so a flipped OB ribbon names
+itself. Burn as needed; none of them is required for the milestone.
+
+    PROG_flow.bin                JMP over a poison HALT, then a JNZ that
+                                 must NOT be taken. CRC 0xCED0, OB 0x39
+                                 EARLIEST: block 3 (witnessed on the IRB
+                                 opcode stream, not OB)
+    PROG_alu.bin                 all eight SA codes chained, so a wrong
+                                 code corrupts the signature rather than
+                                 being masked. CRC 0x642A, OB 0x39
+                                 EARLIEST: block 4
+    PROG_mem.bin                 STA then LDA back through RAM. ALSO THE
+                                 MAR-AS-LATCH WITNESS — LDA/STA are the
+                                 only MAR loaders and the milestone has
+                                 none. CRC 0x3E4B, OB 0xC5
+                                 EARLIEST: block 4
+    PROG_loop.bin                the JNZ TAKEN arm, iterated exactly 3
+                                 times; a wrong count changes the answer.
+                                 CRC 0x8727, OB 0x15
+                                 EARLIEST: block 4
+
+NOTE for blocks 1-3: FLAG_Z is STRAPPED HIGH, so COND_TAKEN is pinned low
+and JNZ is NEVER taken there. PROG_flow exercises JMP and the not-taken
+arm only; the taken arm needs a real ALU flag, hence block 4.
+
+Expected OB values are NOT hand-computed. `progrom_gen.simulate()`
+interprets the burned microcode rows, so image and hardware cannot
+disagree — the same discipline cw_expect holds on the rig side.
+
 Microcode CRCs are over the 4096 ADDRESSABLE bytes per chip — A12 is
 grounded, so the 8K file is the image mirrored twice.
 

@@ -86,7 +86,18 @@ typedef struct { const char *module; const char *name; testfn_t fn; } testcase_t
     X(io, tristate) \
     X(io, isolation) \
     X(io, switches) \
-    X(io, leds)
+    X(io, leds) \
+    X(block1, frames) \
+    X(block1, opmap) \
+    X(block1, decode) \
+    X(block1, onehot) \
+    X(block1, seq) \
+    X(block1, stability) \
+    X(block2, fetch) \
+    X(block3, opcodes) \
+    X(block4, milestone) \
+    X(block5, run) \
+    X(block6, acceptance)
 
 #define X_DECL(mod, name) void t_##mod##_##name(void);
 TEST_TABLE(X_DECL)

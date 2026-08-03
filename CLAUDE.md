@@ -42,42 +42,77 @@ per-stage wiring, commands, expected output, failure meanings, and the
 integration plan. `tests/dino_bringup/README.md` has the progress
 checkboxes. `docs/notes/dino_test_bringup_design.md` is the spec.
 
-## Integration is CONTROL FIRST
+## Integration is CONTROL FIRST, BLACK-BOX, and LOW-WIRE
 
-Two rules pick the blocks:
+**The block law (2026-07-28).** Blocks are black-box tests. Module
+coverage is already extensive, so a block that re-samples what a module
+test retired is just a module test with more wires and more ways to be
+wrong.
 
-1. **Emulate what is cheap to be right about** (T-states, addresses,
-   strobes, the instruction byte). **Keep real what is expensive** (alu,
-   registers, bus sharing, the U25 bridge, memory decode). A rig stand-in
-   is dangerous exactly when it is BETTER than the hardware — schematic
-   bug 4 was a bridge defect that a rig-emulated bridge passes clean.
-2. **Driven-wire count is the gate and may never go up.** Fewer rig wires
-   == fewer rig-introduced error modes; the same goal. Risk is asymmetric:
-   a wrong SAMPLED wire is a false FAIL, a wrong DRIVEN wire can fight a
-   real driver, and a wrong driven STROBE is worst because strobes are
-   ENABLES.
+> **Sample a signal at block level only if its value depends on more than
+> one member of the block.**
 
-The control unit has the highest fan-out in the machine, so a rig
-impersonating it would build the largest and most dangerous harness of the
-project. Make it real first:
+Four categories, all derived from the netlist, none hand-written:
 
-    BLOCK 1  root + microcode + control_word     ~11 driven
-    BLOCK 2  + pc + mar + memory                  11  (three boards free)
-    BLOCK 3  + mdr                                 6  (real IR)
-    BLOCK 4  + registers + alu                     2  (real flags)
-    BLOCK 5  + io, single-stepped                  2
-    BLOCK 6  free-run, Y1 in socket                0  (8 wires + GND + HALT)
+    COPPER  out of one member AND in of another -> DROPPED, wired
+            board-to-board, rig never touches it
+    DRIVE   in of a member, out of none, needed as stimulus -> rig drives
+    STRAP   in of a member, out of none, NOT needed -> tied on the board
+    SAMPLE  out of a member, not copper, not already retired
 
-An earlier datapath-first plan was inverted on 2026-07-28 for exactly the
+Every retirement must NAME the test that earned it.
+Accepted exception: END/HALT are copper but sampled in every block —
+nothing else segments the instruction stream or sees the freeze.
+
+**Driven-wire count is the gate and may never go up.** Risk is asymmetric:
+a wrong SAMPLED wire is a false FAIL, a wrong DRIVEN wire can fight a real
+driver, and a wrong driven STROBE is worst because strobes are ENABLES.
+
+**Keep real what is expensive** (alu, registers, bus sharing, the U25
+bridge, memory decode). A rig stand-in is dangerous exactly when it is
+BETTER than the hardware — schematic bug 4 was a bridge defect a
+rig-emulated bridge passes clean.
+
+    BLOCK  ADDS                          DRIVEN  SAMPLED  JUMPERS
+    1      root+microcode+control_word      8       27     35+GND
+    2      + pc + mar + memory              8       11     19+GND
+    3      + mdr                            0       11     11+GND
+    4      + registers + alu                0       11     11+GND
+    5      + io                             0       11     11+GND
+    6      free-run                         0        9      9+GND
+
+CLK is sampled in blocks 1-5 as a CAPTURE QUALIFIER (root.clock still owns it
+as an assertion): the microcode ROM outputs are invalid for one access time
+after T changes, and a blind sampler splits one T-state into several frames.
+Sampled, so driven is unchanged.
+
+Driven hits ZERO at Block 3 when the real IR fetches the machine's own
+instruction bytes. From there the rig cannot fight anything by
+construction. END/HALT are the same two wires (D45/D42, tapped at
+**U61.3/U61.5**, the consumer end) in all six blocks.
+
+An earlier datapath-first plan was inverted on 2026-07-28 for the
 wire-count reason. Don't re-propose it.
+
+**NOTHING IS EVER PULLED — but rig jumpers come off freely.** Chips and
+board-to-board copper are never touched; Y1 stays seated from Block 1 to
+Block 6. Rig jumpers are removed as they retire — that IS the ladder.
+Temporary board straps (`WRITE_DIR`, `W0-7`, `FLAG_Z`) must come off when
+real copper takes over the net, or a real driver meets a tie.
+
+**Consequence: the rig never owns the clock.** `CLK` is U27.5 and `RESET`
+is U27.9, both '74 totem-pole outputs; the only non-contending injection
+point needs Y1 out of its socket. **Every block free-runs at 1.024MHz and
+there is no single-stepping anywhere.** Every test is
+burst-capture-and-decode; reset is the button on an `ARM` prompt.
 
 **Block 1 is blocked on tooling that does not exist yet.** The rig's pin
 bundles are per-module, and root/microcode/control_word reuse the same
 Mega pins — there is no `pins <block>` and so no table to wire against.
-Build block support in `kicad_contracts.py` first (union of members,
-drop what becomes copper between them but keep it as sampled probes,
-hard-error on pin collisions), then `mod_control.c`. Full checklist in
-BRINGUP.md under "UNFINISHED WORK".
+Build block support in `kicad_contracts.py` first (BLOCKS table, the four
+categories above, `retire`/`strap` as dicts carrying citations, hard-error
+on pin collisions, emit a FLOAT list), host test RED first, then
+`mod_control.c`. Full checklist in BRINGUP.md under "UNFINISHED WORK".
 
 ## The machine invariant (do not re-derive)
 

@@ -539,4 +539,14 @@ static const uint16_t MC_REAL_WORDS[4096] PROGMEM = {
     0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000, 0x1000,
 };
 
+/* Every opcode the microcode actually implements, ascending. */
+#define MC_OPCODE_COUNT 18u
+static const uint8_t MC_OPCODES[MC_OPCODE_COUNT] PROGMEM = {
+    0x00, 0x11, 0x12, 0x13, 0x21, 0x22, 0x31, 0x32, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x51, 0xFF,
+};
+
+/* Opcodes whose last row carries HALT instead of END. END-segmented
+   capture cannot bracket these — the sequencer stops. */
+#define MC_HALT_OPCODE 0xFFu
+
 #endif

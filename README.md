@@ -187,19 +187,32 @@ The integration ladder, control unit first, with the rig shedding wires at
 every step until it is only watching:
 
 ```
-BLOCK 1   root + microcode + control_word      ~11 rig-driven wires
-BLOCK 2   + pc + mar + memory                   11   (three boards free)
-BLOCK 3   + mdr                                  6   (real IR — it fetches)
-BLOCK 4   + registers + alu                      2   (real flags)
-BLOCK 5   + io, single-stepped                   2
-BLOCK 6   free-run, crystal in socket            0   (8 wires + GND + HALT)
+BLOCK             ADDS                          DRIVEN  SAMPLED  JUMPERS
+BLOCK 1   root + microcode + control_word          8       27     35+GND
+BLOCK 2   + pc + mar + memory                      8       11     19+GND
+BLOCK 3   + mdr        (real IR — it fetches)      0       11     11+GND
+BLOCK 4   + registers + alu    (5+3 happens)       0       11     11+GND
+BLOCK 5   + io                                     0       11     11+GND
+BLOCK 6   free-run, crystal already seated         0        9      9+GND
 ```
 
 The ordering is not arbitrary. Every rig wire is a wire that can be one
 hole off, so fewer rig wires means fewer rig-introduced faults — and the
 control unit has the highest fan-out in the machine, which makes a rig
 standing in for it the most dangerous harness the project could build.
-Make it real first and that harness never exists.
+Make it real first and that harness never exists. Driven hits zero at
+Block 3, when the real instruction register takes over the fetch.
+
+Blocks are **black-box** tests: a signal is sampled only if its value
+depends on more than one board in the block. Anything one module already
+determines is retired to that module's test, and anything produced inside
+the block and consumed inside it is copper the rig never touches. Module
+coverage is already extensive; re-sampling it at block level would just be
+a module test with more wires and more ways to be wrong.
+
+Nothing is ever pulled — no chip leaves its socket and the crystal stays
+seated throughout — so the rig never owns the clock and every block runs
+free at 1.024MHz, captured in bursts rather than single-stepped.
 
 Bench procedure, per-stage wiring, failure meanings, and the full
 integration plan are in

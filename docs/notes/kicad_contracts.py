@@ -444,6 +444,390 @@ PIN_PROBES = {
 }
 
 
+# ---------------------------------------------------------------------------
+# BLOCKS — the integration ladder.
+#
+# THE BLOCK LAW (BRINGUP.md): sample a signal at block level ONLY if its value
+# depends on MORE THAN ONE MEMBER of the block. If one module alone determines
+# it, that module's test retired it. If an earlier block sampled it, that block
+# retired it. Everything produced inside the block and consumed inside it is
+# COPPER — wired board-to-board, the rig never touches it.
+#
+#   COPPER  OUT of one member AND IN of another          -> dropped
+#   DRIVE   IN of a member, OUT of none, needed as stimulus
+#   STRAP   IN of a member, OUT of none, NOT needed      -> tied on the board
+#   SAMPLE  OUT of a member, not copper, not retired
+#
+# EVERY unfed input must be named as drive or strap. An unnamed one is a
+# hard error, not a warning: a floating WRITE_DIR sets the U21 '245 direction
+# AND fires a real RAM write every clock low. That is the whole reason this
+# classifier exists.
+#
+# `retire` cites the MODULE test that earned the retirement. Retirement by an
+# earlier BLOCK is derived from ladder order, not retyped.
+# `sample_anyway` is the END/HALT exception, spelled out rather than special
+# cased: copper, but sampled because nothing else can segment the instruction
+# stream or observe the freeze from outside.
+BLOCKS = {
+    "block1": {
+        # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
+        # purely as a CAPTURE QUALIFIER. The microcode ROM outputs are invalid
+        # for one access time after T changes on the CLK rising edge, and the
+        # decoded strobes glitch through it. A blind sampler splits one T-state
+        # into several frames and loses t = position entirely. Gating on CLK
+        # low samples after the ROM has settled. Sampled, so driven is
+        # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
+        # T0-3 joins CLK as a REFERENCE, not an assertion: root.tstates still
+        # owns the counter. Sampling T LABELS EACH SAMPLE WITH ITS OWN T-STATE,
+        # which removes the need to infer t from position in a captured
+        # sequence. That inference needed the fetch frame to be unique — and in
+        # the SRC pass it is not, because LDA's T0/T1/T2 are all
+        # mux_pc+pc_up+src=ROM and differ only in DST. It also broke whenever a
+        # single T-state got no sample. Four sampled wires make both failure
+        # modes structurally impossible (2026-07-30).
+        "qualify": ["CLK", "T0", "T1", "T2", "T3"],
+        "members": ["root", "microcode", "control_word"],
+        "primary": "decode",
+        "drive": [f"IRB{i}" for i in range(8)],
+        "retire": {
+            "CLK":      "root.clock",
+            "~{CLK}":   "root.clock",
+            "RESET":    "root.reset",
+            "~{RESET}": "root.reset",
+        },
+        "strap": {"FLAG_Z": ("HIGH", "control_word.truth")},
+        "sample_anyway": ["CW12=END", "CW15=HALT"],
+    },
+    "block2": {
+        # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
+        # purely as a CAPTURE QUALIFIER. The microcode ROM outputs are invalid
+        # for one access time after T changes on the CLK rising edge, and the
+        # decoded strobes glitch through it. A blind sampler splits one T-state
+        # into several frames and loses t = position entirely. Gating on CLK
+        # low samples after the ROM has settled. Sampled, so driven is
+        # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
+        "qualify": ["CLK"],
+        "members": ["root", "microcode", "control_word", "pc", "mar", "memory"],
+        "primary": "fetch",
+        "drive": [f"IRB{i}" for i in range(8)],
+        "retire": {},
+        "strap": dict({"FLAG_Z": ("HIGH", "control_word.truth"),
+                       "WRITE_DIR": ("LOW", "memory.window")},
+                      **{f"W{i}": ("PULLDOWN10K", "memory.ramrw") for i in range(8)}),
+        "sample_anyway": ["CW12=END", "CW15=HALT"],
+    },
+    "block3": {
+        # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
+        # purely as a CAPTURE QUALIFIER. The microcode ROM outputs are invalid
+        # for one access time after T changes on the CLK rising edge, and the
+        # decoded strobes glitch through it. A blind sampler splits one T-state
+        # into several frames and loses t = position entirely. Gating on CLK
+        # low samples after the ROM has settled. Sampled, so driven is
+        # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
+        "qualify": ["CLK"],
+        "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
+                    "mdr"],
+        "primary": "opcodes",
+        "drive": [],
+        "retire": {},
+        "strap": {"FLAG_Z": ("HIGH", "control_word.truth")},
+        # IRB is copper now (real IR). Sampled at the CONSUMER end anyway: it
+        # is the mirror-witness for the U25 bridge, because block2 read that
+        # same byte at MDR, BEFORE it crossed U25 and U34.
+        "sample_anyway": ["CW12=END", "CW15=HALT"] + [f"IRB{i}" for i in range(8)],
+    },
+    "block4": {
+        # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
+        # purely as a CAPTURE QUALIFIER. The microcode ROM outputs are invalid
+        # for one access time after T changes on the CLK rising edge, and the
+        # decoded strobes glitch through it. A blind sampler splits one T-state
+        # into several frames and loses t = position entirely. Gating on CLK
+        # low samples after the ROM has settled. Sampled, so driven is
+        # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
+        "qualify": ["CLK"],
+        "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
+                    "mdr", "registers", "alu"],
+        "primary": "milestone",
+        "drive": [],
+        "retire": {},
+        "strap": {},
+        "sample_anyway": ["CW12=END", "CW15=HALT"],
+    },
+    "block5": {
+        # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
+        # purely as a CAPTURE QUALIFIER. The microcode ROM outputs are invalid
+        # for one access time after T changes on the CLK rising edge, and the
+        # decoded strobes glitch through it. A blind sampler splits one T-state
+        # into several frames and loses t = position entirely. Gating on CLK
+        # low samples after the ROM has settled. Sampled, so driven is
+        # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
+        "qualify": ["CLK"],
+        "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
+                    "mdr", "registers", "alu", "io"],
+        "primary": "run",
+        "drive": [],
+        "retire": {},
+        # SW1 is set to 0xF7 at the bench, but IS0-7 never crosses a sheet
+        # boundary (switches -> '244 is all on the io board), so it is not a
+        # contract signal and cannot be a strap. See BRINGUP.md block5 for the
+        # setting and why 0xF7 is the witness value.
+        "strap": {},
+        "sample_anyway": (["CW12=END", "CW15=HALT"] +
+                          [f"OB{i}" for i in range(8)]),
+    },
+    "block6": {
+        "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
+                    "mdr", "registers", "alu", "io"],
+        "primary": "acceptance",
+        "drive": [],
+        "retire": {},
+        "strap": {},          # SW1=0xF7 is a bench setting, not a contract net
+        # END drops here: block5 proved the 4-END-then-HALT sequence, so its
+        # only job is done. HALT stays — it is the terminal marker AND the
+        # burst's own trigger.
+        "sample_anyway": ["CW15=HALT"] + [f"OB{i}" for i in range(8)],
+    },
+}
+
+# Blocks whose signals do not land where the fixed bus rules would put them.
+# Only block1 needs this: capture_burst() reads WHOLE PORTS, so each decoder
+# group must sit in exactly one port or it cannot be read coherently — and the
+# 8 SRC enables in one port is precisely what makes block1.onehot a single
+# read. The anchor group (SA/END/PC_UP/PC_MAR_MUX/HALT) and IRB already fall
+# out of MEGA_PORT_BY_PREFIX correctly.
+# CLK must land in one of the TWO PORTS each capture pass reads, or the
+# qualifier is never sampled. Every block's captures include PL, and PL0 is
+# PL's one free bit (CW8 is copper), so CLK sits on D49 in EVERY block — the
+# same hole throughout, exactly like END on D45 and HALT on D42. Left to the
+# pool it landed on PD7/D38, which no capture pass reads.
+_CLK_PIN = {"CLK": "PL0/D49"}
+
+BLOCK_PIN_ASSIGN = {
+    "block2": dict(_CLK_PIN),
+    "block3": dict(_CLK_PIN),
+    "block4": dict(_CLK_PIN),
+    "block5": dict(_CLK_PIN),
+    "block1": {
+        # DST group -> PORTA, D22..D28
+        "~{REG_A_LOAD}":   "PA0/D22",
+        "~{REG_B_LOAD}":   "PA1/D23",
+        "~{REG_C_LOAD}":   "PA2/D24",
+        "~{MAR_LO_LOAD}":  "PA3/D25",
+        "~{MAR_HI_LOAD}":  "PA4/D26",
+        "~{IR_LOAD}":      "PA5/D27",
+        "~{RAM_LOAD}":     "PA6/D28",
+        # SRC group -> PORTC, D30..D37 (all 8 bits, one read decides onehot)
+        "SRC_ACTIVE":      "PC7/D30",
+        "~{ROM_OUT}":      "PC6/D31",
+        "~{RAM_OUT}":      "PC5/D32",
+        "~{REG_A_OUT}":    "PC4/D33",
+        "~{REG_B_OUT}":    "PC3/D34",
+        "~{REG_C_OUT}":    "PC2/D35",
+        "~{ALU_OUT}":      "PC1/D36",
+        "~{SW_OUT}":       "PC0/D37",
+        # CLK -> PL0, the anchor port's only free bit (CW8 is copper), so the
+        # qualifier arrives in the SAME READ as the frame it qualifies
+        "CLK":             "PL0/D49",
+        # T0-3 -> PF4..PF7, the top nibble of the jmp port. One read of PF now
+        # yields the jmp strobes AND the T-state that labels them. Block-1 only:
+        # block2 fills PF with MDR0-7, and blocks 2-6 do not decode per-T.
+        "T0":              "PF4/A4",
+        "T1":              "PF5/A5",
+        "T2":              "PF6/A6",
+        "T3":              "PF7/A7",
+        # JMP group -> PORTF, A0..A3
+        "~{PC_CLEAR}":     "PF0/A0",
+        "~{MDR_OUT}":      "PF1/A1",
+        "~{REG_OUT_LOAD}": "PF2/A2",
+        "~{PC_LOAD}":      "PF3/A3",
+    },
+}
+
+
+def _member_owner(contracts, members):
+    """signal -> (producers, consumers) as sets of member tokens."""
+    prod, cons = {}, {}
+    for sheet in contracts:
+        tok = mod_token(sheet)
+        if tok not in members:
+            continue
+        for label, _o in contracts[sheet]["OUT"]:
+            for sig in expand(label):
+                prod.setdefault(sig, set()).add(tok)
+        for label, _o in contracts[sheet]["IN"]:
+            for sig in expand(label):
+                cons.setdefault(sig, set()).add(tok)
+        for label, _o in contracts[sheet]["BIDIR"]:
+            for sig in expand(label):
+                prod.setdefault(sig, set()).add(tok)
+                cons.setdefault(sig, set()).add(tok)
+    return prod, cons
+
+
+def _member_io(contracts, members):
+    """(ins, outs) over the union of `members`, as sets of expanded signals.
+    BIDIR counts as both. Raises if a member names no sheet."""
+    seen, ins, outs = set(), set(), set()
+    for sheet in contracts:
+        tok = mod_token(sheet)
+        if tok not in members:
+            continue
+        seen.add(tok)
+        for kind, tgt in (("IN", ins), ("OUT", outs), ("BIDIR", None)):
+            for label, _o in contracts[sheet][kind]:
+                for sig in expand(label):
+                    if tgt is None:
+                        ins.add(sig)
+                        outs.add(sig)
+                    else:
+                        tgt.add(sig)
+    missing = set(members) - seen
+    if missing:
+        raise SystemExit(f"block: unknown member module(s): {sorted(missing)}")
+    return ins, outs
+
+
+def block_surface(contracts, name, spec, retired_by=None):
+    """Classify one block's signals per THE BLOCK LAW.
+
+    retired_by: {signal: citation} accumulated from earlier blocks and from
+    module tests. Signals in it are not sampled again."""
+    members = spec["members"]
+    ins, outs = _member_io(contracts, members)
+    universe = ins | outs
+    copper = ins & outs
+    unfed = ins - outs                       # IN with no driver in this block
+    fresh = outs - ins                       # OUT that leaves the block
+
+    retired_by = dict(retired_by or {})
+    for sig, cite in spec.get("retire", {}).items():
+        if sig not in universe:
+            raise SystemExit(
+                f"block {name}: retire names a signal not in the block: {sig}")
+        retired_by[sig] = cite
+
+    strap = {}
+    for sig, val in spec.get("strap", {}).items():
+        if sig not in unfed:
+            raise SystemExit(
+                f"block {name}: strap names {sig}, which is not an unfed input "
+                f"of this block (it is "
+                f"{'copper' if sig in copper else 'not present'})")
+        strap[sig] = val
+
+    drive = []
+    for sig in spec.get("drive", []):
+        if sig not in unfed:
+            raise SystemExit(
+                f"block {name}: drive names {sig}, which is not an unfed input "
+                f"of this block (it is "
+                f"{'copper' if sig in copper else 'not present'}) — the rig "
+                f"would be fighting a real driver")
+        if sig in strap:
+            raise SystemExit(f"block {name}: {sig} is both driven and strapped")
+        drive.append(sig)
+
+    floats = sorted(unfed - set(drive) - set(strap))
+    if floats:
+        raise SystemExit(
+            f"block {name}: unfed input(s) left unclassified: {floats}. "
+            f"Every input with no driver in the block must be named as drive "
+            f"or strap — a floating enable or direction pin is a live hazard "
+            f"(see WRITE_DIR).")
+
+    qualify = list(spec.get("qualify", []))
+    for sig in qualify:
+        if sig not in outs:
+            raise SystemExit(
+                f"block {name}: qualify names {sig}, which no member drives")
+
+    sample = sorted(s for s in fresh if s not in retired_by)
+    for sig in spec.get("sample_anyway", []):
+        if sig not in copper:
+            raise SystemExit(
+                f"block {name}: sample_anyway names {sig}, which is not copper. "
+                f"The exception exists only for signals the law would drop.")
+        if sig not in sample:
+            sample.append(sig)
+    for sig in qualify:
+        if sig not in sample:
+            sample.append(sig)
+    sample.sort()
+
+    # WHICH BOARD DOES THE WIRE LAND ON? Not always the producer:
+    #   drive         -> the member that CONSUMES it (that is the input pin)
+    #   sample        -> the member that PRODUCES it (tap at the source)
+    #   sample_anyway -> the member that CONSUMES it (STRIKE-7 FAR-END rule:
+    #                    END/HALT at root's U61, IRB at microcode's U16, OB at
+    #                    the io end — the tap proves the RUN, not just the pin)
+    prod, cons = _member_owner(contracts, members)
+    anyway = set(spec.get("sample_anyway", []))
+    owner = {}
+    for sig in drive:
+        owner[sig] = sorted(cons.get(sig, {"?"}))[0]
+    for sig in sample:
+        pick = cons if sig in anyway else prod
+        fallback = prod if sig in anyway else cons
+        owner[sig] = sorted(pick.get(sig) or fallback.get(sig) or {"?"})[0]
+
+    return {"name": name, "members": members, "primary": spec.get("primary", ""),
+            "owner": owner,
+            "copper": sorted(copper), "drive": drive, "strap": strap,
+            "sample": sample, "qualify": qualify, "floats": floats,
+            "retired": sorted(retired_by), "retired_by": retired_by}
+
+
+def build_blocks(contracts, blocks=None):
+    """Walk the ladder in order, cascading retirements forward: whatever a
+    block samples is retired for every block after it."""
+    blocks = BLOCKS if blocks is None else blocks
+    out, retired_by = {}, {}
+    for name, spec in blocks.items():
+        surf = block_surface(contracts, name, spec, retired_by)
+        out[name] = surf
+        cite = f"{name}.{surf['primary']}"
+        for sig in surf["sample"]:
+            retired_by.setdefault(sig, cite)
+        for sig, c in surf["retired_by"].items():
+            retired_by.setdefault(sig, c)
+    return out
+
+
+def _wire_key(row):
+    """Mega header sweep order: D53 down to D2, then A15 down to A0."""
+    pin = row[1].split("/")[1]
+    return (0 if pin[0] == "D" else 1, -int(pin[1:]))
+
+
+def block_pins(contracts, name, surf=None):
+    """(signal, megapin, dir, owner) rows for a block bundle, in wiring
+    order. dir is the RIG's direction: 'O' drives the DUT, 'I' samples it.
+    owner is the MEMBER BOARD the wire lands on — see block_surface()."""
+    if surf is None:
+        surf = build_blocks(contracts)[name]
+    assign = BLOCK_PIN_ASSIGN.get(name, {})
+    unknown = set(assign) - set(surf["drive"]) - set(surf["sample"])
+    if unknown:
+        raise SystemExit(f"BLOCK_PIN_ASSIGN[{name}]: signal not in the bundle: "
+                         f"{sorted(unknown)}")
+    pool = [p for p in POOL if p not in set(assign.values())]
+    rows, used = [], {}
+    for sig, d in ([(s, 'O') for s in surf["drive"]] +
+                   [(s, 'I') for s in surf["sample"]]):
+        if sig in assign:
+            pin = assign[sig]
+        else:
+            bp = bus_pin(sig)
+            pin = bp[0] if bp else pool.pop(0)
+        if pin in used:
+            raise SystemExit(f"block {name}: pin {pin} claimed by both "
+                             f"{used[pin]} and {sig}")
+        used[pin] = sig
+        rows.append((sig, pin, d, surf["owner"].get(sig, "?")))
+    rows.sort(key=_wire_key)
+    return rows
+
+
 def bus_pin(signal):
     """Fixed-port pin for a bus bit, trying every alias component
     ('M15=ROM_EN' matches via 'M15'). Returns (pin, priority) where priority
@@ -476,8 +860,20 @@ def emit_pinmap(contracts, out_path):
              "#include <avr/pgmspace.h>", "",
              "/* All tables live in flash (PROGMEM). Read entries with memcpy_P;",
              "   the embedded char pointers are flash addresses (pgm_read_byte). */",
-             "typedef struct { const char *signal; const char *megapin; char dir; } sigpin_t;",
-             "typedef struct { const char *module; const sigpin_t *sig; uint8_t n; } modmap_t;", ""]
+             "/* owner = the MEMBER BOARD this wire lands on. For a per-module bundle",
+             "   it is the module itself; for a BLOCK it is resolved per signal, and",
+             "   it is NOT always the producer — END/HALT tap at root's U61, IRB at",
+             "   microcode's U16, OB at the io end (strike-7 far-end rule). It is",
+             "   also what slot_of() must be keyed on, since slot maps are per",
+             "   module and a block has no slots of its own. */",
+             "typedef struct { const char *signal; const char *megapin; char dir;",
+             "                 const char *owner; } sigpin_t;",
+             "/* members = the boards this bundle spans, in LADDER ORDER. For a",
+             "   per-module bundle it is just the module; for a BLOCK it is every",
+             "   member, so `pins block1` opens by telling you which boards have to",
+             "   be on the bench before a single jumper goes in. */",
+             "typedef struct { const char *module; const sigpin_t *sig; uint8_t n;",
+             "                 const char *members; } modmap_t;", ""]
     interned, strdefs = {}, []
 
     def sym(s):
@@ -540,14 +936,24 @@ def emit_pinmap(contracts, out_path):
         # Wiring order: Mega header sweep — D53 down to D2, then A15 down
         # to A0. `pins <mod>` prints in table order, so this IS the order
         # you jumper in.
-        def wire_key(row):
-            pin = row[1].split("/")[1]
-            return (0 if pin[0] == "D" else 1, -int(pin[1:]))
-        rows.sort(key=wire_key)
-        arr = ",\n    ".join(f"{{{sym(s)}, {sym(p)}, '{d}'}}" for s, p, d in rows)
+        rows.sort(key=_wire_key)
+        arr = ",\n    ".join(f"{{{sym(s)}, {sym(p)}, '{d}', {sym(tok)}}}"
+                             for s, p, d in rows)
         mod_blocks.append(f"static const sigpin_t sig_{tok}[] PROGMEM = {{\n    {arr}\n}};")
-        mods.append((tok, len(rows)))
-    arr = ",\n    ".join(f'{{{sym(t)}, sig_{t}, {n}}}' for t, n in mods)
+        mods.append((tok, len(rows), tok))
+
+    # Block bundles ride the same MODMAPS machinery — `pins block1`,
+    # `run block1.decode`, sig_lookup() and coverage_lint all work unchanged.
+    for bname, surf in build_blocks(contracts).items():
+        rows = block_pins(contracts, bname, surf)
+        arr = ",\n    ".join(f"{{{sym(s)}, {sym(p)}, '{d}', {sym(o)}}}"
+                             for s, p, d, o in rows)
+        mod_blocks.append(
+            f"static const sigpin_t sig_{bname}[] PROGMEM = {{\n    {arr}\n}};")
+        mods.append((bname, len(rows), ", ".join(surf["members"])))
+
+    arr = ",\n    ".join(f'{{{sym(t)}, sig_{t}, {n}, {sym(mem)}}}'
+                         for t, n, mem in mods)
     lines += strdefs + [""] + mod_blocks
     lines += ["", f"static const modmap_t MODMAPS[] PROGMEM = {{\n    {arr}\n}};",
               f"#define MODMAP_COUNT {len(mods)}", "", "#endif"]

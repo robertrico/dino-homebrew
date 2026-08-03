@@ -1,0 +1,42 @@
+
+DINO bring-up rig  'help' for commands
+> run block1
+     op=0x00  frames=40   (anchor,dst) as captured:
+       (60,5F) (10,7F) (60,5F) (10,7F) (60,5F) (10,7F) (60,5F) (10,7F) (60,5F) (10,7F) (60,5F) (10,7F) (60,5F) (10,7
+F)
+       microcode says: t0=(60,5F) t1=(10,7F)
+     op=0x11  frames=40   (anchor,dst) as captured:
+       (60,5F) (70,7E) (60,5F) (70,7E) (60,5F) (70,7E) (60,5F) (70,7E) (60,5F) (70,7E) (60,5F) (70,7E) (60,5F) (70,7
+E)
+       microcode says: t0=(60,5F) t1=(70,7E)
+     op=0x41  frames=40   (anchor,dst) as captured:
+       (16,7E) (60,5F) (16,7E) (60,5F) (16,7E) (60,5F) (16,7E) (60,5F) (16,7E) (60,5F) (16,7E) (60,5F) (16,7E) (60,5
+F)
+       microcode says: t0=(60,5F) t1=(16,7E)
+PASS block1.frames
+     responders (opcode:anchor):
+       11:70 12:70 13:70 21:60 22:60 31:60 32:60 41:16
+       42:14 43:1C 44:1A 45:18 46:10 47:1E 48:12 51:10
+       FF:80
+     responders=17  expected=17 (MC_OPCODES minus NOP, whose T1 IS the fill row)
+     bits set in EVERY responder = 0x00   bits set in ANY = 0xFF
+PASS block1.opmap
+     samples compared: 29043   transient T-states: 0
+PASS block1.decode
+PASS block1.onehot
+     ARM: press RESET (10s)  IRB stays at HALT
+PASS block1.seq
+PASS block1.stability
+SUMMARY: 6 pass, 0 fail
+>
+
+
+
+
+
+
+
+
+
+
+

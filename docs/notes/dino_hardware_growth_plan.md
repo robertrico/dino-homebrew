@@ -61,7 +61,36 @@ model — assert the boundary address and the one below it, both directions.
 
 ---
 
-## STEP 2 — The UART
+## STEP 2 — The UART. **NO ISA CHANGE REQUIRED.**
+
+**This is the key sequencing fact and it is easy to miss.** UART registers
+live at FIXED addresses, and `LDA addr` / `STA addr` already reach fixed
+addresses. So once step 1's decode exists, a polled echo loop runs on the
+CURRENT 18-instruction ISA, with no microcode reburn at all:
+
+    loop:  LDA  LSR        ; line status
+           LDBI 0x01       ; Data Ready mask
+           AND             ; sets FLAG_Z
+           JNZ  ready
+           JMP  loop
+    ready: LDA  RBR        ; read the char
+           STA  THR        ; echo it
+           JMP  loop
+
+`AND` sets `FLAG_Z` and `JNZ` branches on it; both already exist and both are
+proven by the block ladder. A terminal can be talking to the machine before a
+single new instruction is encoded.
+
+**Corollary: `IN` is REMOVED from the instruction plan.** `SRC=SW` was only
+ever the input path. Once the UART is memory-mapped the keyboard is the input,
+and `SRC=SW` stays the unreachable curiosity it is today. Do not spend a
+microcode row on it. (`dino_isa_for_basic.md` §2 updated to match.)
+
+**Timing is not a concern.** A five-instruction poll loop is roughly 10us
+against ~1ms per character at 9600 baud — about 100x headroom. Even 115200
+(87us/char) is comfortable.
+
+### The part list
 
 **Part note:** the 16550 is National/TI lineage (`NS16550A`, today
 `PC16550DN`). Intel's parts are the 8250 UART and the 8251 USART. The 16550

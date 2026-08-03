@@ -46,3 +46,17 @@ static const uint8_t PR_PROGRAM[PR_PROGRAM_LEN] PROGMEM = {
 #define PR_EXPECT_SUM 0x08u   /* the milestone result */
 
 #endif
+
+
+/* progressive ISA-coverage images. Each ends OUT; HALT
+   because OB is the only datapath observable on the block
+   ladder. Burn as needed; PROG.bin (the milestone) is never
+   regenerated under another name. */
+#define PR_COV_COUNT 4u
+typedef struct { const char *name; uint16_t crc; uint8_t expect_ob; } prcov_t;
+static const prcov_t PR_COVERAGE[PR_COV_COUNT] = {
+    {"alu", 0x642Au, 0x39u},
+    {"mem", 0x3E4Bu, 0xC5u},
+    {"flow", 0xCED0u, 0x39u},
+    {"loop", 0x8727u, 0x15u},
+};

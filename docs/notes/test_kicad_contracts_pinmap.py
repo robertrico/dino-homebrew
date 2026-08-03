@@ -16,22 +16,52 @@ assert "#include <avr/pgmspace.h>" in t, "missing pgmspace include"
 strings = dict(re.findall(r'static const char (pm_s\d+)\[\] PROGMEM = "([^"]*)";', t))
 assert strings, "no interned PROGMEM strings emitted"
 
-# Resolve each sig_<mod> block back to (signal, pin, dir) tuples.
-modules = {}  # tok -> [(sig, pin, dir), ...]
+# Resolve each sig_<mod> block back to (signal, pin, dir, owner) tuples.
+# owner is the MEMBER BOARD the wire lands on — for a per-module bundle it is
+# the module itself; for a BLOCK it is resolved per signal and is not always
+# the producer (END/HALT tap at root, IRB at microcode: strike-7 far end).
+# slot_of() must be keyed on it, since slot maps are per module.
+modules = {}  # tok -> [(sig, pin, dir, owner), ...]
 for tok, block in re.findall(r'static const sigpin_t sig_(\w+)\[\] PROGMEM = \{(.*?)\};', t, re.S):
-    rows = re.findall(r"\{(pm_s\d+), (pm_s\d+), '(\w)'\}", block)
+    rows = re.findall(r"\{(pm_s\d+), (pm_s\d+), '(\w)', (pm_s\d+)\}", block)
     assert rows, f"sig_{tok} has no parseable rows"
-    modules[tok] = [(strings[s], strings[p], d) for s, p, d in rows]
+    modules[tok] = [(strings[s], strings[p], d, strings[o]) for s, p, d, o in rows]
 assert modules, "no sig_<mod> PROGMEM blocks found"
+
+# A per-module bundle owns every one of its own wires.
+for tok, rows in modules.items():
+    if tok.startswith("block"):
+        continue
+    for sig, _pin, _d, owner in rows:
+        assert owner == tok, f"{tok}: {sig} claims owner {owner}"
+
+# Every block wire must name a real module as its owner, never the block.
+mods_only = {k for k in modules if not k.startswith("block")}
+for tok, rows in modules.items():
+    if not tok.startswith("block"):
+        continue
+    for sig, _pin, _d, owner in rows:
+        assert owner in mods_only, f"{tok}: {sig} owner {owner!r} is not a module"
 
 # MODMAPS must be PROGMEM and reference the module name strings + arrays.
 mm = re.search(r'static const modmap_t MODMAPS\[\] PROGMEM = \{(.*?)\};', t, re.S)
 assert mm, "MODMAPS must be PROGMEM"
-mod_names = [strings[s] for s, _tok, _n in
-             re.findall(r'\{(pm_s\d+), sig_(\w+), (\d+)\}', mm.group(1))]
-for s, tok, n in re.findall(r'\{(pm_s\d+), sig_(\w+), (\d+)\}', mm.group(1)):
+_rows = re.findall(r'\{(pm_s\d+), sig_(\w+), (\d+), (pm_s\d+)\}', mm.group(1))
+mod_names = [strings[s] for s, _tok, _n, _m in _rows]
+for s, tok, n, memsym in _rows:
     assert strings[s] == tok, f"MODMAPS name {strings[s]} != array token {tok}"
     assert int(n) == len(modules[tok]), f"MODMAPS count mismatch for {tok}"
+    members = [x.strip() for x in strings[memsym].split(",")]
+    if tok.startswith("block"):
+        # every member must be a real module bundle, and every owner appearing
+        # in the block's rows must be one of the declared members
+        for mname in members:
+            assert mname in modules, f"{tok}: member {mname!r} is not a module"
+        owners = {o for _s, _p, _d, o in modules[tok]}
+        assert owners <= set(members), \
+            f"{tok}: rows land on {owners - set(members)}, not declared members"
+    else:
+        assert members == [tok], f"{tok}: members {members} should be just itself"
 
 # The bus-position rules below are POOL-ALLOCATION invariants: they hold
 # for modules whose pins the generator hands out. They do NOT hold for
@@ -61,7 +91,7 @@ assert PIN_ASSIGN, "PIN_ASSIGN empty — exemption set would silently vanish"
 # pool-allocated signals, and those must keep obeying the bus rules.
 for tok, rows in modules.items():
     bench_pinned = PIN_ASSIGN.get(tok, {})
-    for sig, pin, _d in rows:
+    for sig, pin, _d, _o in rows:
         if sig in bench_pinned:
             continue
         # W bus pinned to PORTA in every module that has it
@@ -75,7 +105,7 @@ for tok, rows in modules.items():
             assert pin.startswith("PL7"), f"{sig} must be PL7/D42, got {pin} in {tok}"
         if "SA2" in sig:
             assert pin.startswith("PL1/D48"), f"{sig} (=CW9) must be PL1/D48, got {pin} in {tok}"
-assert any("M15" in sig for rows in modules.values() for sig, _p, _d in rows), \
+assert any("M15" in sig for rows in modules.values() for sig, _p, _d, _o in rows), \
     "no M15 signal mapped"
 
 # every module block present (sheet names, lowercased tokens)
@@ -85,7 +115,7 @@ for mod in ("root", "mar", "memory", "control_word"):
 # no signal assigned two different pins within one module
 for tok, rows in modules.items():
     seen = {}
-    for sig, pin, _d in rows:
+    for sig, pin, _d, _o in rows:
         assert sig not in seen, f"duplicate signal {sig} in {tok}"
         seen[sig] = pin
     assert len(set(seen.values())) == len(seen), f"pin double-booked in {tok}"

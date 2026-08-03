@@ -6,501 +6,642 @@
 
 /* All tables live in flash (PROGMEM). Read entries with memcpy_P;
    the embedded char pointers are flash addresses (pgm_read_byte). */
-typedef struct { const char *signal; const char *megapin; char dir; } sigpin_t;
-typedef struct { const char *module; const sigpin_t *sig; uint8_t n; } modmap_t;
+/* owner = the MEMBER BOARD this wire lands on. For a per-module bundle
+   it is the module itself; for a BLOCK it is resolved per signal, and
+   it is NOT always the producer — END/HALT tap at root's U61, IRB at
+   microcode's U16, OB at the io end (strike-7 far-end rule). It is
+   also what slot_of() must be keyed on, since slot maps are per
+   module and a block has no slots of its own. */
+typedef struct { const char *signal; const char *megapin; char dir;
+                 const char *owner; } sigpin_t;
+/* members = the boards this bundle spans, in LADDER ORDER. For a
+   per-module bundle it is just the module; for a BLOCK it is every
+   member, so `pins block1` opens by telling you which boards have to
+   be on the bench before a single jumper goes in. */
+typedef struct { const char *module; const sigpin_t *sig; uint8_t n;
+                 const char *members; } modmap_t;
 
 static const char pm_s0[] PROGMEM = "~{RESET}";
 static const char pm_s1[] PROGMEM = "PB0/D53";
-static const char pm_s2[] PROGMEM = "~{CLK}";
-static const char pm_s3[] PROGMEM = "PB1/D52";
-static const char pm_s4[] PROGMEM = "T3";
-static const char pm_s5[] PROGMEM = "PB2/D51";
-static const char pm_s6[] PROGMEM = "T2";
-static const char pm_s7[] PROGMEM = "PB3/D50";
-static const char pm_s8[] PROGMEM = "CW12=END";
-static const char pm_s9[] PROGMEM = "PL4/D45";
-static const char pm_s10[] PROGMEM = "CW15=HALT";
-static const char pm_s11[] PROGMEM = "PL7/D42";
-static const char pm_s12[] PROGMEM = "T1";
-static const char pm_s13[] PROGMEM = "PG0/D41";
-static const char pm_s14[] PROGMEM = "T0";
-static const char pm_s15[] PROGMEM = "PG1/D40";
-static const char pm_s16[] PROGMEM = "RESET";
-static const char pm_s17[] PROGMEM = "PG2/D39";
-static const char pm_s18[] PROGMEM = "CLK";
-static const char pm_s19[] PROGMEM = "PD7/D38";
-static const char pm_s20[] PROGMEM = "CW9=SA2";
-static const char pm_s21[] PROGMEM = "CW10=SA1";
-static const char pm_s22[] PROGMEM = "CW11=SA0";
-static const char pm_s23[] PROGMEM = "ALU_CIN";
-static const char pm_s24[] PROGMEM = "LE_TMP_B";
-static const char pm_s25[] PROGMEM = "PL0/D49";
-static const char pm_s26[] PROGMEM = "LE_TMP_A";
-static const char pm_s27[] PROGMEM = "PL1/D48";
-static const char pm_s28[] PROGMEM = "PL2/D47";
-static const char pm_s29[] PROGMEM = "PL3/D46";
-static const char pm_s30[] PROGMEM = "ALU_V";
-static const char pm_s31[] PROGMEM = "PL5/D44";
-static const char pm_s32[] PROGMEM = "ALU_C";
-static const char pm_s33[] PROGMEM = "PL6/D43";
-static const char pm_s34[] PROGMEM = "CRY";
-static const char pm_s35[] PROGMEM = "FLAG_Z";
-static const char pm_s36[] PROGMEM = "FLAG_V";
-static const char pm_s37[] PROGMEM = "FLAG_N";
-static const char pm_s38[] PROGMEM = "FLAG_C";
-static const char pm_s39[] PROGMEM = "Z";
-static const char pm_s40[] PROGMEM = "PC0/D37";
-static const char pm_s41[] PROGMEM = "~{REG_B_LOAD}";
-static const char pm_s42[] PROGMEM = "PC1/D36";
-static const char pm_s43[] PROGMEM = "~{REG_A_LOAD}";
-static const char pm_s44[] PROGMEM = "PC2/D35";
-static const char pm_s45[] PROGMEM = "~{ALU_OUT}";
-static const char pm_s46[] PROGMEM = "PC3/D34";
-static const char pm_s47[] PROGMEM = "W7";
-static const char pm_s48[] PROGMEM = "PC4/D33";
-static const char pm_s49[] PROGMEM = "W6";
-static const char pm_s50[] PROGMEM = "PC5/D32";
-static const char pm_s51[] PROGMEM = "W5";
-static const char pm_s52[] PROGMEM = "PC6/D31";
-static const char pm_s53[] PROGMEM = "W4";
-static const char pm_s54[] PROGMEM = "PC7/D30";
-static const char pm_s55[] PROGMEM = "W3";
-static const char pm_s56[] PROGMEM = "PA7/D29";
-static const char pm_s57[] PROGMEM = "W2";
-static const char pm_s58[] PROGMEM = "PA6/D28";
-static const char pm_s59[] PROGMEM = "W1";
-static const char pm_s60[] PROGMEM = "PA5/D27";
-static const char pm_s61[] PROGMEM = "W0";
-static const char pm_s62[] PROGMEM = "PA4/D26";
-static const char pm_s63[] PROGMEM = "CW6";
-static const char pm_s64[] PROGMEM = "CW7";
-static const char pm_s65[] PROGMEM = "CW8";
-static const char pm_s66[] PROGMEM = "~{PC_CLEAR}";
-static const char pm_s67[] PROGMEM = "~{PC_LOAD_JMP}";
-static const char pm_s68[] PROGMEM = "~{COND}";
-static const char pm_s69[] PROGMEM = "~{MDR_OUT}";
-static const char pm_s70[] PROGMEM = "~{REG_OUT_LOAD}";
-static const char pm_s71[] PROGMEM = "COND_TAKEN";
-static const char pm_s72[] PROGMEM = "PC_LOAD_JMP";
-static const char pm_s73[] PROGMEM = "~{PC_LOAD}";
-static const char pm_s74[] PROGMEM = "CW3";
-static const char pm_s75[] PROGMEM = "CW4";
-static const char pm_s76[] PROGMEM = "CW5";
-static const char pm_s77[] PROGMEM = "SRC_ACTIVE";
-static const char pm_s78[] PROGMEM = "~{ROM_OUT}";
-static const char pm_s79[] PROGMEM = "~{RAM_OUT}";
-static const char pm_s80[] PROGMEM = "~{REG_A_OUT}";
-static const char pm_s81[] PROGMEM = "~{REG_B_OUT}";
-static const char pm_s82[] PROGMEM = "~{REG_C_OUT}";
-static const char pm_s83[] PROGMEM = "~{SW_OUT}";
-static const char pm_s84[] PROGMEM = "CW0";
-static const char pm_s85[] PROGMEM = "CW1";
-static const char pm_s86[] PROGMEM = "CW2";
-static const char pm_s87[] PROGMEM = "~{REG_C_LOAD}";
-static const char pm_s88[] PROGMEM = "PA3/D25";
-static const char pm_s89[] PROGMEM = "~{MAR_LO_LOAD}";
-static const char pm_s90[] PROGMEM = "PA2/D24";
-static const char pm_s91[] PROGMEM = "~{MAR_HI_LOAD}";
-static const char pm_s92[] PROGMEM = "PA1/D23";
-static const char pm_s93[] PROGMEM = "~{IR_LOAD}";
-static const char pm_s94[] PROGMEM = "PA0/D22";
-static const char pm_s95[] PROGMEM = "~{RAM_LOAD}";
-static const char pm_s96[] PROGMEM = "PD2/D19";
-static const char pm_s97[] PROGMEM = "LE_MAR_LO";
-static const char pm_s98[] PROGMEM = "LE_MAR_HI";
-static const char pm_s99[] PROGMEM = "M8";
-static const char pm_s100[] PROGMEM = "M9";
-static const char pm_s101[] PROGMEM = "M10";
-static const char pm_s102[] PROGMEM = "M11";
-static const char pm_s103[] PROGMEM = "M12";
-static const char pm_s104[] PROGMEM = "M13";
-static const char pm_s105[] PROGMEM = "M14";
-static const char pm_s106[] PROGMEM = "M15=ROM_EN";
-static const char pm_s107[] PROGMEM = "~{RAM_EN}";
-static const char pm_s108[] PROGMEM = "CW14=PC_MAR_MUX";
-static const char pm_s109[] PROGMEM = "~{PC_MAR_MUX}";
-static const char pm_s110[] PROGMEM = "M0";
-static const char pm_s111[] PROGMEM = "M1";
-static const char pm_s112[] PROGMEM = "M2";
-static const char pm_s113[] PROGMEM = "M3";
-static const char pm_s114[] PROGMEM = "M4";
-static const char pm_s115[] PROGMEM = "M5";
-static const char pm_s116[] PROGMEM = "M6";
-static const char pm_s117[] PROGMEM = "M7";
-static const char pm_s118[] PROGMEM = "LE_IR";
-static const char pm_s119[] PROGMEM = "~{MDR_EN}";
-static const char pm_s120[] PROGMEM = "WRITE_DIR";
-static const char pm_s121[] PROGMEM = "LE_MDR";
-static const char pm_s122[] PROGMEM = "BUS_DIR";
-static const char pm_s123[] PROGMEM = "IRB7";
-static const char pm_s124[] PROGMEM = "PK7/A15";
-static const char pm_s125[] PROGMEM = "IRB6";
-static const char pm_s126[] PROGMEM = "PK6/A14";
-static const char pm_s127[] PROGMEM = "IRB5";
-static const char pm_s128[] PROGMEM = "PK5/A13";
-static const char pm_s129[] PROGMEM = "IRB4";
-static const char pm_s130[] PROGMEM = "PK4/A12";
-static const char pm_s131[] PROGMEM = "IRB3";
-static const char pm_s132[] PROGMEM = "PK3/A11";
-static const char pm_s133[] PROGMEM = "IRB2";
-static const char pm_s134[] PROGMEM = "PK2/A10";
-static const char pm_s135[] PROGMEM = "IRB1";
-static const char pm_s136[] PROGMEM = "PK1/A9";
-static const char pm_s137[] PROGMEM = "IRB0";
-static const char pm_s138[] PROGMEM = "PK0/A8";
-static const char pm_s139[] PROGMEM = "MDR7";
-static const char pm_s140[] PROGMEM = "PF7/A7";
-static const char pm_s141[] PROGMEM = "MDR6";
-static const char pm_s142[] PROGMEM = "PF6/A6";
-static const char pm_s143[] PROGMEM = "MDR5";
-static const char pm_s144[] PROGMEM = "PF5/A5";
-static const char pm_s145[] PROGMEM = "MDR4";
-static const char pm_s146[] PROGMEM = "PF4/A4";
-static const char pm_s147[] PROGMEM = "MDR3";
-static const char pm_s148[] PROGMEM = "PF3/A3";
-static const char pm_s149[] PROGMEM = "MDR2";
-static const char pm_s150[] PROGMEM = "PF2/A2";
-static const char pm_s151[] PROGMEM = "MDR1";
-static const char pm_s152[] PROGMEM = "PF1/A1";
-static const char pm_s153[] PROGMEM = "MDR0";
-static const char pm_s154[] PROGMEM = "PF0/A0";
-static const char pm_s155[] PROGMEM = "~{WRITE_DIR}";
-static const char pm_s156[] PROGMEM = "~{RAM_WRITE_EN}";
-static const char pm_s157[] PROGMEM = "RAM_MDR_DIS";
-static const char pm_s158[] PROGMEM = "~{RAM_MDR_EN}";
-static const char pm_s159[] PROGMEM = "CW13=PC_UP";
-static const char pm_s160[] PROGMEM = "OB7";
-static const char pm_s161[] PROGMEM = "OB6";
-static const char pm_s162[] PROGMEM = "OB5";
-static const char pm_s163[] PROGMEM = "OB4";
-static const char pm_s164[] PROGMEM = "OB3";
-static const char pm_s165[] PROGMEM = "OB2";
-static const char pm_s166[] PROGMEM = "OB1";
-static const char pm_s167[] PROGMEM = "OB0";
-static const char pm_s168[] PROGMEM = "~{REG_A_LE}";
-static const char pm_s169[] PROGMEM = "~{REG_B_LE}";
-static const char pm_s170[] PROGMEM = "~{REG_C_LE}";
-static const char pm_s171[] PROGMEM = "~{REG_OUT_LE}";
-static const char pm_s172[] PROGMEM = "~{A_EN}";
-static const char pm_s173[] PROGMEM = "~{B_EN}";
-static const char pm_s174[] PROGMEM = "~{C_EN}";
-static const char pm_s175[] PROGMEM = "root";
-static const char pm_s176[] PROGMEM = "alu";
-static const char pm_s177[] PROGMEM = "control_word";
-static const char pm_s178[] PROGMEM = "mar";
-static const char pm_s179[] PROGMEM = "mdr";
-static const char pm_s180[] PROGMEM = "memory";
-static const char pm_s181[] PROGMEM = "microcode";
-static const char pm_s182[] PROGMEM = "io";
-static const char pm_s183[] PROGMEM = "pc";
-static const char pm_s184[] PROGMEM = "registers";
+static const char pm_s2[] PROGMEM = "root";
+static const char pm_s3[] PROGMEM = "~{CLK}";
+static const char pm_s4[] PROGMEM = "PB1/D52";
+static const char pm_s5[] PROGMEM = "T3";
+static const char pm_s6[] PROGMEM = "PB2/D51";
+static const char pm_s7[] PROGMEM = "T2";
+static const char pm_s8[] PROGMEM = "PB3/D50";
+static const char pm_s9[] PROGMEM = "CW12=END";
+static const char pm_s10[] PROGMEM = "PL4/D45";
+static const char pm_s11[] PROGMEM = "CW15=HALT";
+static const char pm_s12[] PROGMEM = "PL7/D42";
+static const char pm_s13[] PROGMEM = "T1";
+static const char pm_s14[] PROGMEM = "PG0/D41";
+static const char pm_s15[] PROGMEM = "T0";
+static const char pm_s16[] PROGMEM = "PG1/D40";
+static const char pm_s17[] PROGMEM = "RESET";
+static const char pm_s18[] PROGMEM = "PG2/D39";
+static const char pm_s19[] PROGMEM = "CLK";
+static const char pm_s20[] PROGMEM = "PD7/D38";
+static const char pm_s21[] PROGMEM = "CW9=SA2";
+static const char pm_s22[] PROGMEM = "alu";
+static const char pm_s23[] PROGMEM = "CW10=SA1";
+static const char pm_s24[] PROGMEM = "CW11=SA0";
+static const char pm_s25[] PROGMEM = "ALU_CIN";
+static const char pm_s26[] PROGMEM = "LE_TMP_B";
+static const char pm_s27[] PROGMEM = "PL0/D49";
+static const char pm_s28[] PROGMEM = "LE_TMP_A";
+static const char pm_s29[] PROGMEM = "PL1/D48";
+static const char pm_s30[] PROGMEM = "PL2/D47";
+static const char pm_s31[] PROGMEM = "PL3/D46";
+static const char pm_s32[] PROGMEM = "ALU_V";
+static const char pm_s33[] PROGMEM = "PL5/D44";
+static const char pm_s34[] PROGMEM = "ALU_C";
+static const char pm_s35[] PROGMEM = "PL6/D43";
+static const char pm_s36[] PROGMEM = "CRY";
+static const char pm_s37[] PROGMEM = "FLAG_Z";
+static const char pm_s38[] PROGMEM = "FLAG_V";
+static const char pm_s39[] PROGMEM = "FLAG_N";
+static const char pm_s40[] PROGMEM = "FLAG_C";
+static const char pm_s41[] PROGMEM = "Z";
+static const char pm_s42[] PROGMEM = "PC0/D37";
+static const char pm_s43[] PROGMEM = "~{REG_B_LOAD}";
+static const char pm_s44[] PROGMEM = "PC1/D36";
+static const char pm_s45[] PROGMEM = "~{REG_A_LOAD}";
+static const char pm_s46[] PROGMEM = "PC2/D35";
+static const char pm_s47[] PROGMEM = "~{ALU_OUT}";
+static const char pm_s48[] PROGMEM = "PC3/D34";
+static const char pm_s49[] PROGMEM = "W7";
+static const char pm_s50[] PROGMEM = "PC4/D33";
+static const char pm_s51[] PROGMEM = "W6";
+static const char pm_s52[] PROGMEM = "PC5/D32";
+static const char pm_s53[] PROGMEM = "W5";
+static const char pm_s54[] PROGMEM = "PC6/D31";
+static const char pm_s55[] PROGMEM = "W4";
+static const char pm_s56[] PROGMEM = "PC7/D30";
+static const char pm_s57[] PROGMEM = "W3";
+static const char pm_s58[] PROGMEM = "PA7/D29";
+static const char pm_s59[] PROGMEM = "W2";
+static const char pm_s60[] PROGMEM = "PA6/D28";
+static const char pm_s61[] PROGMEM = "W1";
+static const char pm_s62[] PROGMEM = "PA5/D27";
+static const char pm_s63[] PROGMEM = "W0";
+static const char pm_s64[] PROGMEM = "PA4/D26";
+static const char pm_s65[] PROGMEM = "CW6";
+static const char pm_s66[] PROGMEM = "control_word";
+static const char pm_s67[] PROGMEM = "CW7";
+static const char pm_s68[] PROGMEM = "CW8";
+static const char pm_s69[] PROGMEM = "~{PC_CLEAR}";
+static const char pm_s70[] PROGMEM = "~{PC_LOAD_JMP}";
+static const char pm_s71[] PROGMEM = "~{COND}";
+static const char pm_s72[] PROGMEM = "~{MDR_OUT}";
+static const char pm_s73[] PROGMEM = "~{REG_OUT_LOAD}";
+static const char pm_s74[] PROGMEM = "COND_TAKEN";
+static const char pm_s75[] PROGMEM = "PC_LOAD_JMP";
+static const char pm_s76[] PROGMEM = "~{PC_LOAD}";
+static const char pm_s77[] PROGMEM = "CW3";
+static const char pm_s78[] PROGMEM = "CW4";
+static const char pm_s79[] PROGMEM = "CW5";
+static const char pm_s80[] PROGMEM = "SRC_ACTIVE";
+static const char pm_s81[] PROGMEM = "~{ROM_OUT}";
+static const char pm_s82[] PROGMEM = "~{RAM_OUT}";
+static const char pm_s83[] PROGMEM = "~{REG_A_OUT}";
+static const char pm_s84[] PROGMEM = "~{REG_B_OUT}";
+static const char pm_s85[] PROGMEM = "~{REG_C_OUT}";
+static const char pm_s86[] PROGMEM = "~{SW_OUT}";
+static const char pm_s87[] PROGMEM = "CW0";
+static const char pm_s88[] PROGMEM = "CW1";
+static const char pm_s89[] PROGMEM = "CW2";
+static const char pm_s90[] PROGMEM = "~{REG_C_LOAD}";
+static const char pm_s91[] PROGMEM = "PA3/D25";
+static const char pm_s92[] PROGMEM = "~{MAR_LO_LOAD}";
+static const char pm_s93[] PROGMEM = "PA2/D24";
+static const char pm_s94[] PROGMEM = "~{MAR_HI_LOAD}";
+static const char pm_s95[] PROGMEM = "PA1/D23";
+static const char pm_s96[] PROGMEM = "~{IR_LOAD}";
+static const char pm_s97[] PROGMEM = "PA0/D22";
+static const char pm_s98[] PROGMEM = "~{RAM_LOAD}";
+static const char pm_s99[] PROGMEM = "PD2/D19";
+static const char pm_s100[] PROGMEM = "LE_MAR_LO";
+static const char pm_s101[] PROGMEM = "mar";
+static const char pm_s102[] PROGMEM = "LE_MAR_HI";
+static const char pm_s103[] PROGMEM = "M8";
+static const char pm_s104[] PROGMEM = "M9";
+static const char pm_s105[] PROGMEM = "M10";
+static const char pm_s106[] PROGMEM = "M11";
+static const char pm_s107[] PROGMEM = "M12";
+static const char pm_s108[] PROGMEM = "M13";
+static const char pm_s109[] PROGMEM = "M14";
+static const char pm_s110[] PROGMEM = "M15=ROM_EN";
+static const char pm_s111[] PROGMEM = "~{RAM_EN}";
+static const char pm_s112[] PROGMEM = "CW14=PC_MAR_MUX";
+static const char pm_s113[] PROGMEM = "~{PC_MAR_MUX}";
+static const char pm_s114[] PROGMEM = "M0";
+static const char pm_s115[] PROGMEM = "M1";
+static const char pm_s116[] PROGMEM = "M2";
+static const char pm_s117[] PROGMEM = "M3";
+static const char pm_s118[] PROGMEM = "M4";
+static const char pm_s119[] PROGMEM = "M5";
+static const char pm_s120[] PROGMEM = "M6";
+static const char pm_s121[] PROGMEM = "M7";
+static const char pm_s122[] PROGMEM = "LE_IR";
+static const char pm_s123[] PROGMEM = "mdr";
+static const char pm_s124[] PROGMEM = "~{MDR_EN}";
+static const char pm_s125[] PROGMEM = "WRITE_DIR";
+static const char pm_s126[] PROGMEM = "LE_MDR";
+static const char pm_s127[] PROGMEM = "BUS_DIR";
+static const char pm_s128[] PROGMEM = "IRB7";
+static const char pm_s129[] PROGMEM = "PK7/A15";
+static const char pm_s130[] PROGMEM = "IRB6";
+static const char pm_s131[] PROGMEM = "PK6/A14";
+static const char pm_s132[] PROGMEM = "IRB5";
+static const char pm_s133[] PROGMEM = "PK5/A13";
+static const char pm_s134[] PROGMEM = "IRB4";
+static const char pm_s135[] PROGMEM = "PK4/A12";
+static const char pm_s136[] PROGMEM = "IRB3";
+static const char pm_s137[] PROGMEM = "PK3/A11";
+static const char pm_s138[] PROGMEM = "IRB2";
+static const char pm_s139[] PROGMEM = "PK2/A10";
+static const char pm_s140[] PROGMEM = "IRB1";
+static const char pm_s141[] PROGMEM = "PK1/A9";
+static const char pm_s142[] PROGMEM = "IRB0";
+static const char pm_s143[] PROGMEM = "PK0/A8";
+static const char pm_s144[] PROGMEM = "MDR7";
+static const char pm_s145[] PROGMEM = "PF7/A7";
+static const char pm_s146[] PROGMEM = "MDR6";
+static const char pm_s147[] PROGMEM = "PF6/A6";
+static const char pm_s148[] PROGMEM = "MDR5";
+static const char pm_s149[] PROGMEM = "PF5/A5";
+static const char pm_s150[] PROGMEM = "MDR4";
+static const char pm_s151[] PROGMEM = "PF4/A4";
+static const char pm_s152[] PROGMEM = "MDR3";
+static const char pm_s153[] PROGMEM = "PF3/A3";
+static const char pm_s154[] PROGMEM = "MDR2";
+static const char pm_s155[] PROGMEM = "PF2/A2";
+static const char pm_s156[] PROGMEM = "MDR1";
+static const char pm_s157[] PROGMEM = "PF1/A1";
+static const char pm_s158[] PROGMEM = "MDR0";
+static const char pm_s159[] PROGMEM = "PF0/A0";
+static const char pm_s160[] PROGMEM = "memory";
+static const char pm_s161[] PROGMEM = "~{WRITE_DIR}";
+static const char pm_s162[] PROGMEM = "~{RAM_WRITE_EN}";
+static const char pm_s163[] PROGMEM = "RAM_MDR_DIS";
+static const char pm_s164[] PROGMEM = "~{RAM_MDR_EN}";
+static const char pm_s165[] PROGMEM = "microcode";
+static const char pm_s166[] PROGMEM = "CW13=PC_UP";
+static const char pm_s167[] PROGMEM = "io";
+static const char pm_s168[] PROGMEM = "OB7";
+static const char pm_s169[] PROGMEM = "OB6";
+static const char pm_s170[] PROGMEM = "OB5";
+static const char pm_s171[] PROGMEM = "OB4";
+static const char pm_s172[] PROGMEM = "OB3";
+static const char pm_s173[] PROGMEM = "OB2";
+static const char pm_s174[] PROGMEM = "OB1";
+static const char pm_s175[] PROGMEM = "OB0";
+static const char pm_s176[] PROGMEM = "pc";
+static const char pm_s177[] PROGMEM = "~{REG_A_LE}";
+static const char pm_s178[] PROGMEM = "registers";
+static const char pm_s179[] PROGMEM = "~{REG_B_LE}";
+static const char pm_s180[] PROGMEM = "~{REG_C_LE}";
+static const char pm_s181[] PROGMEM = "~{REG_OUT_LE}";
+static const char pm_s182[] PROGMEM = "~{A_EN}";
+static const char pm_s183[] PROGMEM = "~{B_EN}";
+static const char pm_s184[] PROGMEM = "~{C_EN}";
+static const char pm_s185[] PROGMEM = "block1";
+static const char pm_s186[] PROGMEM = "root, microcode, control_word";
+static const char pm_s187[] PROGMEM = "block2";
+static const char pm_s188[] PROGMEM = "root, microcode, control_word, pc, mar, memory";
+static const char pm_s189[] PROGMEM = "block3";
+static const char pm_s190[] PROGMEM = "root, microcode, control_word, pc, mar, memory, mdr";
+static const char pm_s191[] PROGMEM = "block4";
+static const char pm_s192[] PROGMEM = "root, microcode, control_word, pc, mar, memory, mdr, registers, alu";
+static const char pm_s193[] PROGMEM = "block5";
+static const char pm_s194[] PROGMEM = "root, microcode, control_word, pc, mar, memory, mdr, registers, alu, io";
+static const char pm_s195[] PROGMEM = "block6";
 
 static const sigpin_t sig_root[] PROGMEM = {
-    {pm_s0, pm_s1, 'I'},
-    {pm_s2, pm_s3, 'I'},
-    {pm_s4, pm_s5, 'I'},
-    {pm_s6, pm_s7, 'I'},
-    {pm_s8, pm_s9, 'O'},
-    {pm_s10, pm_s11, 'O'},
-    {pm_s12, pm_s13, 'I'},
-    {pm_s14, pm_s15, 'I'},
-    {pm_s16, pm_s17, 'I'},
-    {pm_s18, pm_s19, 'I'}
+    {pm_s0, pm_s1, 'I', pm_s2},
+    {pm_s3, pm_s4, 'I', pm_s2},
+    {pm_s5, pm_s6, 'I', pm_s2},
+    {pm_s7, pm_s8, 'I', pm_s2},
+    {pm_s9, pm_s10, 'O', pm_s2},
+    {pm_s11, pm_s12, 'O', pm_s2},
+    {pm_s13, pm_s14, 'I', pm_s2},
+    {pm_s15, pm_s16, 'I', pm_s2},
+    {pm_s17, pm_s18, 'I', pm_s2},
+    {pm_s19, pm_s20, 'I', pm_s2}
 };
 static const sigpin_t sig_alu[] PROGMEM = {
-    {pm_s20, pm_s1, 'O'},
-    {pm_s21, pm_s3, 'O'},
-    {pm_s22, pm_s5, 'O'},
-    {pm_s23, pm_s7, 'I'},
-    {pm_s24, pm_s25, 'I'},
-    {pm_s26, pm_s27, 'I'},
-    {pm_s0, pm_s28, 'O'},
-    {pm_s2, pm_s29, 'O'},
-    {pm_s18, pm_s9, 'O'},
-    {pm_s30, pm_s31, 'I'},
-    {pm_s32, pm_s33, 'I'},
-    {pm_s34, pm_s11, 'I'},
-    {pm_s35, pm_s13, 'I'},
-    {pm_s36, pm_s15, 'I'},
-    {pm_s37, pm_s17, 'I'},
-    {pm_s38, pm_s19, 'I'},
-    {pm_s39, pm_s40, 'I'},
-    {pm_s41, pm_s42, 'O'},
-    {pm_s43, pm_s44, 'O'},
-    {pm_s45, pm_s46, 'O'},
-    {pm_s47, pm_s48, 'B'},
-    {pm_s49, pm_s50, 'B'},
-    {pm_s51, pm_s52, 'B'},
-    {pm_s53, pm_s54, 'B'},
-    {pm_s55, pm_s56, 'B'},
-    {pm_s57, pm_s58, 'B'},
-    {pm_s59, pm_s60, 'B'},
-    {pm_s61, pm_s62, 'B'}
+    {pm_s21, pm_s1, 'O', pm_s22},
+    {pm_s23, pm_s4, 'O', pm_s22},
+    {pm_s24, pm_s6, 'O', pm_s22},
+    {pm_s25, pm_s8, 'I', pm_s22},
+    {pm_s26, pm_s27, 'I', pm_s22},
+    {pm_s28, pm_s29, 'I', pm_s22},
+    {pm_s0, pm_s30, 'O', pm_s22},
+    {pm_s3, pm_s31, 'O', pm_s22},
+    {pm_s19, pm_s10, 'O', pm_s22},
+    {pm_s32, pm_s33, 'I', pm_s22},
+    {pm_s34, pm_s35, 'I', pm_s22},
+    {pm_s36, pm_s12, 'I', pm_s22},
+    {pm_s37, pm_s14, 'I', pm_s22},
+    {pm_s38, pm_s16, 'I', pm_s22},
+    {pm_s39, pm_s18, 'I', pm_s22},
+    {pm_s40, pm_s20, 'I', pm_s22},
+    {pm_s41, pm_s42, 'I', pm_s22},
+    {pm_s43, pm_s44, 'O', pm_s22},
+    {pm_s45, pm_s46, 'O', pm_s22},
+    {pm_s47, pm_s48, 'O', pm_s22},
+    {pm_s49, pm_s50, 'B', pm_s22},
+    {pm_s51, pm_s52, 'B', pm_s22},
+    {pm_s53, pm_s54, 'B', pm_s22},
+    {pm_s55, pm_s56, 'B', pm_s22},
+    {pm_s57, pm_s58, 'B', pm_s22},
+    {pm_s59, pm_s60, 'B', pm_s22},
+    {pm_s61, pm_s62, 'B', pm_s22},
+    {pm_s63, pm_s64, 'B', pm_s22}
 };
 static const sigpin_t sig_control_word[] PROGMEM = {
-    {pm_s63, pm_s1, 'O'},
-    {pm_s64, pm_s3, 'O'},
-    {pm_s65, pm_s5, 'O'},
-    {pm_s66, pm_s7, 'I'},
-    {pm_s67, pm_s25, 'I'},
-    {pm_s68, pm_s27, 'I'},
-    {pm_s69, pm_s28, 'I'},
-    {pm_s70, pm_s29, 'I'},
-    {pm_s71, pm_s9, 'I'},
-    {pm_s35, pm_s31, 'O'},
-    {pm_s72, pm_s33, 'I'},
-    {pm_s73, pm_s11, 'I'},
-    {pm_s74, pm_s13, 'O'},
-    {pm_s75, pm_s15, 'O'},
-    {pm_s76, pm_s17, 'O'},
-    {pm_s77, pm_s19, 'I'},
-    {pm_s78, pm_s40, 'I'},
-    {pm_s79, pm_s42, 'I'},
-    {pm_s80, pm_s44, 'I'},
-    {pm_s81, pm_s46, 'I'},
-    {pm_s82, pm_s48, 'I'},
-    {pm_s45, pm_s50, 'I'},
-    {pm_s83, pm_s52, 'I'},
-    {pm_s84, pm_s54, 'O'},
-    {pm_s85, pm_s56, 'O'},
-    {pm_s86, pm_s58, 'O'},
-    {pm_s43, pm_s60, 'I'},
-    {pm_s41, pm_s62, 'I'},
-    {pm_s87, pm_s88, 'I'},
-    {pm_s89, pm_s90, 'I'},
-    {pm_s91, pm_s92, 'I'},
-    {pm_s93, pm_s94, 'I'},
-    {pm_s95, pm_s96, 'I'}
+    {pm_s65, pm_s1, 'O', pm_s66},
+    {pm_s67, pm_s4, 'O', pm_s66},
+    {pm_s68, pm_s6, 'O', pm_s66},
+    {pm_s69, pm_s8, 'I', pm_s66},
+    {pm_s70, pm_s27, 'I', pm_s66},
+    {pm_s71, pm_s29, 'I', pm_s66},
+    {pm_s72, pm_s30, 'I', pm_s66},
+    {pm_s73, pm_s31, 'I', pm_s66},
+    {pm_s74, pm_s10, 'I', pm_s66},
+    {pm_s37, pm_s33, 'O', pm_s66},
+    {pm_s75, pm_s35, 'I', pm_s66},
+    {pm_s76, pm_s12, 'I', pm_s66},
+    {pm_s77, pm_s14, 'O', pm_s66},
+    {pm_s78, pm_s16, 'O', pm_s66},
+    {pm_s79, pm_s18, 'O', pm_s66},
+    {pm_s80, pm_s20, 'I', pm_s66},
+    {pm_s81, pm_s42, 'I', pm_s66},
+    {pm_s82, pm_s44, 'I', pm_s66},
+    {pm_s83, pm_s46, 'I', pm_s66},
+    {pm_s84, pm_s48, 'I', pm_s66},
+    {pm_s85, pm_s50, 'I', pm_s66},
+    {pm_s47, pm_s52, 'I', pm_s66},
+    {pm_s86, pm_s54, 'I', pm_s66},
+    {pm_s87, pm_s56, 'O', pm_s66},
+    {pm_s88, pm_s58, 'O', pm_s66},
+    {pm_s89, pm_s60, 'O', pm_s66},
+    {pm_s45, pm_s62, 'I', pm_s66},
+    {pm_s43, pm_s64, 'I', pm_s66},
+    {pm_s90, pm_s91, 'I', pm_s66},
+    {pm_s92, pm_s93, 'I', pm_s66},
+    {pm_s94, pm_s95, 'I', pm_s66},
+    {pm_s96, pm_s97, 'I', pm_s66},
+    {pm_s98, pm_s99, 'I', pm_s66}
 };
 static const sigpin_t sig_mar[] PROGMEM = {
-    {pm_s97, pm_s1, 'I'},
-    {pm_s89, pm_s3, 'O'},
-    {pm_s18, pm_s5, 'O'},
-    {pm_s98, pm_s7, 'I'},
-    {pm_s99, pm_s25, 'I'},
-    {pm_s100, pm_s27, 'I'},
-    {pm_s101, pm_s28, 'I'},
-    {pm_s102, pm_s29, 'I'},
-    {pm_s103, pm_s9, 'I'},
-    {pm_s104, pm_s31, 'I'},
-    {pm_s105, pm_s33, 'I'},
-    {pm_s106, pm_s11, 'B'},
-    {pm_s91, pm_s13, 'O'},
-    {pm_s107, pm_s15, 'I'},
-    {pm_s108, pm_s17, 'O'},
-    {pm_s109, pm_s19, 'I'},
-    {pm_s110, pm_s40, 'I'},
-    {pm_s111, pm_s42, 'I'},
-    {pm_s112, pm_s44, 'I'},
-    {pm_s113, pm_s46, 'I'},
-    {pm_s114, pm_s48, 'I'},
-    {pm_s115, pm_s50, 'I'},
-    {pm_s116, pm_s52, 'I'},
-    {pm_s117, pm_s54, 'I'},
-    {pm_s47, pm_s56, 'O'},
-    {pm_s49, pm_s58, 'O'},
-    {pm_s51, pm_s60, 'O'},
-    {pm_s53, pm_s62, 'O'},
-    {pm_s55, pm_s88, 'O'},
-    {pm_s57, pm_s90, 'O'},
-    {pm_s59, pm_s92, 'O'},
-    {pm_s61, pm_s94, 'O'}
+    {pm_s100, pm_s1, 'I', pm_s101},
+    {pm_s92, pm_s4, 'O', pm_s101},
+    {pm_s19, pm_s6, 'O', pm_s101},
+    {pm_s102, pm_s8, 'I', pm_s101},
+    {pm_s103, pm_s27, 'I', pm_s101},
+    {pm_s104, pm_s29, 'I', pm_s101},
+    {pm_s105, pm_s30, 'I', pm_s101},
+    {pm_s106, pm_s31, 'I', pm_s101},
+    {pm_s107, pm_s10, 'I', pm_s101},
+    {pm_s108, pm_s33, 'I', pm_s101},
+    {pm_s109, pm_s35, 'I', pm_s101},
+    {pm_s110, pm_s12, 'B', pm_s101},
+    {pm_s94, pm_s14, 'O', pm_s101},
+    {pm_s111, pm_s16, 'I', pm_s101},
+    {pm_s112, pm_s18, 'O', pm_s101},
+    {pm_s113, pm_s20, 'I', pm_s101},
+    {pm_s114, pm_s42, 'I', pm_s101},
+    {pm_s115, pm_s44, 'I', pm_s101},
+    {pm_s116, pm_s46, 'I', pm_s101},
+    {pm_s117, pm_s48, 'I', pm_s101},
+    {pm_s118, pm_s50, 'I', pm_s101},
+    {pm_s119, pm_s52, 'I', pm_s101},
+    {pm_s120, pm_s54, 'I', pm_s101},
+    {pm_s121, pm_s56, 'I', pm_s101},
+    {pm_s49, pm_s58, 'O', pm_s101},
+    {pm_s51, pm_s60, 'O', pm_s101},
+    {pm_s53, pm_s62, 'O', pm_s101},
+    {pm_s55, pm_s64, 'O', pm_s101},
+    {pm_s57, pm_s91, 'O', pm_s101},
+    {pm_s59, pm_s93, 'O', pm_s101},
+    {pm_s61, pm_s95, 'O', pm_s101},
+    {pm_s63, pm_s97, 'O', pm_s101}
 };
 static const sigpin_t sig_mdr[] PROGMEM = {
-    {pm_s118, pm_s1, 'I'},
-    {pm_s18, pm_s3, 'O'},
-    {pm_s93, pm_s5, 'O'},
-    {pm_s119, pm_s7, 'I'},
-    {pm_s77, pm_s25, 'O'},
-    {pm_s120, pm_s27, 'I'},
-    {pm_s69, pm_s28, 'O'},
-    {pm_s78, pm_s29, 'O'},
-    {pm_s79, pm_s9, 'O'},
-    {pm_s95, pm_s31, 'O'},
-    {pm_s121, pm_s33, 'I'},
-    {pm_s122, pm_s11, 'I'},
-    {pm_s45, pm_s13, 'O'},
-    {pm_s83, pm_s15, 'O'},
-    {pm_s47, pm_s56, 'B'},
-    {pm_s49, pm_s58, 'B'},
-    {pm_s51, pm_s60, 'B'},
-    {pm_s53, pm_s62, 'B'},
-    {pm_s55, pm_s88, 'B'},
-    {pm_s57, pm_s90, 'B'},
-    {pm_s59, pm_s92, 'B'},
-    {pm_s61, pm_s94, 'B'},
-    {pm_s123, pm_s124, 'I'},
-    {pm_s125, pm_s126, 'I'},
-    {pm_s127, pm_s128, 'I'},
-    {pm_s129, pm_s130, 'I'},
-    {pm_s131, pm_s132, 'I'},
-    {pm_s133, pm_s134, 'I'},
-    {pm_s135, pm_s136, 'I'},
-    {pm_s137, pm_s138, 'I'},
-    {pm_s139, pm_s140, 'B'},
-    {pm_s141, pm_s142, 'B'},
-    {pm_s143, pm_s144, 'B'},
-    {pm_s145, pm_s146, 'B'},
-    {pm_s147, pm_s148, 'B'},
-    {pm_s149, pm_s150, 'B'},
-    {pm_s151, pm_s152, 'B'},
-    {pm_s153, pm_s154, 'B'}
+    {pm_s122, pm_s1, 'I', pm_s123},
+    {pm_s19, pm_s4, 'O', pm_s123},
+    {pm_s96, pm_s6, 'O', pm_s123},
+    {pm_s124, pm_s8, 'I', pm_s123},
+    {pm_s80, pm_s27, 'O', pm_s123},
+    {pm_s125, pm_s29, 'I', pm_s123},
+    {pm_s72, pm_s30, 'O', pm_s123},
+    {pm_s81, pm_s31, 'O', pm_s123},
+    {pm_s82, pm_s10, 'O', pm_s123},
+    {pm_s98, pm_s33, 'O', pm_s123},
+    {pm_s126, pm_s35, 'I', pm_s123},
+    {pm_s127, pm_s12, 'I', pm_s123},
+    {pm_s47, pm_s14, 'O', pm_s123},
+    {pm_s86, pm_s16, 'O', pm_s123},
+    {pm_s49, pm_s58, 'B', pm_s123},
+    {pm_s51, pm_s60, 'B', pm_s123},
+    {pm_s53, pm_s62, 'B', pm_s123},
+    {pm_s55, pm_s64, 'B', pm_s123},
+    {pm_s57, pm_s91, 'B', pm_s123},
+    {pm_s59, pm_s93, 'B', pm_s123},
+    {pm_s61, pm_s95, 'B', pm_s123},
+    {pm_s63, pm_s97, 'B', pm_s123},
+    {pm_s128, pm_s129, 'I', pm_s123},
+    {pm_s130, pm_s131, 'I', pm_s123},
+    {pm_s132, pm_s133, 'I', pm_s123},
+    {pm_s134, pm_s135, 'I', pm_s123},
+    {pm_s136, pm_s137, 'I', pm_s123},
+    {pm_s138, pm_s139, 'I', pm_s123},
+    {pm_s140, pm_s141, 'I', pm_s123},
+    {pm_s142, pm_s143, 'I', pm_s123},
+    {pm_s144, pm_s145, 'B', pm_s123},
+    {pm_s146, pm_s147, 'B', pm_s123},
+    {pm_s148, pm_s149, 'B', pm_s123},
+    {pm_s150, pm_s151, 'B', pm_s123},
+    {pm_s152, pm_s153, 'B', pm_s123},
+    {pm_s154, pm_s155, 'B', pm_s123},
+    {pm_s156, pm_s157, 'B', pm_s123},
+    {pm_s158, pm_s159, 'B', pm_s123}
 };
 static const sigpin_t sig_memory[] PROGMEM = {
-    {pm_s153, pm_s1, 'I'},
-    {pm_s151, pm_s3, 'I'},
-    {pm_s149, pm_s5, 'I'},
-    {pm_s147, pm_s7, 'I'},
-    {pm_s145, pm_s25, 'I'},
-    {pm_s143, pm_s27, 'I'},
-    {pm_s141, pm_s28, 'I'},
-    {pm_s139, pm_s29, 'I'},
-    {pm_s110, pm_s9, 'O'},
-    {pm_s111, pm_s31, 'O'},
-    {pm_s112, pm_s33, 'O'},
-    {pm_s113, pm_s11, 'O'},
-    {pm_s114, pm_s13, 'O'},
-    {pm_s115, pm_s15, 'O'},
-    {pm_s116, pm_s17, 'O'},
-    {pm_s117, pm_s19, 'O'},
-    {pm_s99, pm_s40, 'O'},
-    {pm_s100, pm_s42, 'O'},
-    {pm_s101, pm_s44, 'O'},
-    {pm_s102, pm_s46, 'O'},
-    {pm_s103, pm_s48, 'O'},
-    {pm_s104, pm_s50, 'O'},
-    {pm_s105, pm_s52, 'O'},
-    {pm_s106, pm_s54, 'O'},
-    {pm_s120, pm_s56, 'O'},
-    {pm_s155, pm_s58, 'I'},
-    {pm_s2, pm_s60, 'O'},
-    {pm_s156, pm_s62, 'I'},
-    {pm_s157, pm_s88, 'I'},
-    {pm_s79, pm_s90, 'O'},
-    {pm_s158, pm_s92, 'I'},
-    {pm_s78, pm_s94, 'O'},
-    {pm_s107, pm_s96, 'O'}
+    {pm_s158, pm_s1, 'I', pm_s160},
+    {pm_s156, pm_s4, 'I', pm_s160},
+    {pm_s154, pm_s6, 'I', pm_s160},
+    {pm_s152, pm_s8, 'I', pm_s160},
+    {pm_s150, pm_s27, 'I', pm_s160},
+    {pm_s148, pm_s29, 'I', pm_s160},
+    {pm_s146, pm_s30, 'I', pm_s160},
+    {pm_s144, pm_s31, 'I', pm_s160},
+    {pm_s114, pm_s10, 'O', pm_s160},
+    {pm_s115, pm_s33, 'O', pm_s160},
+    {pm_s116, pm_s35, 'O', pm_s160},
+    {pm_s117, pm_s12, 'O', pm_s160},
+    {pm_s118, pm_s14, 'O', pm_s160},
+    {pm_s119, pm_s16, 'O', pm_s160},
+    {pm_s120, pm_s18, 'O', pm_s160},
+    {pm_s121, pm_s20, 'O', pm_s160},
+    {pm_s103, pm_s42, 'O', pm_s160},
+    {pm_s104, pm_s44, 'O', pm_s160},
+    {pm_s105, pm_s46, 'O', pm_s160},
+    {pm_s106, pm_s48, 'O', pm_s160},
+    {pm_s107, pm_s50, 'O', pm_s160},
+    {pm_s108, pm_s52, 'O', pm_s160},
+    {pm_s109, pm_s54, 'O', pm_s160},
+    {pm_s110, pm_s56, 'O', pm_s160},
+    {pm_s125, pm_s58, 'O', pm_s160},
+    {pm_s161, pm_s60, 'I', pm_s160},
+    {pm_s3, pm_s62, 'O', pm_s160},
+    {pm_s162, pm_s64, 'I', pm_s160},
+    {pm_s163, pm_s91, 'I', pm_s160},
+    {pm_s82, pm_s93, 'O', pm_s160},
+    {pm_s164, pm_s95, 'I', pm_s160},
+    {pm_s81, pm_s97, 'O', pm_s160},
+    {pm_s111, pm_s99, 'O', pm_s160}
 };
 static const sigpin_t sig_microcode[] PROGMEM = {
-    {pm_s65, pm_s25, 'I'},
-    {pm_s20, pm_s27, 'I'},
-    {pm_s21, pm_s28, 'I'},
-    {pm_s22, pm_s29, 'I'},
-    {pm_s8, pm_s9, 'I'},
-    {pm_s159, pm_s31, 'I'},
-    {pm_s108, pm_s33, 'I'},
-    {pm_s10, pm_s11, 'I'},
-    {pm_s4, pm_s13, 'O'},
-    {pm_s6, pm_s15, 'O'},
-    {pm_s12, pm_s17, 'O'},
-    {pm_s14, pm_s19, 'O'},
-    {pm_s84, pm_s40, 'I'},
-    {pm_s85, pm_s42, 'I'},
-    {pm_s86, pm_s44, 'I'},
-    {pm_s74, pm_s46, 'I'},
-    {pm_s75, pm_s48, 'I'},
-    {pm_s76, pm_s50, 'I'},
-    {pm_s63, pm_s52, 'I'},
-    {pm_s64, pm_s54, 'I'},
-    {pm_s123, pm_s124, 'O'},
-    {pm_s125, pm_s126, 'O'},
-    {pm_s127, pm_s128, 'O'},
-    {pm_s129, pm_s130, 'O'},
-    {pm_s131, pm_s132, 'O'},
-    {pm_s133, pm_s134, 'O'},
-    {pm_s135, pm_s136, 'O'},
-    {pm_s137, pm_s138, 'O'}
+    {pm_s68, pm_s27, 'I', pm_s165},
+    {pm_s21, pm_s29, 'I', pm_s165},
+    {pm_s23, pm_s30, 'I', pm_s165},
+    {pm_s24, pm_s31, 'I', pm_s165},
+    {pm_s9, pm_s10, 'I', pm_s165},
+    {pm_s166, pm_s33, 'I', pm_s165},
+    {pm_s112, pm_s35, 'I', pm_s165},
+    {pm_s11, pm_s12, 'I', pm_s165},
+    {pm_s5, pm_s14, 'O', pm_s165},
+    {pm_s7, pm_s16, 'O', pm_s165},
+    {pm_s13, pm_s18, 'O', pm_s165},
+    {pm_s15, pm_s20, 'O', pm_s165},
+    {pm_s87, pm_s42, 'I', pm_s165},
+    {pm_s88, pm_s44, 'I', pm_s165},
+    {pm_s89, pm_s46, 'I', pm_s165},
+    {pm_s77, pm_s48, 'I', pm_s165},
+    {pm_s78, pm_s50, 'I', pm_s165},
+    {pm_s79, pm_s52, 'I', pm_s165},
+    {pm_s65, pm_s54, 'I', pm_s165},
+    {pm_s67, pm_s56, 'I', pm_s165},
+    {pm_s128, pm_s129, 'O', pm_s165},
+    {pm_s130, pm_s131, 'O', pm_s165},
+    {pm_s132, pm_s133, 'O', pm_s165},
+    {pm_s134, pm_s135, 'O', pm_s165},
+    {pm_s136, pm_s137, 'O', pm_s165},
+    {pm_s138, pm_s139, 'O', pm_s165},
+    {pm_s140, pm_s141, 'O', pm_s165},
+    {pm_s142, pm_s143, 'O', pm_s165}
 };
 static const sigpin_t sig_io[] PROGMEM = {
-    {pm_s83, pm_s19, 'O'},
-    {pm_s47, pm_s56, 'I'},
-    {pm_s49, pm_s58, 'I'},
-    {pm_s51, pm_s60, 'I'},
-    {pm_s53, pm_s62, 'I'},
-    {pm_s55, pm_s88, 'I'},
-    {pm_s57, pm_s90, 'I'},
-    {pm_s59, pm_s92, 'I'},
-    {pm_s61, pm_s94, 'I'},
-    {pm_s160, pm_s124, 'O'},
-    {pm_s161, pm_s126, 'O'},
-    {pm_s162, pm_s128, 'O'},
-    {pm_s163, pm_s130, 'O'},
-    {pm_s164, pm_s132, 'O'},
-    {pm_s165, pm_s134, 'O'},
-    {pm_s166, pm_s136, 'O'},
-    {pm_s167, pm_s138, 'O'}
+    {pm_s86, pm_s20, 'O', pm_s167},
+    {pm_s49, pm_s58, 'I', pm_s167},
+    {pm_s51, pm_s60, 'I', pm_s167},
+    {pm_s53, pm_s62, 'I', pm_s167},
+    {pm_s55, pm_s64, 'I', pm_s167},
+    {pm_s57, pm_s91, 'I', pm_s167},
+    {pm_s59, pm_s93, 'I', pm_s167},
+    {pm_s61, pm_s95, 'I', pm_s167},
+    {pm_s63, pm_s97, 'I', pm_s167},
+    {pm_s168, pm_s129, 'O', pm_s167},
+    {pm_s169, pm_s131, 'O', pm_s167},
+    {pm_s170, pm_s133, 'O', pm_s167},
+    {pm_s171, pm_s135, 'O', pm_s167},
+    {pm_s172, pm_s137, 'O', pm_s167},
+    {pm_s173, pm_s139, 'O', pm_s167},
+    {pm_s174, pm_s141, 'O', pm_s167},
+    {pm_s175, pm_s143, 'O', pm_s167}
 };
 static const sigpin_t sig_pc[] PROGMEM = {
-    {pm_s109, pm_s3, 'O'},
-    {pm_s73, pm_s5, 'O'},
-    {pm_s66, pm_s7, 'O'},
-    {pm_s99, pm_s25, 'I'},
-    {pm_s100, pm_s27, 'I'},
-    {pm_s101, pm_s28, 'I'},
-    {pm_s102, pm_s29, 'I'},
-    {pm_s103, pm_s9, 'I'},
-    {pm_s104, pm_s31, 'I'},
-    {pm_s105, pm_s33, 'I'},
-    {pm_s106, pm_s11, 'I'},
-    {pm_s2, pm_s13, 'O'},
-    {pm_s16, pm_s15, 'O'},
-    {pm_s159, pm_s17, 'O'},
-    {pm_s18, pm_s19, 'O'},
-    {pm_s110, pm_s40, 'I'},
-    {pm_s111, pm_s42, 'I'},
-    {pm_s112, pm_s44, 'I'},
-    {pm_s113, pm_s46, 'I'},
-    {pm_s114, pm_s48, 'I'},
-    {pm_s115, pm_s50, 'I'},
-    {pm_s116, pm_s52, 'I'},
-    {pm_s117, pm_s54, 'I'}
+    {pm_s113, pm_s4, 'O', pm_s176},
+    {pm_s76, pm_s6, 'O', pm_s176},
+    {pm_s69, pm_s8, 'O', pm_s176},
+    {pm_s103, pm_s27, 'I', pm_s176},
+    {pm_s104, pm_s29, 'I', pm_s176},
+    {pm_s105, pm_s30, 'I', pm_s176},
+    {pm_s106, pm_s31, 'I', pm_s176},
+    {pm_s107, pm_s10, 'I', pm_s176},
+    {pm_s108, pm_s33, 'I', pm_s176},
+    {pm_s109, pm_s35, 'I', pm_s176},
+    {pm_s110, pm_s12, 'I', pm_s176},
+    {pm_s3, pm_s14, 'O', pm_s176},
+    {pm_s17, pm_s16, 'O', pm_s176},
+    {pm_s166, pm_s18, 'O', pm_s176},
+    {pm_s19, pm_s20, 'O', pm_s176},
+    {pm_s114, pm_s42, 'I', pm_s176},
+    {pm_s115, pm_s44, 'I', pm_s176},
+    {pm_s116, pm_s46, 'I', pm_s176},
+    {pm_s117, pm_s48, 'I', pm_s176},
+    {pm_s118, pm_s50, 'I', pm_s176},
+    {pm_s119, pm_s52, 'I', pm_s176},
+    {pm_s120, pm_s54, 'I', pm_s176},
+    {pm_s121, pm_s56, 'I', pm_s176}
 };
 static const sigpin_t sig_registers[] PROGMEM = {
-    {pm_s168, pm_s1, 'I'},
-    {pm_s43, pm_s3, 'O'},
-    {pm_s18, pm_s5, 'O'},
-    {pm_s169, pm_s7, 'I'},
-    {pm_s41, pm_s25, 'O'},
-    {pm_s87, pm_s27, 'O'},
-    {pm_s170, pm_s28, 'I'},
-    {pm_s70, pm_s29, 'O'},
-    {pm_s171, pm_s9, 'I'},
-    {pm_s80, pm_s31, 'O'},
-    {pm_s172, pm_s33, 'I'},
-    {pm_s81, pm_s11, 'O'},
-    {pm_s173, pm_s13, 'I'},
-    {pm_s174, pm_s15, 'I'},
-    {pm_s82, pm_s17, 'O'},
-    {pm_s160, pm_s124, 'I'},
-    {pm_s161, pm_s126, 'I'},
-    {pm_s162, pm_s128, 'I'},
-    {pm_s163, pm_s130, 'I'},
-    {pm_s164, pm_s132, 'I'},
-    {pm_s165, pm_s134, 'I'},
-    {pm_s166, pm_s136, 'I'},
-    {pm_s167, pm_s138, 'I'},
-    {pm_s139, pm_s140, 'I'},
-    {pm_s141, pm_s142, 'I'},
-    {pm_s143, pm_s144, 'I'},
-    {pm_s145, pm_s146, 'I'},
-    {pm_s147, pm_s148, 'I'},
-    {pm_s149, pm_s150, 'I'},
-    {pm_s151, pm_s152, 'I'},
-    {pm_s153, pm_s154, 'I'}
+    {pm_s177, pm_s1, 'I', pm_s178},
+    {pm_s45, pm_s4, 'O', pm_s178},
+    {pm_s19, pm_s6, 'O', pm_s178},
+    {pm_s179, pm_s8, 'I', pm_s178},
+    {pm_s43, pm_s27, 'O', pm_s178},
+    {pm_s90, pm_s29, 'O', pm_s178},
+    {pm_s180, pm_s30, 'I', pm_s178},
+    {pm_s73, pm_s31, 'O', pm_s178},
+    {pm_s181, pm_s10, 'I', pm_s178},
+    {pm_s83, pm_s33, 'O', pm_s178},
+    {pm_s182, pm_s35, 'I', pm_s178},
+    {pm_s84, pm_s12, 'O', pm_s178},
+    {pm_s183, pm_s14, 'I', pm_s178},
+    {pm_s184, pm_s16, 'I', pm_s178},
+    {pm_s85, pm_s18, 'O', pm_s178},
+    {pm_s168, pm_s129, 'I', pm_s178},
+    {pm_s169, pm_s131, 'I', pm_s178},
+    {pm_s170, pm_s133, 'I', pm_s178},
+    {pm_s171, pm_s135, 'I', pm_s178},
+    {pm_s172, pm_s137, 'I', pm_s178},
+    {pm_s173, pm_s139, 'I', pm_s178},
+    {pm_s174, pm_s141, 'I', pm_s178},
+    {pm_s175, pm_s143, 'I', pm_s178},
+    {pm_s144, pm_s145, 'I', pm_s178},
+    {pm_s146, pm_s147, 'I', pm_s178},
+    {pm_s148, pm_s149, 'I', pm_s178},
+    {pm_s150, pm_s151, 'I', pm_s178},
+    {pm_s152, pm_s153, 'I', pm_s178},
+    {pm_s154, pm_s155, 'I', pm_s178},
+    {pm_s156, pm_s157, 'I', pm_s178},
+    {pm_s158, pm_s159, 'I', pm_s178}
+};
+static const sigpin_t sig_block1[] PROGMEM = {
+    {pm_s19, pm_s27, 'I', pm_s2},
+    {pm_s21, pm_s29, 'I', pm_s165},
+    {pm_s23, pm_s30, 'I', pm_s165},
+    {pm_s24, pm_s31, 'I', pm_s165},
+    {pm_s9, pm_s10, 'I', pm_s2},
+    {pm_s166, pm_s33, 'I', pm_s165},
+    {pm_s112, pm_s35, 'I', pm_s165},
+    {pm_s11, pm_s12, 'I', pm_s2},
+    {pm_s86, pm_s42, 'I', pm_s66},
+    {pm_s47, pm_s44, 'I', pm_s66},
+    {pm_s85, pm_s46, 'I', pm_s66},
+    {pm_s84, pm_s48, 'I', pm_s66},
+    {pm_s83, pm_s50, 'I', pm_s66},
+    {pm_s82, pm_s52, 'I', pm_s66},
+    {pm_s81, pm_s54, 'I', pm_s66},
+    {pm_s80, pm_s56, 'I', pm_s66},
+    {pm_s98, pm_s60, 'I', pm_s66},
+    {pm_s96, pm_s62, 'I', pm_s66},
+    {pm_s94, pm_s64, 'I', pm_s66},
+    {pm_s92, pm_s91, 'I', pm_s66},
+    {pm_s90, pm_s93, 'I', pm_s66},
+    {pm_s43, pm_s95, 'I', pm_s66},
+    {pm_s45, pm_s97, 'I', pm_s66},
+    {pm_s128, pm_s129, 'O', pm_s165},
+    {pm_s130, pm_s131, 'O', pm_s165},
+    {pm_s132, pm_s133, 'O', pm_s165},
+    {pm_s134, pm_s135, 'O', pm_s165},
+    {pm_s136, pm_s137, 'O', pm_s165},
+    {pm_s138, pm_s139, 'O', pm_s165},
+    {pm_s140, pm_s141, 'O', pm_s165},
+    {pm_s142, pm_s143, 'O', pm_s165},
+    {pm_s5, pm_s145, 'I', pm_s2},
+    {pm_s7, pm_s147, 'I', pm_s2},
+    {pm_s13, pm_s149, 'I', pm_s2},
+    {pm_s15, pm_s151, 'I', pm_s2},
+    {pm_s76, pm_s153, 'I', pm_s66},
+    {pm_s73, pm_s155, 'I', pm_s66},
+    {pm_s72, pm_s157, 'I', pm_s66},
+    {pm_s69, pm_s159, 'I', pm_s66}
+};
+static const sigpin_t sig_block2[] PROGMEM = {
+    {pm_s19, pm_s27, 'I', pm_s2},
+    {pm_s9, pm_s10, 'I', pm_s2},
+    {pm_s11, pm_s12, 'I', pm_s2},
+    {pm_s128, pm_s129, 'O', pm_s165},
+    {pm_s130, pm_s131, 'O', pm_s165},
+    {pm_s132, pm_s133, 'O', pm_s165},
+    {pm_s134, pm_s135, 'O', pm_s165},
+    {pm_s136, pm_s137, 'O', pm_s165},
+    {pm_s138, pm_s139, 'O', pm_s165},
+    {pm_s140, pm_s141, 'O', pm_s165},
+    {pm_s142, pm_s143, 'O', pm_s165},
+    {pm_s144, pm_s145, 'I', pm_s160},
+    {pm_s146, pm_s147, 'I', pm_s160},
+    {pm_s148, pm_s149, 'I', pm_s160},
+    {pm_s150, pm_s151, 'I', pm_s160},
+    {pm_s152, pm_s153, 'I', pm_s160},
+    {pm_s154, pm_s155, 'I', pm_s160},
+    {pm_s156, pm_s157, 'I', pm_s160},
+    {pm_s158, pm_s159, 'I', pm_s160}
+};
+static const sigpin_t sig_block3[] PROGMEM = {
+    {pm_s19, pm_s27, 'I', pm_s2},
+    {pm_s9, pm_s10, 'I', pm_s2},
+    {pm_s11, pm_s12, 'I', pm_s2},
+    {pm_s128, pm_s129, 'I', pm_s165},
+    {pm_s130, pm_s131, 'I', pm_s165},
+    {pm_s132, pm_s133, 'I', pm_s165},
+    {pm_s134, pm_s135, 'I', pm_s165},
+    {pm_s136, pm_s137, 'I', pm_s165},
+    {pm_s138, pm_s139, 'I', pm_s165},
+    {pm_s140, pm_s141, 'I', pm_s165},
+    {pm_s142, pm_s143, 'I', pm_s165}
+};
+static const sigpin_t sig_block4[] PROGMEM = {
+    {pm_s19, pm_s27, 'I', pm_s2},
+    {pm_s9, pm_s10, 'I', pm_s2},
+    {pm_s11, pm_s12, 'I', pm_s2},
+    {pm_s168, pm_s129, 'I', pm_s178},
+    {pm_s169, pm_s131, 'I', pm_s178},
+    {pm_s170, pm_s133, 'I', pm_s178},
+    {pm_s171, pm_s135, 'I', pm_s178},
+    {pm_s172, pm_s137, 'I', pm_s178},
+    {pm_s173, pm_s139, 'I', pm_s178},
+    {pm_s174, pm_s141, 'I', pm_s178},
+    {pm_s175, pm_s143, 'I', pm_s178}
+};
+static const sigpin_t sig_block5[] PROGMEM = {
+    {pm_s19, pm_s27, 'I', pm_s2},
+    {pm_s9, pm_s10, 'I', pm_s2},
+    {pm_s11, pm_s12, 'I', pm_s2},
+    {pm_s168, pm_s129, 'I', pm_s167},
+    {pm_s169, pm_s131, 'I', pm_s167},
+    {pm_s170, pm_s133, 'I', pm_s167},
+    {pm_s171, pm_s135, 'I', pm_s167},
+    {pm_s172, pm_s137, 'I', pm_s167},
+    {pm_s173, pm_s139, 'I', pm_s167},
+    {pm_s174, pm_s141, 'I', pm_s167},
+    {pm_s175, pm_s143, 'I', pm_s167}
+};
+static const sigpin_t sig_block6[] PROGMEM = {
+    {pm_s11, pm_s12, 'I', pm_s2},
+    {pm_s168, pm_s129, 'I', pm_s167},
+    {pm_s169, pm_s131, 'I', pm_s167},
+    {pm_s170, pm_s133, 'I', pm_s167},
+    {pm_s171, pm_s135, 'I', pm_s167},
+    {pm_s172, pm_s137, 'I', pm_s167},
+    {pm_s173, pm_s139, 'I', pm_s167},
+    {pm_s174, pm_s141, 'I', pm_s167},
+    {pm_s175, pm_s143, 'I', pm_s167}
 };
 
 static const modmap_t MODMAPS[] PROGMEM = {
-    {pm_s175, sig_root, 10},
-    {pm_s176, sig_alu, 28},
-    {pm_s177, sig_control_word, 33},
-    {pm_s178, sig_mar, 32},
-    {pm_s179, sig_mdr, 38},
-    {pm_s180, sig_memory, 33},
-    {pm_s181, sig_microcode, 28},
-    {pm_s182, sig_io, 17},
-    {pm_s183, sig_pc, 23},
-    {pm_s184, sig_registers, 31}
+    {pm_s2, sig_root, 10, pm_s2},
+    {pm_s22, sig_alu, 28, pm_s22},
+    {pm_s66, sig_control_word, 33, pm_s66},
+    {pm_s101, sig_mar, 32, pm_s101},
+    {pm_s123, sig_mdr, 38, pm_s123},
+    {pm_s160, sig_memory, 33, pm_s160},
+    {pm_s165, sig_microcode, 28, pm_s165},
+    {pm_s167, sig_io, 17, pm_s167},
+    {pm_s176, sig_pc, 23, pm_s176},
+    {pm_s178, sig_registers, 31, pm_s178},
+    {pm_s185, sig_block1, 39, pm_s186},
+    {pm_s187, sig_block2, 19, pm_s188},
+    {pm_s189, sig_block3, 11, pm_s190},
+    {pm_s191, sig_block4, 11, pm_s192},
+    {pm_s193, sig_block5, 11, pm_s194},
+    {pm_s195, sig_block6, 9, pm_s194}
 };
-#define MODMAP_COUNT 10
+#define MODMAP_COUNT 16
 
 #endif
