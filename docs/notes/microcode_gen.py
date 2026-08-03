@@ -50,6 +50,25 @@ DST = {"NONE": 0b000, "REG_A": 0b001, "REG_B": 0b010, "REG_C": 0b011,
        "MAR_LO": 0b100, "MAR_HI": 0b101, "IR": 0b110, "RAM": 0b111}  # [2:0] U30
 
 
+def _sa_bits(code):
+    """Pack a '382 function code into CW9..CW11 BIT-REVERSED.
+
+    The schematic labels CW9=SA2, CW10=SA1, CW11=SA0, and wires SA0 -> S0,
+    SA1 -> S1, SA2 -> S2. So CW9 carries the '382's select MSB and CW11 its
+    LSB. Packing the code LSB-first at CW9 therefore delivers it REVERSED:
+    ADD (011) arrived as 110 = AND, which is precisely what the bench measured
+    — 5 AND 3 = 1, 0x39 AND 0 = 0, 0 AND 0x39 = 0, three independent images
+    all matching (2026-08-02).
+
+    This survived every earlier test because reversing a field is INVISIBLE
+    unless something computes with it: block1 checked ROM -> pin and found them
+    self-consistent, and alu.ops drove SA from the rig, never using the
+    microcode's encoding at all. test_microcode_gen.py now cross-checks this
+    against the NETLIST so it cannot come back.
+    """
+    return ((code & 1) << 2) | (code & 2) | ((code >> 2) & 1)
+
+
 def word(mux_pc=False, pc_up=False, end=False, halt=False,
          sa=None, misc="NONE", src="NONE", dst="NONE"):
     w = 0
@@ -57,7 +76,7 @@ def word(mux_pc=False, pc_up=False, end=False, halt=False,
     if mux_pc: w |= MUX_PC
     if pc_up: w |= PC_UP
     if end: w |= END
-    if sa is not None: w |= SA[sa] << 9
+    if sa is not None: w |= _sa_bits(SA[sa]) << 9
     w |= MISC[misc] << 6
     w |= SRC[src] << 3
     w |= DST[dst]

@@ -70,11 +70,37 @@ class TestRealImage(unittest.TestCase):
     def test_milestone_program_is_the_gate(self):
         """the hard gate: machine adds two numbers, shows the result, halts"""
         names = [step[0] for step in pg.PROGRAM]
-        self.assertEqual(names, ["LDAI", "LDBI", "ADD", "OUT", "HALT"])
+        self.assertEqual(names, ["LDAI", "OUT", "LDAI", "LDBI", "ADD",
+                                 "OUT", "HALT"])
+        # locate the addend loads by walking the encoding rather than by
+        # hard-coded offsets — the poison prologue moved them once already
         img = pg.build_real()
-        self.assertEqual(img[0], OPCODES["LDAI"])
-        self.assertEqual(img[2], OPCODES["LDBI"])
-        self.assertEqual(img[1] + img[3], pg.EXPECT_SUM)
+        off, loads = 0, []
+        for step in pg.PROGRAM:
+            if step[0] in ("LDAI", "LDBI") and step[1:] != (pg.POISON,):
+                loads.append((img[off], img[off + 1]))
+            off += INSTRUCTIONS[step[0]][0]
+        self.assertEqual([op for op, _ in loads],
+                         [OPCODES["LDAI"], OPCODES["LDBI"]])
+        self.assertEqual(sum(v for _, v in loads), pg.EXPECT_SUM)
+
+    def test_program_poisons_OB_before_it_computes(self):
+        """U35 has no reset and the machine free-runs at power-up, so OB always
+        already holds the previous run's answer — nothing the RIG does can
+        clear it. The program must destroy the old answer itself, before it
+        computes, or a test cannot tell a fresh result from a leftover."""
+        first = pg.PROGRAM[0]
+        self.assertEqual(first, ("LDAI", pg.POISON),
+                         "the program must load the poison FIRST")
+        self.assertEqual(pg.PROGRAM[1], ("OUT",),
+                         "and drive it to OB before anything else")
+        self.assertNotEqual(pg.POISON, pg.EXPECT_SUM,
+                            "a poison equal to the answer proves nothing")
+        # and it must really be on the bus before the addends are loaded
+        out_idx = [i for i, s in enumerate(pg.PROGRAM) if s[0] == "OUT"]
+        add_idx = [i for i, s in enumerate(pg.PROGRAM) if s[0] == "ADD"][0]
+        self.assertLess(out_idx[0], add_idx)
+        self.assertGreater(out_idx[-1], add_idx, "the sum is still shown")
 
     def test_assembler_emits_declared_lengths(self):
         for name, _ops in [(s[0], s[1:]) for s in pg.PROGRAM]:

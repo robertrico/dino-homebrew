@@ -615,7 +615,8 @@ static const sigpin_t sig_block4[] PROGMEM = {
     {pm_s5, pm_s145, 'I', pm_s2},
     {pm_s7, pm_s147, 'I', pm_s2},
     {pm_s13, pm_s149, 'I', pm_s2},
-    {pm_s15, pm_s151, 'I', pm_s2}
+    {pm_s15, pm_s151, 'I', pm_s2},
+    {pm_s185, pm_s159, 'O', pm_s2}
 };
 static const sigpin_t sig_block5[] PROGMEM = {
     {pm_s19, pm_s27, 'I', pm_s2},
@@ -632,7 +633,8 @@ static const sigpin_t sig_block5[] PROGMEM = {
     {pm_s5, pm_s145, 'I', pm_s2},
     {pm_s7, pm_s147, 'I', pm_s2},
     {pm_s13, pm_s149, 'I', pm_s2},
-    {pm_s15, pm_s151, 'I', pm_s2}
+    {pm_s15, pm_s151, 'I', pm_s2},
+    {pm_s185, pm_s159, 'O', pm_s2}
 };
 static const sigpin_t sig_block6[] PROGMEM = {
     {pm_s19, pm_s27, 'I', pm_s2},
@@ -665,8 +667,8 @@ static const modmap_t MODMAPS[] PROGMEM = {
     {pm_s187, sig_block1, 39, pm_s188, pm_s189},
     {pm_s190, sig_block2, 23, pm_s191, pm_s192},
     {pm_s193, sig_block3, 16, pm_s194, pm_s189},
-    {pm_s195, sig_block4, 15, pm_s196, pm_s197},
-    {pm_s198, sig_block5, 15, pm_s199, pm_s197},
+    {pm_s195, sig_block4, 16, pm_s196, pm_s197},
+    {pm_s198, sig_block5, 16, pm_s199, pm_s197},
     {pm_s200, sig_block6, 14, pm_s199, pm_s197}
 };
 #define MODMAP_COUNT 16

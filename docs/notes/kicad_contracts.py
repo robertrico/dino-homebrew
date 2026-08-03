@@ -547,6 +547,8 @@ BLOCKS = {
         "sample_anyway": ["CW12=END", "CW15=HALT"] + [f"IRB{i}" for i in range(8)],
     },
     "block4": {
+        "steppable": True,          # A0 -> U20.2: the milestone is ~10us long,
+                                    # far too short to catch by polling
         # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
         # purely as a CAPTURE QUALIFIER. The microcode ROM outputs are invalid
         # for one access time after T changes on the CLK rising edge, and the
@@ -564,6 +566,8 @@ BLOCKS = {
         "sample_anyway": ["CW12=END", "CW15=HALT"],
     },
     "block5": {
+        "steppable": True,          # A0 -> U20.2: the milestone is ~10us long,
+                                    # far too short to catch by polling
         # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
         # purely as a CAPTURE QUALIFIER. The microcode ROM outputs are invalid
         # for one access time after T changes on the CLK rising edge, and the

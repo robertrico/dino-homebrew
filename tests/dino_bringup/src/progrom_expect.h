@@ -17,7 +17,7 @@
 #define PR_REAL_BYTE0 0x11u
 
 /* CRC-16/CCITT-FALSE over all 32768 bytes */
-#define PR_CRC_REAL 0xF501u
+#define PR_CRC_REAL 0x8577u
 #define PR_CRC_DIAG 0xDFE7u
 
 #define PR_DIAG_ZERO 0xA5u
@@ -38,12 +38,14 @@ static inline uint8_t pr_diag_byte(uint16_t a) {
 
 /* the shipped program; every address at or past PR_PROGRAM_LEN
    reads PR_SAFE_FILL */
-#define PR_PROGRAM_LEN 7u
+#define PR_PROGRAM_LEN 10u
 static const uint8_t PR_PROGRAM[PR_PROGRAM_LEN] PROGMEM = {
-    0x11, 0x05, 0x12, 0x03, 0x41, 0x51, 0xFF,
+    0x11, 0xFF, 0x51, 0x11, 0x2F, 0x12, 0x1E, 0x41, 0x51, 0xFF,
 };
 
-#define PR_EXPECT_SUM 0x08u   /* the milestone result */
+#define PR_EXPECT_SUM 0x4Du   /* the milestone result */
+#define PR_POISON 0xFFu   /* OB is set to this BEFORE the sum is computed */
+#define PR_EXPECT_ENDS 6u   /* one END per instruction retired */
 
 #endif
 
@@ -59,11 +61,15 @@ static const uint8_t PR_PROGRAM[PR_PROGRAM_LEN] PROGMEM = {
    because OB is the only datapath observable on the block
    ladder. Burn as needed; PROG.bin (the milestone) is never
    regenerated under another name. */
-#define PR_COV_COUNT 4u
-typedef struct { const char *name; uint16_t crc; uint8_t expect_ob; } prcov_t;
+#define PR_COV_COUNT 7u
+typedef struct { const char *name; uint16_t crc;
+                 uint8_t expect_ob; uint8_t expect_ends; } prcov_t;
 static const prcov_t PR_COVERAGE[PR_COV_COUNT] = {
-    {"alu", 0x642Au, 0x39u},
-    {"mem", 0x3E4Bu, 0xC5u},
-    {"flow", 0xCED0u, 0x39u},
-    {"loop", 0x8727u, 0x15u},
+    {"probe", 0x254Eu, 0x39u, 2u},
+    {"adda", 0xAC3Du, 0x39u, 4u},
+    {"addb", 0x8DAEu, 0x39u, 4u},
+    {"alu", 0x642Au, 0x39u, 13u},
+    {"mem", 0x3E4Bu, 0xC5u, 5u},
+    {"flow", 0xCED0u, 0x39u, 7u},
+    {"loop", 0x8727u, 0x15u, 33u},
 };

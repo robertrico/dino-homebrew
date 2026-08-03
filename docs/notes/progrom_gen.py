@@ -31,7 +31,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from microcode_gen import (OPCODES, INSTRUCTIONS, DST, SRC, MISC,  # noqa: E402
-                           SA)                                   # single source
+                           SA, _sa_bits)                         # single source
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROMS = os.path.normpath(os.path.join(HERE, "..", "..", "roms"))
@@ -64,15 +64,37 @@ def build_diag():
 # ---- the milestone program ---------------------------------------------
 # HARD GATE (Rico): no ISA/hardware extensions until the whole machine
 # adds two numbers. This is that program — load, add, expose, halt.
-ADDEND_A = 5
-ADDEND_B = 3
-EXPECT_SUM = ADDEND_A + ADDEND_B
+#
+# The addends are 0x2F and 0x1E, not 5 and 3. 5+3=8 was the first sum this
+# machine ever produced, and it is a thin witness: one bit set, low nibble
+# only, one carry. It cannot see a stuck or swapped bit in the upper nibble at
+# all. 0x2F + 0x1E = 0x4D sets bits in BOTH nibbles of both addends and of the
+# answer, and the carry ripples from bit 1 through bit 6 — crossing bit 3->4,
+# where the two '382s hand over to each other.
+ADDEND_A = 0x2F
+ADDEND_B = 0x1E
+EXPECT_SUM = ADDEND_A + ADDEND_B        # 0x4D = 0b01001101
+
+#
+# THE PROGRAM POISONS OB BEFORE IT COMPUTES. U35 has no reset and the machine
+# free-runs at power-up, so OB always already holds the previous run's answer —
+# power-cycling does not clear it. A test that reads OB after a reset therefore
+# cannot tell a fresh result from a leftover, and the rig spent several bench
+# runs printing INCONCLUSIVE (or worse, PASS on a stale byte).
+#
+# Writing 0xFF to OB as the FIRST thing the program does removes the ambiguity
+# at the source: any run that so much as STARTS destroys the old answer. OB can
+# only read 0x4D if THIS run reached the second OUT. A machine that dies partway
+# leaves 0xFF sitting there instead of impersonating success.
+POISON = 0xFF
 
 PROGRAM = [
-    ("LDAI", ADDEND_A),     # A = 5   (also latches TMP_A shadow)
-    ("LDBI", ADDEND_B),     # B = 3   (also latches TMP_B shadow)
-    ("ADD",),               # A = TMP_A + TMP_B = 8, flags commit
-    ("OUT",),               # OUT register <- A, LEDs show 0x08
+    ("LDAI", POISON),       # A = 0xFF
+    ("OUT",),               # OB <- 0xFF: the previous answer is now GONE
+    ("LDAI", ADDEND_A),     # A = 0x2F  (also latches TMP_A shadow)
+    ("LDBI", ADDEND_B),     # B = 0x1E  (also latches TMP_B shadow)
+    ("ADD",),               # A = TMP_A + TMP_B = 0x4D, flags commit
+    ("OUT",),               # OB <- 0x4D, LEDs show the sum
     ("HALT",),              # park: T-counter frozen, clock still running
 ]
 
@@ -206,7 +228,7 @@ def simulate(program, max_steps=100000, switches=0x00):
     flag_z = 0
     st = {"ram_writes": 0, "ram_reads": 0, "branches_taken": 0,
           "branches_not_taken": 0, "hit_poison": False, "stored": None,
-          "steps": 0}
+          "steps": 0, "ends": 0}
 
     def rd(a):
         if a < SIZE:
@@ -224,7 +246,13 @@ def simulate(program, max_steps=100000, switches=0x00):
             raise BuildError(f"pc=0x{pc-1:04X}: no instruction for 0x{op:02X}")
         for w in INSTRUCTIONS[name][1]:
             dst, src = _DST[w & 7], _SRC[(w >> 3) & 7]
-            misc, sa = _MISC[(w >> 6) & 7], _SA[(w >> 9) & 7]
+                # CW9..CW11 hold the '382 code BIT-REVERSED — CW9 is labelled SA2
+            # and wired to the chip's select MSB. _sa_bits is its own inverse,
+            # so the same call unpacks it. Reading the field raw here would
+            # make the interpreter compute AND where the hardware computes ADD,
+            # which is the very fault this encoding change fixes.
+            misc = _MISC[(w >> 6) & 7]
+            sa = _SA[_sa_bits((w >> 9) & 7)]
             halt, pc_up = (w >> 15) & 1, (w >> 13) & 1
 
             val = None
@@ -283,6 +311,7 @@ def simulate(program, max_steps=100000, switches=0x00):
                 st.update(out=out, halted=True, A=A, B=B, C=C, flag_z=flag_z)
                 return st
             if (w >> 12) & 1:                       # END
+                st["ends"] += 1
                 break
     st.update(out=out, halted=False, A=A, B=B, C=C, flag_z=flag_z)
     return st
@@ -393,7 +422,36 @@ LOOP_PROGRAM = [
     ("OUT",), ("HALT",),
 ]
 
+# probe — THE SMALLEST QUESTION WORTH ASKING. LDAI then OUT, no ALU at all:
+# does an immediate byte reach A and come back out on OB? That splits the
+# milestone in half. If OB shows the constant, the load/store/OUT path is
+# proven and any wrong sum is the ALU's; if it does not, the fault is upstream
+# of the ALU and no amount of staring at a sum will find it. 0x39 is
+# non-palindromic (reverses to 0x9C), so a flipped bank self-names.
+PROBE_VALUE = 0x39
+
+PROBE_PROGRAM = [
+    ("LDAI", PROBE_VALUE),
+    ("OUT",),
+    ("HALT",),
+]
+
+# adda / addb — ISOLATE THE TWO ALU OPERANDS. Adding a known value to ZERO
+# means the answer IS the operand, so each image asks about one shadow latch on
+# its own. A sum cannot distinguish a bad TMP_A from a bad TMP_B from a bad
+# result path; these can. Both expect the SAME witness, so the pair reads as a
+# two-bit answer.
+ADDA_PROGRAM = [                     # A carries the value, B is zero
+    ("LDAI", PROBE_VALUE), ("LDBI", 0x00), ("ADD",), ("OUT",), ("HALT",),
+]
+ADDB_PROGRAM = [                     # B carries the value, A is zero
+    ("LDAI", 0x00), ("LDBI", PROBE_VALUE), ("ADD",), ("OUT",), ("HALT",),
+]
+
 COVERAGE = {
+    "probe": PROBE_PROGRAM,
+    "adda": ADDA_PROGRAM,
+    "addb": ADDB_PROGRAM,
     "real": PROGRAM,
     "alu": ALU_PROGRAM,
     "mem": MEM_PROGRAM,
@@ -498,6 +556,10 @@ def emit_header(real, crcs, path, cov=None):
         "};",
         "",
         f"#define PR_EXPECT_SUM 0x{EXPECT_SUM:02X}u   /* the milestone result */",
+        f"#define PR_POISON 0x{POISON:02X}u"
+        f"   /* OB is set to this BEFORE the sum is computed */",
+        f"#define PR_EXPECT_ENDS {simulate(PROGRAM)['ends']}u"
+        f"   /* one END per instruction retired */",
         "",
         "#endif",
         "",
@@ -515,11 +577,11 @@ def emit_header(real, crcs, path, cov=None):
                   "   ladder. Burn as needed; PROG.bin (the milestone) is never",
                   "   regenerated under another name. */",
                   f"#define PR_COV_COUNT {len(cov)}u",
-                  "typedef struct { const char *name; uint16_t crc; "
-                  "uint8_t expect_ob; } prcov_t;",
+                  "typedef struct { const char *name; uint16_t crc;",
+                  "                 uint8_t expect_ob; uint8_t expect_ends; } prcov_t;",
                   "static const prcov_t PR_COVERAGE[PR_COV_COUNT] = {"]
-        for tag, (crc, ob) in cov.items():
-            lines.append(f'    {{"{tag}", 0x{crc:04X}u, 0x{ob:02X}u}},')
+        for tag, (crc, ob, ends) in cov.items():
+            lines.append(f'    {{"{tag}", 0x{crc:04X}u, 0x{ob:02X}u, {ends}u}},')
         lines.append("};")
     with open(path, "w") as f:
         f.write("\n".join(lines))
@@ -545,15 +607,16 @@ def main():
         img = build_image(prog)
         with open(os.path.join(ROMS, f"PROG_{tag}.bin"), "wb") as f:
             f.write(img)
-        cov[tag] = (crc16(img), simulate(prog)["out"])
+        r = simulate(prog)
+        cov[tag] = (crc16(img), r["out"], r["ends"])
     emit_header(real, crcs, HDR, cov)
     print(f"wrote {2 + len(cov)}x {SIZE}B bins -> {ROMS}")
     print(f"wrote expect header -> {HDR}")
     print("burn order: DIAG first (rom.order proves 15 address lines),")
     print("            then REAL (the milestone program)")
     print("  coverage images (burn as needed; each ends OUT; HALT):")
-    for tag, (crc, ob) in cov.items():
-        print(f"    PROG_{tag}.bin  crc=0x{crc:04X}  OB should read 0x{ob:02X}")
+    for tag, (crc, ob, ends) in cov.items():
+        print(f"    PROG_{tag}.bin  crc=0x{crc:04X}  OB 0x{ob:02X}  {ends} END pulses")
     print(f"  program: {' '.join(s[0] for s in PROGRAM)}"
           f"  -> OUT should show 0x{EXPECT_SUM:02X}")
     for name, val in crcs.items():

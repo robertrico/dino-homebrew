@@ -11,13 +11,29 @@ the generator and hope OPCODES has not moved."
 ## The images
 
     U9.bin  U15.bin              microcode, REAL pair. CURRENTLY SEATED.
-                                 CRC U9=0xAD70  U15=0x58D7
+                                 CRC U9=0xAD70  U15=0xF49F
+                                 U15 CHANGED 2026-08-02: the SA field is now
+                                 packed BIT-REVERSED into CW9..CW11, because
+                                 CW9 is labelled SA2 and wired to the '382's
+                                 select MSB. The old image delivered ADD (011)
+                                 as AND (110) — the bench measured 5 AND 3 = 1,
+                                 0x39 AND 0 = 0 and 0 AND 0x39 = 0 across three
+                                 images. U9 is UNCHANGED (CW0-7 do not carry
+                                 SA), so only U15 needs reburning.
     U9_diag.bin  U15_diag.bin    microcode, DIAG pair (address self-proof)
                                  CRC U9=0x0F69  U15=0xF1B9
     PROG.bin                     program ROM, THE MILESTONE PROGRAM
-                                 LDAI 5; LDBI 3; ADD; OUT; HALT
+                                 LDAI 0xFF; OUT      <- poisons OB first
+                                 LDAI 0x2F; LDBI 0x1E; ADD; OUT; HALT
                                  safe-filled with HALT (0xFF)
-                                 CRC 0xF501
+                                 CRC 0x8577
+                                 ADDENDS CHANGED 2026-08-02, was 5+3=8. One
+                                 bit set, low nibble, one carry — blind to a
+                                 stuck or swapped bit in the upper nibble.
+                                 0x2F+0x1E=0x4D puts bits in both nibbles of
+                                 both addends and the answer, and ripples the
+                                 carry from bit 1 to bit 6, crossing bit 3->4
+                                 where the two '382s hand over. Reburn PROG.bin.
     PROG_diag.bin                program ROM, DIAG (self-naming addresses)
                                  CRC 0xDFE7
 

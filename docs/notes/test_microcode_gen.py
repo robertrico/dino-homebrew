@@ -43,9 +43,14 @@ assert real[g.OPCODES["LDA"] * 16 + 3] == 0x1011
 assert real[g.OPCODES["STA"] * 16 + 3] == 0x101F
 assert real[g.OPCODES["JMP"] * 16 + 3] == 0x1080
 assert real[g.OPCODES["JNZ"] * 16 + 3] == 0x10C0
-# ALU family = 0x1631 with [11:9] per the op code table
-alu_want = {"ADD": 0x1631, "SUB": 0x1431, "AND": 0x1C31, "OR": 0x1A31,
-            "XOR": 0x1831, "CLR": 0x1031, "SET": 0x1E31, "BSUB": 0x1231}
+# ALU family: END + SA + src=ALU + dst=REG_A. The SA bits in [11:9] are the
+# '382 code BIT-REVERSED, because CW9 is labelled SA2 and wired to the chip's
+# select MSB — see _sa_bits(). These literals previously held the UNREVERSED
+# packing, which is how the encoding stayed wrong: the test agreed with the
+# generator and neither agreed with the wiring. ADD and AND swap places here,
+# which is exactly the fault the bench measured.
+alu_want = {"CLR": 0x1031, "BSUB": 0x1831, "SUB": 0x1431, "ADD": 0x1C31,
+            "XOR": 0x1231, "OR": 0x1A31, "AND": 0x1631, "SET": 0x1E31}
 for name, w in alu_want.items():
     assert real[g.OPCODES[name] * 16 + 1] == w, f"{name} T1"
 # OUT
@@ -145,3 +150,47 @@ for name in ("MC_CRC_U9_REAL", "MC_CRC_U15_REAL",
     assert f"0x{hdr_val(name):04X}" in out, f"CRC {name} not printed"
 
 print("OK test_microcode_gen")
+
+def test_sa_field_reaches_the_382_uninverted():
+    """THE BUG THIS EXISTS FOR: the SA field arrived at the '382s BIT-REVERSED,
+    so ADD (011) was executed as AND (110). Three bench images agreed —
+    5 AND 3 = 1, 0x39 AND 0 = 0, 0 AND 0x39 = 0 (2026-08-02).
+
+    It survived everything because reversing a field is INVISIBLE unless
+    something computes with it. block1 checked ROM -> pin and found them
+    self-consistent; alu.ops drove SA from the rig and never used the
+    microcode's encoding at all. Nothing compared the ENCODING against the
+    WIRING until a program actually ran.
+
+    So this walks the netlist: which CW bit lands on which '382 select pin,
+    then asserts the code the chip receives IS the code the mnemonic names.
+    """
+    import re
+    sys.path.insert(0, HERE)
+    from kicad_netlist import build_report
+    alu = os.path.join(HERE, "..", "..", "dino_v0_0_2", "alu.kicad_sch")
+
+    # netlist: SA0/SA1/SA2 -> U38 pins 5/6/7 = S0/S1/S2
+    sel = {}
+    for r in build_report(alu)[0]:
+        t = str(r)
+        m = re.match(r"\s*U38\s+pin\s+(\d+)\s+S(\d)", t)
+        if m:
+            n = re.search(r"net=(\S+)", t)
+            sel[int(m.group(2))] = n.group(1)     # S<n> <- net name
+    assert set(sel) == {0, 1, 2}, f"could not find U38 S0/S1/S2: {sel}"
+
+    # the schematic aliases CW9=SA2, CW10=SA1, CW11=SA0
+    cw_of = {"SA0": 11, "SA1": 10, "SA2": 9}
+    for spin, net in sel.items():
+        assert net in cw_of, f"U38 S{spin} is on {net}, not an SA net"
+
+    for name, code in SA.items():
+        w = word(sa=name)
+        got = 0
+        for spin, net in sel.items():
+            got |= ((w >> cw_of[net]) & 1) << spin
+        assert got == code, (
+            f"{name}: microcode encodes {code} but the '382 receives {got} — "
+            f"the SA field is reaching the chip permuted")
+

@@ -34,8 +34,9 @@ registers, mar, memory, alu, io. Coverage lint: 0 gaps, 0 pending.
 Stage 1 (rig self-test) is CLOSED as a diagnostic, not a gate.
 
 **What remains:** the integration ladder, then free-run. The milestone
-program is burned and seated: `LDAI 5; LDBI 3; ADD; OUT; HALT` → OUT
-should read 0x08.
+program is burned and seated: `LDAI 0xFF; OUT; LDAI 0x2F; LDBI 0x1E; ADD; OUT; HALT`
+→ OUT should read 0x4D. The leading `LDAI 0xFF; OUT` POISONS OB, so a
+stale answer cannot survive a run that starts.
 
 **Read `tests/dino_bringup/BRINGUP.md` first.** It is the bench bible:
 per-stage wiring, commands, expected output, failure meanings, and the

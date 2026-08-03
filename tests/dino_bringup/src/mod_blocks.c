@@ -483,11 +483,8 @@ void t_block1_decode(void) {
     uart_putsP("   transient T-states: "); uart_putdec(transient);
     uart_putsP("\r\n");
     if (transient)
-        uart_putsP("     transients are the microcode DECODE GLITCH: the ROM is "
-                   "invalid for one\r\n     access time after T changes and the "
-                   "'138s decode that garbage. Harmless\r\n     to the machine "
-                   "(nothing commits during CLK high) — measure it on the\r\n"
-                   "     scope, do NOT gate the '138s. See BRINGUP.md.\r\n");
+        uart_putsP("     microcode DECODE GLITCH — measure on the scope. "
+                   "Do NOT gate the '138s.\r\n     See BRINGUP.md.\r\n");
     test_check_bool(checked > 0, true, PSTR("samples_were_taken"));
     test_check_u16(cover_fail, 0, PSTR("every_T_state_reached"));
     test_check_u16(sys_bad, 0, PSTR("no_systematic_decode_faults"));
@@ -911,12 +908,9 @@ void t_block2_fetch(void) {
     }
     test_check_u16(have, 3, PSTR("captured_T0_T1_T2_contiguously"));
     if (have < 3) {
-        uart_putsP("     no contiguous T0/T1/T2 in 12 bursts. The burst samples "
-                   "every ~687ns\r\n     against a 977ns T-state, so some "
-                   "T-states get no CLK-low entry. Halving\r\n     the clock "
-                   "at the U20 divider doubles both windows — that is what the "
-                   "divider\r\n     is for, and acceptance still runs at "
-                   "1.024MHz.\r\n");
+        uart_putsP("     no contiguous T0/T1/T2 in 12 bursts. Burst period "
+                   "~687ns vs a 977ns\r\n     T-state. Halve the clock at the "
+                   "U20 divider and re-run.\r\n");
         test_end(); return;
     }
     uart_putsP("     consecutive ROM reads: ");
@@ -1194,8 +1188,52 @@ static bool bind_step(void) {
     return true;
 }
 
-/* One CLK EDGE: pulse the divider until CLK changes. Returns false if it never
-   does, which means Y1 is still driving U20.2 and the rig is losing to it. */
+static bool step_edge(void);
+
+/* A RUNNING Y1 LOOKS EXACTLY LIKE A WORKING STEP, and step_edge() cannot tell
+   the difference: it returns the moment CLK differs from its previous value,
+   and a 1.024MHz oscillator changes CLK every 488ns. So it answers "the rig
+   owns the clock" on the first read, always, while the machine free-runs past
+   every sample the test believes it is placing.
+
+   The bench trace that exposed this (2026-08-02, immediately after a free run,
+   Y1 still enabled) showed ONE frame: T=1, HALT, 0 END pulses. The program had
+   finished microseconds earlier; every "step" sampled a machine already parked.
+   The old failure message had it backwards — it said Y1 would keep CLK from
+   FOLLOWING, when in fact Y1 makes CLK follow ITSELF and the test passes.
+
+   The discriminating question is not "does CLK move?" but "does CLK HOLD STILL
+   when I stop asking?" Hold CLKIN and watch. Anything that moves is not us. */
+static bool rig_owns_clock(void) {
+    drv(&P_CLKIN, false);
+    settle();
+    bool lvl = smp(&P_CLK);
+    for (uint16_t i = 0; i < 3000; i++)      /* >> 976ns, so a live Y1 cannot hide */
+        if (smp(&P_CLK) != lvl) return false;
+    return true;
+}
+
+/* Both halves, in the order that names the fault. */
+static bool bind_clock(void) {
+    if (!rig_owns_clock()) {
+        uart_putsP("     CLK moves while CLKIN is held — Y1 still running. "
+                   "Disable Y1 at its EN\r\n     pin (or open the "
+                   "Y1.8->U20.2 header). Leave the CLKIN jumper on U20.2.\r\n");
+        test_check_bool(false, true, PSTR("Y1_is_disabled"));
+        return false;
+    }
+    if (!step_edge()) {
+        uart_putsP("     CLK did not follow CLKIN in 64 pulses. The rig's "
+                   "CLKIN jumper is not\r\n     on U20.2, or the divider is "
+                   "not passing edges.\r\n");
+        test_check_bool(false, true, PSTR("rig_owns_the_clock"));
+        return false;
+    }
+    return true;
+}
+
+/* One CLK EDGE: pulse the divider until CLK changes. Only meaningful once
+   rig_owns_clock() has established that nothing ELSE can move CLK. */
 static bool step_edge(void) {
     bool before = smp(&P_CLK);
     for (uint8_t i = 0; i < 64; i++) {
@@ -1210,16 +1248,9 @@ void t_block3_clocked(void) {
     test_begin(m_block3, PSTR("clocked"));
     if (!bind_step()) { test_end(); return; }
 
-    /* Y1 MUST BE OFF. If it is still driving U20.2 the rig loses to it through
-       the series resistor and CLK simply will not follow — say so plainly
-       rather than reporting a machine fault. */
-    if (!step_edge()) {
-        uart_putsP("     CLK did not follow CLKIN in 64 pulses. Y1 is still "
-                   "driving U20.2 —\r\n     disable it at its EN pin (or open "
-                   "the Y1.8->U20.2 header) and retry.\r\n");
-        test_check_bool(false, true, PSTR("rig_owns_the_clock"));
-        test_end(); return;
-    }
+    /* Y1 MUST BE OFF, and "off" has to be PROVEN by stillness, not inferred
+       from CLK moving — a live Y1 moves it for us. See bind_clock(). */
+    if (!bind_clock()) { test_end(); return; }
 
     /* THE DIVIDER RATIO, which root.clock cannot test: it measures the
        resulting frequency but cannot say which stage is wrong. Two pulses per
@@ -1286,10 +1317,8 @@ void t_block3_dump(void) {
     }
     uart_putsP("\r\n");
     if (halted)
-        uart_putsP("     the machine is HALTED — with the REAL image it runs "
-                   "the milestone and stops\r\n     at 0xFF. Seat PROG_diag "
-                   "for a long free run: executed as instructions it\r\n"
-                   "     walks 300+ steps with varying strides.\r\n");
+        uart_putsP("     machine HALTED. For a long free run seat PROG_diag: "
+                   "make -C tests/dino_bringup burn-prog-diag\r\n");
     test_check_bool(true, true, PSTR("dump_printed"));
     test_end();
 }
@@ -1306,6 +1335,58 @@ void t_block3_dump(void) {
 
    bit-reverse(0x08) = 0x10, so a flipped OB ribbon reads 0x10 and self-names.
    The milestone value is self-witnessing; most bytes are not. */
+/* WHEN HALT WILL NOT SIT STILL, SAY WHICH FAULT IT IS. A machine that was
+   reset again dips once; a machine whose T-counter is not frozen at HALT runs
+   the safe-fill row after it (0x1000, END), clears T, re-fetches the HALT
+   opcode and pulses HALT every couple of T-states. Those need opposite
+   repairs, and "unstable" names neither. Counting edges separates them. */
+static void halt_shape(const hwpin_t *p) {
+    uint16_t edges = 0, highs = 0;
+    bool prev = smp(p);
+    for (uint16_t k = 0; k < 20000u; k++) {
+        bool cur = smp(p);
+        if (cur != prev) edges++;
+        if (cur) highs++;
+        prev = cur;
+    }
+    uart_putsP("     HALT over 20000 samples: "); uart_putdec(edges);
+    uart_putsP(" edges, high "); uart_putdec((uint16_t)(highs / 200u));
+    uart_putsP("%\r\n");
+    if (edges > 50u)
+        uart_putsP("     HALT OSCILLATING — T is not frozen. Check CW15 -> "
+                   "the '163 CET.\r\n");
+    else if (edges > 0u)
+        uart_putsP("     single event, not a loop — reset again after "
+                   "halting\r\n");
+}
+
+/* Print every reading of `ob` that a known image would explain: the byte
+   itself, its bit-reversal (flipped ribbon — the fault registers.outreg was
+   built to catch), and its nibble swap — a transposed 4-bit half, which is
+   what a two-connector OB ribbon can do and a mirror check cannot see.
+
+   A permuted byte is not a wrong answer, and the two must never look alike:
+   one is a ribbon, the other is the ALU. This is why every coverage answer is
+   chosen to be neither mirror- nor nibble-swap-invariant — the permutations
+   are only nameable if the byte survives them as something distinguishable. */
+static void name_ob_permutations(uint8_t ob) {
+    uint8_t rev = 0;
+    for (uint8_t b = 0; b < 8; b++)
+        if (ob & (1u << b)) rev |= (uint8_t)(0x80u >> b);
+    uint8_t swap = (uint8_t)((ob << 4) | (ob >> 4));
+    for (uint8_t i = 0; i < PR_COV_COUNT; i++) {
+        uint8_t want = PR_COVERAGE[i].expect_ob;
+        const char *how = NULL;
+        if      (want == rev)  how = PSTR(" is BIT-REVERSED 0x");
+        else if (want == swap) how = PSTR(" has its NIBBLES SWAPPED vs 0x");
+        else continue;
+        uart_putsP("     NOTE: 0x"); uart_puthex8(ob);
+        uart_puts_p(how); uart_puthex8(want);
+        uart_putsP(" (PROG_"); uart_puts(PR_COVERAGE[i].name);
+        uart_putsP(") — check the OB ribbon\r\n");
+    }
+}
+
 static void milestone_run(const char *mod)
 {
     pins_idle();   /* rig drives NOTHING from block3 down — release before reading */
@@ -1316,8 +1397,46 @@ static void milestone_run(const char *mod)
     }
     uint8_t ob_before = PINK;
     uart_putsP("     OB before run = 0x"); uart_puthex8(ob_before); uart_putsP("\r\n");
-    uart_putsP("     ARM: press RESET (10s)\r\n");
-    if (!await_level(&p_halt, false, 10000)) {
+
+    /* CHECK THE PRECONDITION, DO NOT RUN BLIND. The trigger below waits for
+       HALT to FALL, which only means "the run started" if the machine is
+       HALTED when you arm. With the milestone image it is: it runs five
+       instructions, fetches 0xFF and parks. With PROG_diag seated it never
+       halts — the diag bytes execute as a long random program — so HALT is
+       already low, the wait returns INSTANTLY, and the ARM prompt flies past
+       without the operator ever pressing anything. That is what happened on
+       the bench (2026-08-02): 20 END pulses, OB never the sum, and no chance
+       to press the button. */
+    if (!smp(&p_halt)) {
+        uart_putsP("     machine NOT HALTED — nothing to arm against. Needs "
+                   "the MILESTONE image:\r\n     make -C tests/dino_bringup "
+                   "burn-prog\r\n");
+        test_check_bool(false, true, PSTR("machine_is_halted_before_arming"));
+        return;
+    }
+
+    /* AND CHECK THE RIGHT IMAGE IS IN THE SOCKET. This test is pinned to the
+       milestone, but the ROM is swapped constantly for coverage images, and a
+       seated PROG_wide makes it print four FAILs — wrong END count, END after
+       HALT, wrong OB, unstable freeze — none of which is a machine fault. Four
+       lies teach the operator to skim the FAIL lines, which is exactly how a
+       real failure gets waved through. OB is already parked at the previous
+       run's answer here, so the wrong image is identifiable BEFORE arming. */
+    for (uint8_t i = 0; i < PR_COV_COUNT; i++) {
+        if (PR_COVERAGE[i].expect_ob != ob_before) continue;
+        if (ob_before == PR_EXPECT_SUM) break;   /* ambiguous, let it run */
+        uart_putsP("     OB is parked at PROG_"); uart_puts(PR_COVERAGE[i].name);
+        uart_putsP("'s answer — that image is seated; this test needs "
+                   "PROG.bin\r\n     make -C tests/dino_bringup burn-prog"
+                   "   (or use block4.stepped)\r\n");
+        test_check_bool(false, true, PSTR("milestone_image_seated"));
+        return;
+    }
+
+    uart_putsP("     ARM: press RESET (30s)\r\n");
+    if (!await_level(&p_halt, false, 30000)) {
+        uart_putsP("     HALT never fell — the button was not pressed, or "
+                   "RESET is not reaching\r\n     the T counter.\r\n");
         test_check_bool(false, true, PSTR("run_started_HALT_fell"));
         return;
     }
@@ -1334,36 +1453,279 @@ static void milestone_run(const char *mod)
             if (halted) end_after_halt = true;
         }
     }
-    test_check_u16(ends, 4, PSTR("END_pulses_one_per_instruction"));
-    test_check_bool(end_after_halt, false, PSTR("no_END_after_HALT"));
+    /* INFORMATION, NOT AN ASSERTION. These counts cannot be measured from a
+       free run and must never fail one. The trigger is HALT FALLING, which is
+       RESET ASSERTING; the RC stretch then holds the machine 0.25-2.2s while
+       this burst finishes in a few hundred us. The capture is over long before
+       the program is released, and the program itself is ten T-states — about
+       10us. The window and the run never overlap.
 
-    /* wait out the run, then read the answer */
-    if (!await_level(&p_halt, true, 2000)) {
+       So the number below is whatever the capture landed on: the bench has
+       seen 5, 6 and 20 across runs of a CORRECT machine. Asserting on it was
+       the same defect block1 was fixed for — measuring the test instead of the
+       machine. block4.stepped counts ENDs for real, because there the rig owns
+       the clock and the machine cannot move between samples. */
+    uart_putsP("     capture landed on "); uart_putdec(ends);
+    uart_putsP(" END pulses");
+    if (end_after_halt) uart_putsP(", some after HALT");
+    uart_putsP("  (not an assertion — see comment)\r\n");
+
+    /* ACCEPT THE RISE ONLY IF IT HOLDS. await_level() returns on the first
+       HIGH it sees, and a HIGH that lasts one T-state is not the machine
+       parking — it is the machine passing through. Reading OB off a transient
+       returns the PREVIOUS run's answer, because U35 has no reset, and that
+       reads as a pass. Require the level to survive 5ms, which is 5000 CLK
+       periods; nothing in a ten-T-state program is high that long. */
+    bool risen = false;
+    for (uint8_t tries = 0; tries < 20 && !risen; tries++) {
+        if (!await_level(&p_halt, true, 2000)) break;
+        risen = true;
+        for (uint8_t k = 0; k < 50; k++) {
+            _delay_us(100);
+            if (!smp(&p_halt)) { risen = false; break; }
+        }
+    }
+    if (!risen) {
+        uart_putsP("     HALT rises and falls again — not parking at HALT\r\n");
         test_check_bool(false, true, PSTR("machine_reached_HALT"));
+        halt_shape(&p_halt);
         return;
     }
     uint8_t ob = PINK;
     test_check_u16(ob, PR_EXPECT_SUM, PSTR("OB_is_the_sum"));
-    if (ob == 0x10)
-        uart_putsP("     NOTE: 0x10 is bit-reversed 0x08 — check the OB ribbon\r\n");
+    if (ob == PR_POISON) {
+        uart_putsP("     OB is the POISON value — run started, never reached "
+                   "the second OUT\r\n");
+    } else if (ob != PR_EXPECT_SUM) {
+        name_ob_permutations(ob);
+        uart_putsP("     verify the seated ROM: run memory.romcrc "
+                   "(expects PR_CRC_REAL)\r\n");
+    }
 
-    /* the freeze must be stable, not a droop and not a silent restart */
-    for (uint8_t i = 0; i < 10; i++) {
+    /* THE FREEZE MUST BE STABLE — not a droop, not a silent restart. NAME THE
+       SIGNAL THAT MOVED: "unstable" is two very different faults and reporting
+       one bit for both is the blind-counter rule broken. HALT going low means
+       the machine left HALT, which it cannot do (HALT is a fixed point) unless
+       something reset it — or unless the trigger fired on a transient and the
+       REAL run is only now happening. OB changing under a still-high HALT is
+       the opposite: the machine is parked and something else is driving OB.
+
+       Compared against `ob` as read, not against PR_EXPECT_SUM: correctness is
+       OB_is_the_sum's job, and folding the two makes a wrong-but-steady answer
+       report as instability. */
+    bool stable = true;
+    for (uint8_t i = 0; i < 10 && stable; i++) {
         _delay_ms(100);
-        if (!smp(&p_halt) || PINK != PR_EXPECT_SUM) {
-            test_check_bool(false, true, PSTR("HALT_and_OB_stable_1s"));
-            return;
+        bool h = smp(&p_halt);
+        uint8_t v = PINK;
+        if (h && v == ob) continue;
+        stable = false;
+        uart_putsP("     at +"); uart_putdec((uint16_t)(i + 1) * 100);
+        uart_putsP("ms: ");
+        if (!h) {
+            uart_putsP("HALT went LOW — the machine left HALT\r\n");
+        } else {
+            uart_putsP("OB changed 0x"); uart_puthex8(ob);
+            uart_putsP(" -> 0x"); uart_puthex8(v);
+            uart_putsP(" with HALT still high\r\n");
         }
     }
-    test_check_bool(true, true, PSTR("HALT_and_OB_stable_1s"));
-    if (ob_before == PR_EXPECT_SUM)
-        uart_putsP("     INCONCLUSIVE: OB already held the answer before the "
-                   "run — power-cycle and repeat for the strong form\r\n");
+    test_check_bool(stable, true, PSTR("HALT_and_OB_stable_1s"));
+    /* THE STALE-ANSWER PROBLEM IS GONE, AND NOT BECAUSE THE TEST GOT CLEVERER.
+       The program now writes 0xFF to OB before it computes anything, so any run
+       that starts destroys the previous answer. OB can only read the sum if
+       THIS run reached the second OUT. The old INCONCLUSIVE note fired whenever
+       OB already held the answer — which was ALWAYS, since the machine
+       free-runs at power-up and parks on its own result, and U35 has no reset
+       for a power-cycle to clear. */
+    (void)ob_before;
 }
 
 static const char m_block4[] PROGMEM = "block4";
 static const char m_block5[] PROGMEM = "block5";
 static const char m_block6[] PROGMEM = "block6";
+
+/* THE MILESTONE, STEPPED. This is the one that can actually be run.
+
+   The free-run version cannot work and no amount of window-widening fixes it:
+   the program is five instructions, TEN T-STATES, about 10us at 1.024MHz. By
+   the time await_level() notices HALT fall and a burst starts, the run is over.
+   That is why the bench saw 6 and 20 END pulses — the capture was landing
+   around the run, not on it (2026-08-02).
+
+   With the rig owning the clock the race disappears completely, because THE
+   MACHINE IS FROZEN between pulses. Rico can press RESET whenever he likes;
+   nothing advances until the rig says so. That is the real payoff of the
+   CLKIN wire, and it is worth more here than anywhere else on the ladder.
+
+   RESET IS SELF-DETECTING, so no RESET wire is needed. U6's ~MR is SYNCHRONOUS,
+   so while RESET is held the counter clears on every edge and T sits at 0 —
+   and the PC is held at 0 too, since RESET is one of its inputs. The moment T
+   first advances 0 -> 1, RESET has released and execution has begun. That also
+   waits out the RC stretch (0.25-2.2s) for free: with the clock stopped, a
+   stretch costs nothing. */
+static bool step_and_read(uint8_t *t, uint8_t *ob, uint8_t *anchor) {
+    if (!step_edge()) return false;
+    *t = (uint8_t)(PINF >> 4);
+    *ob = PINK;
+    *anchor = (uint8_t)(PINL & A_MASK);
+    return true;
+}
+
+void t_block4_stepped(void) {
+    test_begin(m_block4, PSTR("stepped"));
+    pins_idle();
+    if (!bind_step()) { test_end(); return; }
+
+    if (!bind_clock()) { test_end(); return; }
+
+    uint8_t ob_before = PINK;
+    uart_putsP("     OB before run = 0x"); uart_puthex8(ob_before);
+    uart_putsP("\r\n     PRESS AND RELEASE RESET\r\n");
+
+    /* Hold at T=0 until RESET releases. While it is asserted the synchronous
+       clear pins T to 0 on every edge; the first 0 -> 1 IS the release. */
+    uint8_t t = 0xFF, ob = 0, anchor = 0;
+    uint16_t held = 0;
+    bool started = false;
+    for (uint32_t k = 0; k < 2000000UL && !started; k++) {
+        if (!step_and_read(&t, &ob, &anchor)) break;
+        if (t == 0) { if (held < 0xFFFF) held++; }
+        else if (held >= 4) started = true;      /* was pinned, now advancing */
+        else held = 0;
+    }
+    test_check_bool(started, true, PSTR("RESET_held_T_at_zero_then_released"));
+    if (!started) {
+        uart_putsP("     never saw T pinned at 0 then advance. Was RESET "
+                   "pressed?\r\n");
+        test_end(); return;
+    }
+
+    /* Walk the program. THE FIRST T-STATE MUST BE EXAMINED TOO: `started` goes
+       true once T has ALREADY advanced out of the reset hold, so it is sitting
+       on T1 of the first instruction — and T1 is where LDAI carries its END.
+       Seeding last_t from it skipped that, counting LDBI+ADD+OUT = 3 instead
+       of 4 (bench 2026-08-02). last_t starts deliberately unequal. */
+    uint8_t ends = 0, halted = 0, end_after_halt = 0, last_t = 0xFF;
+    uint8_t ob_at_halt = 0;
+    bool saw_poison = false;
+    uart_putsP("     trace  T anchor OB\r\n");
+    for (uint16_t k = 0; k < 400 && !halted; k++) {
+        if (t != last_t) {
+            /* NAME THE LYING SIGNAL: every T-state of a ten-state program is
+               cheap to print, and it is the difference between "OB was 0x00"
+               and knowing which instruction failed to change it. */
+            uart_putsP("            "); uart_putc((char)('0' + (t & 15)));
+            uart_putsP("   0x"); uart_puthex8(anchor);
+            uart_putsP("  0x"); uart_puthex8(ob);
+            if (anchor & (1 << A_END))  uart_putsP("  END");
+            if (anchor & (1 << A_HALT)) uart_putsP("  HALT");
+            uart_putsP("\r\n");
+            if (anchor & (1 << A_END)) {
+                ends++;
+                if (halted) end_after_halt = 1;
+            }
+            if (ob == PR_POISON) saw_poison = true;
+            if (anchor & (1 << A_HALT)) { halted = 1; ob_at_halt = ob; break; }
+            last_t = t;
+        }
+        if (!step_and_read(&t, &ob, &anchor)) break;
+    }
+
+    uart_putsP("     END pulses: "); uart_putdec(ends);
+    uart_putsP("   halted: "); uart_putc(halted ? '1' : '0');
+    uart_putsP("   OB at HALT = 0x"); uart_puthex8(ob_at_halt);
+    uart_putsP("\r\n");
+
+    test_check_bool(halted, true, PSTR("machine_reached_HALT"));
+    test_check_u16(end_after_halt, 0, PSTR("no_END_after_HALT"));
+
+    /* WHICH IMAGE IS SEATED? The rig cannot read the program ROM here — MDR
+       is not sampled in this block — so it cannot simply ask. But every
+       coverage image has a distinct (OB, END-count) fingerprint, and BOTH
+       halves come from simulate() walking the burned microcode. Matching the
+       pair is a real assertion, not a shrug: the machine executed a KNOWN
+       program, retired the right number of instructions, and produced that
+       program's exact answer.
+
+       This replaces a hard-coded 0x08 and a hard-coded 4. Every coverage
+       image runs through this test, so pinning it to the milestone made a
+       correct run of PROG_wide print FAIL. A test that cries wolf whenever a
+       different-but-correct image is seated trains the operator to skip its
+       FAIL line — which is exactly how a real failure gets waved through.
+       `t_block4_milestone` still pins PROG.bin specifically; that is where
+       the milestone claim belongs. */
+    /* PROG.bin is NOT in PR_COVERAGE — the milestone is emitted separately,
+       so it must be matched separately or a correct milestone run FAILS. */
+    bool known = (ob_at_halt == PR_EXPECT_SUM && ends == PR_EXPECT_ENDS);
+    if (known) uart_putsP("     seated image: PROG (the milestone)\r\n");
+    int8_t img = -1;
+    for (uint8_t i = 0; i < PR_COV_COUNT; i++) {
+        if (PR_COVERAGE[i].expect_ob == ob_at_halt &&
+            PR_COVERAGE[i].expect_ends == ends) { img = (int8_t)i; break; }
+    }
+    if (img >= 0) {
+        known = true;
+        uart_putsP("     seated image: PROG_");
+        uart_puts(PR_COVERAGE[img].name);
+        uart_putsP("\r\n");
+    } else if (!known) {
+        /* Name the near-misses. Half a fingerprint is the useful diagnosis:
+           right OB + wrong END count means the machine computed the answer
+           but did not retire cleanly; right END count + wrong OB points at
+           the datapath or the OB ribbon. */
+        if ((ob_at_halt == PR_EXPECT_SUM) != (ends == PR_EXPECT_ENDS)) {
+            uart_putsP("     PROG (the milestone) matches on ");
+            if (ob_at_halt == PR_EXPECT_SUM) {
+                uart_putsP("OB but wants "); uart_putdec(PR_EXPECT_ENDS);
+                uart_putsP(" ENDs\r\n");
+            } else {
+                uart_putsP("ENDs but wants OB 0x");
+                uart_puthex8(PR_EXPECT_SUM); uart_putsP("\r\n");
+            }
+        }
+        for (uint8_t i = 0; i < PR_COV_COUNT; i++) {
+            bool ob_ok = PR_COVERAGE[i].expect_ob == ob_at_halt;
+            bool en_ok = PR_COVERAGE[i].expect_ends == ends;
+            if (ob_ok == en_ok) continue;
+            uart_putsP("     PROG_"); uart_puts(PR_COVERAGE[i].name);
+            if (ob_ok) uart_putsP(" has this OB but wants ");
+            else       uart_putsP(" has this END count but wants OB 0x");
+            if (ob_ok) { uart_putdec(PR_COVERAGE[i].expect_ends);
+                         uart_putsP(" ENDs\r\n"); }
+            else       { uart_puthex8(PR_COVERAGE[i].expect_ob);
+                         uart_putsP("\r\n"); }
+        }
+        /* the flipped-OB-ribbon check, against EVERY image rather than 0x08 */
+        uint8_t rev = 0;
+        for (uint8_t b = 0; b < 8; b++)
+            if (ob_at_halt & (1u << b)) rev |= (uint8_t)(0x80u >> b);
+        for (uint8_t i = 0; i < PR_COV_COUNT; i++) {
+            if (PR_COVERAGE[i].expect_ob != rev) continue;
+            uart_putsP("     NOTE: 0x"); uart_puthex8(ob_at_halt);
+            uart_putsP(" is bit-reversed 0x"); uart_puthex8(rev);
+            uart_putsP(" (PROG_"); uart_puts(PR_COVERAGE[i].name);
+            uart_putsP(") — check the OB ribbon\r\n");
+            break;
+        }
+    }
+    test_check_bool(known, true, PSTR("OB_and_ENDs_match_a_known_image"));
+    /* THE STRONG FORM, WITNESSED — no longer a warning. This trace watched OB
+       go answer -> POISON -> answer, so the byte at HALT was computed by THIS
+       run. U35 has no reset and the machine free-runs at power-up, so OB
+       ALWAYS already holds the previous answer; the old INCONCLUSIVE note
+       fired every single time and told the operator nothing. The program's
+       leading LDAI 0xFF; OUT is what makes the claim provable, and a stepped
+       run can see it happen rather than infer it.
+
+       Only asserted for the milestone: the coverage images do not poison. */
+    if (known && ob_at_halt == PR_EXPECT_SUM && ends == PR_EXPECT_ENDS)
+        test_check_bool(saw_poison, true, PSTR("OB_passed_through_the_poison"));
+    else
+        (void)saw_poison;
+
+    test_end();
+}
 
 void t_block4_milestone(void) {
     test_begin(m_block4, PSTR("milestone"));
@@ -1373,11 +1735,12 @@ void t_block4_milestone(void) {
 
 void t_block5_run(void) {
     test_begin(m_block5, PSTR("run"));
-    uart_putsP("     SW1 must read 0xF7 (switch 3 closed) — the W3 leak "
-               "witness. Re-run at 0xFF as the control.\r\n");
+    uart_putsP("     SW1 = 0xF7 (switch 3 closed). Re-run at 0xFF as the "
+               "control.\r\n");
     milestone_run("block5");
     test_end();
 }
+
 
 /* Block 6 is the acceptance run: the rig drives nothing, END is gone, and
    HALT alone marks the end. TEN RESETS, TEN 0x08s — at 1.024MHz a marginal
@@ -1390,6 +1753,7 @@ void t_block6_acceptance(void) {
         test_end(); return;
     }
     pins_idle();
+
     uint8_t good = 0;
     for (uint8_t run = 0; run < 10; run++) {
         uart_putsP("     run "); uart_putc((char)('0' + run));
@@ -1405,9 +1769,9 @@ void t_block6_acceptance(void) {
         uint8_t ob = PINK;
         uart_putsP("     OB = 0x"); uart_puthex8(ob);
         if (ob == PR_EXPECT_SUM) { good++; uart_putsP("  ok\r\n"); }
-        else                     { uart_putsP("  WRONG\r\n"); }
+        else { uart_putsP("  WRONG\r\n"); name_ob_permutations(ob); }
     }
     test_check_u16(good, 10, PSTR("ten_resets_ten_sums"));
-    uart_putsP("     and the check that costs nothing: ONE LED LIT, BIT 3\r\n");
+    uart_putsP("     LEDs: bits 0, 2, 3, 6 lit\r\n");
     test_end();
 }

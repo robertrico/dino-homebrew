@@ -136,7 +136,7 @@ void t_io_power(void) {
         uart_putsP("     DUT looks UNPOWERED: with ~{SW_OUT} asserted the\r\n"
                    "     '244 must drive every W line. Check bench 5V.\r\n");
     else if (floating)
-        uart_putsP("     PARTIAL float — board is powered, this is WIRING\r\n");
+        uart_putsP("     PARTIAL float — board powered, so this is WIRING\r\n");
     for (uint8_t i = 0; i < 8; i++)
         test_check_bool(!floats(&P_W[i]), true, PN(W_NAMES, i));
     sw_enable(false);

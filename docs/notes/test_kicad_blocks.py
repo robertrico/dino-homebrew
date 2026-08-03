@@ -353,15 +353,18 @@ def test_step_drive_is_not_in_the_acceptance_gate():
     print("step_drive stays out of the acceptance gate")
     check_eq([len(SURF[b]["drive"]) for b in SURF], [8, 8, 0, 0, 0, 0],
              "driven ladder unchanged by adding a step wire")
-    check_eq(set(SURF["block3"]["step_drive"]), {"CLKIN"},
-             "block3 declares CLKIN as a step-only drive")
-    for b in SURF:
-        if b == "block3":
-            continue
+    # Blocks 3, 4 and 5 are steppable. Block 4 needs it most: the milestone is
+    # ten T-states, ~10us, and NO POLLING TRIGGER CAN WIN THAT RACE — with the
+    # rig owning the clock the machine is frozen between pulses instead.
+    for b in ("block3", "block4", "block5"):
+        check_eq(set(SURF[b]["step_drive"]), {"CLKIN"},
+                 f"{b} declares CLKIN as a step-only drive")
+    for b in ("block1", "block2", "block6"):
         check_eq(SURF[b].get("step_drive", {}), {}, f"{b} declares no step drive")
-    pins = {s: p for s, p, _d, _o in kc.block_pins(CONTRACTS, "block3")}
-    check_eq(pins.get("CLKIN"), "PF0/A0",
-             "CLKIN on A0 — the same port read as T, and PF0-3 is free here")
+    for b in ("block3", "block4", "block5"):
+        pins = {s: p for s, p, _d, _o in kc.block_pins(CONTRACTS, b)}
+        check_eq(pins.get("CLKIN"), "PF0/A0",
+                 f"{b}: CLKIN on A0 — same port read as T, and PF0-3 is free")
 
 
 def test_timing_set_never_moves():

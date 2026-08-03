@@ -814,7 +814,8 @@ Emits to `dino/roms/`, 32768 bytes each:
                     addr 2^k -> 0x40|k. Burn this FIRST — 15 address
                     lines is the biggest one-hole surface on the machine,
                     and a mis-decoded line reports where it landed.
-    PROG.bin        the MILESTONE program: LDAI 5; LDBI 3; ADD; OUT;
+    PROG.bin        the MILESTONE program: LDAI 0xFF; OUT; LDAI 0x2F;
+                    LDBI 0x1E; ADD; OUT;
                     HALT — safe-filled with HALT (0xFF) so an erased or
                     overrun ROM halts instead of raving.
 
@@ -1031,7 +1032,7 @@ Run: `run alu`. Expect 10 PASS, no button work.
                     the '382s, so LE_TMP_A/B, ALU_CIN and Z must all
                     read HIGH with the rig sourcing nothing. FAIL here
                     = check the supply before reading anything else.
-    alu.warmup      readiness: the milestone sum 5+3, plus a
+    alu.warmup      readiness: the milestone sum 0x2F+0x1E, plus a
                     non-palindrome logic result (0xC0|0x05 = 0xC5) so a
                     mirrored W ribbon cannot slip through.
     alu.presence    all eleven sampled lines driven; W driven while
@@ -1646,7 +1647,7 @@ come off and 8 go on.
     NAMED GAP — MAR IS NEVER PROVEN AS A LATCH ON THIS LADDER.
     LDA, STA, JMP and JNZ are the ONLY instructions that load MAR
     (MAR_LO at T1, MAR_HI at T2). The milestone program is
-    LDAI 5; LDBI 3; ADD; OUT; HALT and contains NONE of them. So MAR
+    LDAI 0x2F; LDBI 0x1E; ADD; OUT; HALT and contains NONE of them. So MAR
     spends every block in PC_MAR_MUX passthrough, forwarding the PC to M.
     It is proven as a MUX and never as a LATCH, at block 2, 3, 4, 5 or 6.
 
@@ -1721,7 +1722,7 @@ instruction bytes, and IRB0-7 stops being forced.
 
 ### BLOCK 4 — + registers + alu        (driven 0, sampled 10, 10 jumpers)
 
-The full datapath. FIRST BLOCK THAT COMPUTES 5+3.
+The full datapath. FIRST BLOCK THAT COMPUTES THE SUM.
 
     OFF    A8-A15 IRB0-7
     ON     A8-A15 OB0-7   U35.2 .5 .6 .9 .12 .15 .16 .19

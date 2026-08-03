@@ -70,7 +70,7 @@ def test_simulator_against_microcode():
         check(pg.sim_supports(name), f"interpreter handles {name}")
     # the milestone is the anchor: it must reproduce the known answer
     check_eq(pg.simulate(pg.PROGRAM)["out"], pg.EXPECT_SUM,
-             "milestone simulates to 0x08")
+             f"milestone simulates to 0x{pg.EXPECT_SUM:02X}")
     check_eq(pg.simulate(pg.PROGRAM)["halted"], True, "milestone halts")
 
 
@@ -116,13 +116,16 @@ def test_coverage_is_progressive():
     # there and COND_TAKEN is pinned low. Behaviour has to be declared, so
     # that "this image is redundant" stays a question the test can answer.
     BEHAVIOUR = {
+        "probe": "immediate -> A -> OB with the ALU out of the path entirely",
+        "adda": "TMP_A alone: value + 0, so the answer IS the operand",
+        "addb": "TMP_B alone: 0 + value, isolating the other shadow latch",
         "real": "the milestone: the machine adds two numbers",
         "flow": "unconditional PC_LOAD, and the JNZ NOT-taken arm",
         "loop": "the JNZ TAKEN arm, iterated an exact number of times",
         "mem": "MAR as a LATCH, not just a mux — the named gap in BRINGUP.md",
     }
     seen = set()
-    order = ["real", "alu", "mem", "flow", "loop"]
+    order = ["probe", "adda", "addb", "real", "alu", "mem", "flow", "loop"]
     check_eq(list(pg.COVERAGE), order, "images in ladder order")
     for tag in order:
         used = {s[0] for s in pg.COVERAGE[tag] if not isinstance(s, str)}
@@ -164,6 +167,27 @@ def test_loop_image_iterates_exactly():
     check_eq(res["out"], pg.LOOP_EXPECT, "accumulator matches the declared total")
 
 
+def test_milestone_is_a_real_carry_chain():
+    """The milestone used to be 5+3=8: one bit set, low nibble only, one
+    carry. That cannot see a stuck or swapped bit in the upper nibble, and it
+    barely exercises the ripple between the two '382s. The addends must put
+    bits in both nibbles and the carry must cross the nibble boundary."""
+    print("the milestone addends stress the carry chain")
+    a, b, want = pg.ADDEND_A, pg.ADDEND_B, pg.EXPECT_SUM
+    check_eq(a + b, want, "the addends actually make the answer")
+    check(want < 0x100, "no carry out of bit 7 — that is a flags test, not this")
+    for nm, v in (("A", a), ("B", b), ("sum", want)):
+        check(v & 0xF0 and v & 0x0F, f"{nm} 0x{v:02X} has bits in BOTH nibbles")
+    carries, c, crossed = 0, 0, False
+    for i in range(8):
+        c = 1 if ((a >> i) & 1) + ((b >> i) & 1) + c > 1 else 0
+        carries += c
+        if i == 3 and c:
+            crossed = True
+    check(carries >= 4, f"carry ripples through {carries} positions")
+    check(crossed, "the carry CROSSES the nibble boundary at bit 3 -> 4")
+
+
 def test_diag_triple_ambiguity_is_generated():
     """block2.fetch proves the fetch path reads ROM at PC, PC+1, PC+2 by
     matching three consecutive diag bytes. Those do NOT identify a unique
@@ -202,6 +226,7 @@ if __name__ == "__main__":
                test_coverage_is_progressive, test_alu_image_hits_every_sa_code,
                test_mem_image_round_trips_ram, test_flow_image_never_reaches_poison,
                test_loop_image_iterates_exactly,
+               test_milestone_is_a_real_carry_chain,
                test_diag_triple_ambiguity_is_generated,
                test_images_fit_and_safe_fill):
         fn()

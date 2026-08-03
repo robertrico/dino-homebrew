@@ -381,7 +381,7 @@ The live plan is BRINGUP.md, "Integration — CONTROL FIRST". Summary:
   BLOCK 2  + pc + mar + memory   driven UNCHANGED at 8 — three boards
            join for free, M0-15 and every strobe are copper. 10 sampled.
   BLOCK 3  + mdr                 8 -> 0 DRIVEN: real IR, machine fetches
-  BLOCK 4  + registers + alu     0 driven, real flags, 5+3 happens here
+  BLOCK 4  + registers + alu     0 driven, real flags, the sum happens here
   BLOCK 5  + io                  0 driven. NOT single-stepped.
   BLOCK 6  FREE-RUN, 0 driven — 8 wires + GND + HALT
 

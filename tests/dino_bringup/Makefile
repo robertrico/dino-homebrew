@@ -64,6 +64,25 @@ burn-prog-diag:
 	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_diag.bin
 burn-prog:
 	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG.bin
+
+# Coverage and diagnostic images. `probe` is LDAI 0x39; OUT; HALT — no ALU at
+# all — so it splits the milestone in half: if OB shows 0x39 the load/OUT path
+# is proven and a wrong sum is the ALU's, and if it does not the fault is
+# upstream and no amount of staring at a sum will find it.
+burn-prog-probe:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_probe.bin
+burn-prog-adda:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_adda.bin
+burn-prog-addb:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_addb.bin
+burn-prog-alu:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_alu.bin
+burn-prog-mem:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_mem.bin
+burn-prog-flow:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_flow.bin
+burn-prog-loop:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_loop.bin
 read-prog: | $(BUILD)
 	$(MINIPRO) -p $(PROG_CHIP) -r $(BUILD)/prog_read.bin
 verify-prog-diag: read-prog
@@ -96,5 +115,7 @@ verify-real-u15: read-rom
 .PHONY: all size flash clean \
         burn-diag-u9 burn-diag-u15 burn-real-u9 burn-real-u15 \
         burn-prog-diag burn-prog read-prog verify-prog-diag verify-prog \
+        burn-prog-probe burn-prog-adda burn-prog-addb burn-prog-alu burn-prog-mem burn-prog-flow \
+        burn-prog-loop \
         read-rom id-rom \
         verify-diag-u9 verify-diag-u15 verify-real-u9 verify-real-u15

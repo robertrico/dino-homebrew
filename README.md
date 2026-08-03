@@ -11,10 +11,12 @@ rig that brings the machine up one board at a time.
 milestone is a program that adds two numbers:
 
 ```asm
-LDAI 5      ; A = 5
+LDAI 0xFF   ; poison OB — destroy the previous answer
+OUT
+LDAI 0x2F   ; A = 0x2F
 LDBI 3      ; B = 3
 ADD         ; A = A + B
-OUT         ; LEDs show 0x08
+OUT         ; LEDs show 0x4D
 HALT
 ```
 
@@ -191,7 +193,7 @@ BLOCK             ADDS                          DRIVEN  SAMPLED  JUMPERS
 BLOCK 1   root + microcode + control_word          8       27     35+GND
 BLOCK 2   + pc + mar + memory                      8       11     19+GND
 BLOCK 3   + mdr        (real IR — it fetches)      0       11     11+GND
-BLOCK 4   + registers + alu    (5+3 happens)       0       11     11+GND
+BLOCK 4   + registers + alu    (the sum happens)   0       11     11+GND
 BLOCK 5   + io                                     0       11     11+GND
 BLOCK 6   free-run, crystal already seated         0        9      9+GND
 ```
