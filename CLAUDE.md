@@ -30,7 +30,7 @@ full history (138 commits) preserved.
 6. **`avr-gcc -Werror` clean is the verification you can do.** The bench
    run is Rico's.
 
-## State as of 2026-08-02
+## State as of 2026-08-04
 
 **THE MACHINE RUNS.** All ten modules bench-proven, all five integration
 blocks bench-proven, and the ISA has its first interactive instruction.
@@ -53,7 +53,59 @@ confirmed across settings: SW1=0x01 gives 0x30, SW1=0x1E gives 0x4D.
 "Works single-stepped, fails free-run" was the signature to watch for; it
 never appeared.
 
-**What remains:** the roadmap, in Rico's stated order — minimum work to
+**THE WHOLE ISA HAS EXECUTED — 2026-08-04.** Every coverage ROM is green:
+
+    mardisc  0x6B   MAR discriminates two DIFFERENT addresses
+    pads     0x40   PC_LOAD lands exactly on target
+    mem      0xC5   MAR as a latch, RAM round trip
+    flow     0x39   JMP lands; SUB sets FLAG_Z; JNZ correctly declines
+    alu      0x39   all eight SA codes, chained non-maskingly
+    loop     0x15   JNZ TAKEN arm x3, two live RAM cells, flags held across
+                    STA, exact iteration count (3 x 7 = 21)
+    PROG     0x4D   the milestone
+    cylon    ---    never halts. The victory lap, and a real soak test.
+
+`LDA`/`STA`/`JMP`/`JNZ` and seven of the eight ALU codes had never executed
+before that day. Only `LDCI` and `NOP` remain unrun, both unreachable by
+design — C is write-only until `MOV` exists.
+
+**What it cost: two board-to-board runs, nine wires, never landed.**
+`~PC_LOAD` -> `U11.19`/`U12.19`, and `W[0..7]` -> `U55`/`U58` D pins. Nothing
+was broken; two things were absent. Full post-mortem in
+`docs/notes/dino_mar_lo_investigation.md`, and the process finding is this:
+
+> **A COPPER wire is driven by no test and sampled by no test. The wire
+> between two proven modules is checked by nothing.**
+
+Module tests drive those nets from the RIG's own pins, so the board-to-board
+run is never needed and cannot fail. The block ladder classifies them as
+COPPER and never samples them. `kicad_contracts.py` already emits the exact
+per-sheet crossing list — **that list IS a continuity checklist** and nothing
+makes anyone walk it. Same blind spot covers bare same-chip jumpers
+(`CLK` at `U60.3<->U60.6`, `HALT` at `U61.5<->U61.6`).
+
+And `PROG_mem` passed throughout, because it stores and loads through ONE
+address (`0x8000` — bit 15 alone) and is therefore blind to what that address
+actually was. `PROG_mardisc` exists to ask that question and belongs BEFORE
+`PROG_loop` in every future run.
+
+**TWO OPEN ITEMS, neither blocking.**
+
+1. **HALT does not HOLD.** The machine halts, then escapes after a few
+   seconds, varying. `CET` on the '163 is sampled every clock, so one escape
+   in a few million clocks is a marginal level, not logic. Only visible on
+   `PROG_flow` — every other image has `0xFF` fill past its HALT, so an escape
+   just re-halts.
+2. **Marginal levels.** `W` 2.26V, `PC_MAR_MUX` 1.0V avg, `MAR3` 3.22V. The
+   fan-out gate, arriving early. No instrument in the kit reports it as a
+   failure — the LA reads 2.26V as a clean 1. Item 1 may be its only visible
+   symptom, because the halt is the one state where noise margin shows.
+
+**NEXT: an assembler** (Rico is writing it mostly by hand), then Phase 2 —
+mounting/boxing and the move to cards. Re-running blocks 1-5 plus the full
+coverage set after the move is the acceptance FOR the move.
+
+**What remains after that:** the roadmap, in Rico's stated order — minimum work to
 reach the 16550 UART so DINO can talk to a terminal, then a proto-Monitor,
 then the wider ISA. `IN` is the front half of I/O; `OUT` to a UART data
 register instead of the LEDs is the back half, and the I/O decode '138 is

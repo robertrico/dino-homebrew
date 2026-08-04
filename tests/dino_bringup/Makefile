@@ -85,6 +85,12 @@ burn-prog-flow:
 	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_flow.bin
 burn-prog-loop:
 	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_loop.bin
+burn-prog-mardisc:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_mardisc.bin
+burn-prog-pads:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_pads.bin
+burn-prog-cylon:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_cylon.bin
 read-prog: | $(BUILD)
 	$(MINIPRO) -p $(PROG_CHIP) -r $(BUILD)/prog_read.bin
 verify-prog-diag: read-prog
@@ -118,6 +124,6 @@ verify-real-u15: read-rom
         burn-diag-u9 burn-diag-u15 burn-real-u9 burn-real-u15 \
         burn-prog-diag burn-prog read-prog verify-prog-diag verify-prog \
         burn-prog-probe burn-prog-in burn-prog-adda burn-prog-addb burn-prog-alu burn-prog-mem burn-prog-flow \
-        burn-prog-loop \
+        burn-prog-loop burn-prog-mardisc burn-prog-pads burn-prog-cylon \
         read-rom id-rom \
         verify-diag-u9 verify-diag-u15 verify-real-u9 verify-real-u15

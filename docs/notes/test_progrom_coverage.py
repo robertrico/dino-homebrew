@@ -125,9 +125,18 @@ def test_coverage_is_progressive():
         "flow": "unconditional PC_LOAD, and the JNZ NOT-taken arm",
         "loop": "the JNZ TAKEN arm, iterated an exact number of times",
         "mem": "MAR as a LATCH, not just a mux — the named gap in BRINGUP.md",
+        "mardisc": "TWO DIFFERENT MAR values, not one used twice. mem stores "
+                   "and loads through the SAME address (0x8000 — bit 15 alone) "
+                   "and is therefore blind to what that address actually was; "
+                   "this reads back the FIRST of two cells that differ only in "
+                   "MAR_LO, so a collapsed low byte returns the SECOND value",
+        "pads": "the PC's LANDING ADDRESS as the observable. Every 4-byte slot "
+                "is LDAI <own address>; OUT; HALT, so OB names where PC_LOAD "
+                "actually went rather than merely whether it went somewhere",
     }
     seen = set()
-    order = ["probe", "adda", "addb", "real", "in", "alu", "mem", "flow", "loop"]
+    order = ["probe", "adda", "addb", "real", "in", "alu", "mem", "flow", "loop",
+             "mardisc", "pads"]
     check_eq(list(pg.COVERAGE), order, "images in ladder order")
     for tag in order:
         used = {s[0] for s in pg.COVERAGE[tag] if not isinstance(s, str)}

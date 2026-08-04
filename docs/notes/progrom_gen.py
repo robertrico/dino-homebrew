@@ -422,6 +422,84 @@ LOOP_PROGRAM = [
     ("OUT",), ("HALT",),
 ]
 
+# ---- DIAGNOSTIC images for the 2026-08-03 PROG_flow failure -------------
+# PROG_flow ran as a 2-instruction loop forever: 4-state, 2-state, 66 ENDs, no
+# HALT, OB never written. Working backwards from that trace, the cycle can ONLY
+# be SUB@0x0008 <-> JNZ@0x0009 (the single place in the image where a 2-state
+# instruction is immediately followed by a 4-state one), so BOTH jumps landed at
+# 0x0008 — and 0x0008 is the unique landing value that reproduces the trace.
+#
+#     JMP wanted MAR=0x0004  -> PC went to 0x0008
+#     JNZ wanted MAR=0x0010  -> PC went to 0x0008
+#
+# Two distinct inputs, one output: the fault is LOSSY (stuck or dead bits), not
+# a permutation, so the swapped-ribbon class is ruled out by arithmetic.
+#
+# PROG_mem passes anyway, and CANNOT do otherwise. Its only MAR value is
+# RAM_SCRATCH = 0x8000 — bit 15 alone, every other MAR bit zero — and it uses
+# the SAME address for the store and the load. A MAR_LO stuck at 0x08 simply
+# moves mem's scratch cell to 0x8008 and the round trip still returns 0xC5.
+# That is the mirror-witness rule cashed in: write-then-read through one address
+# is blind to what that address actually was.
+#
+# The rig cannot help here. mar.logic and pc.load are MODULE tests — they
+# bus_w_write(), bus_m_drive() and drive the load strobes directly, ~28 driven
+# wires into live '245s and '138 outputs on a fully seated machine. The block
+# law only runs one direction and the driven count may never go up. So these
+# two images are the whole instrument: the ROM socket adds no wires at all.
+
+MARDISC_A = RAM_BASE + 0x04     # the two addresses flow actually fed to MAR,
+MARDISC_B = RAM_BASE + 0x10     # in the low byte where the fault must live
+MARDISC_VA = 0x6B               # answer if MAR_LO discriminates
+MARDISC_VB = 0x2D               # answer if it collapses them to one cell
+
+# mardisc — DOES MAR_LO DISCRIMINATE ADDRESSES AT ALL? Two stores to addresses
+# that differ ONLY in MAR_LO, then read the FIRST one back. If the low byte is
+# stuck, both stores landed in the same cell and the read returns the SECOND
+# value. No jumps anywhere, so this runs and answers regardless of the PC_LOAD
+# fault. It asks the one question PROG_mem is structurally unable to ask.
+#
+#     OB = 0x6B   MAR_LO is fine, the cells stayed distinct -> fault downstream
+#     OB = 0x2D   0x04 and 0x10 collapsed -> MAR_LO is the fault
+#     OB = 0xFF   never finished (the leading poison, as in the milestone)
+MARDISC_PROGRAM = [
+    ("LDAI", POISON), ("OUT",),         # destroy the previous answer first
+    ("LDAI", MARDISC_VA), ("STA", *_addr(MARDISC_A)),
+    ("LDAI", MARDISC_VB), ("STA", *_addr(MARDISC_B)),
+    ("LDA", *_addr(MARDISC_A)),         # if MAR_LO is stuck this reads VB
+    ("OUT",), ("HALT",),
+]
+
+# pads — WHERE DOES THE PC ACTUALLY LAND? A landing-pad grid, self-naming the
+# way the diag image is: every 4-byte slot holds `LDAI <own address>; OUT; HALT`
+# so OB reports the address the PC really loaded. Only worth burning if mardisc
+# says MAR_LO is healthy, because then the fault is downstream in
+# M -> U11/U12 -> PCD -> the '193 parallel load, and this measures it directly.
+#
+# The two HALTs at 0x0006/0x0007 are a FALL-THROUGH TRAP: a JMP that fails to
+# load PC at all runs into them and leaves OB at the poison, which must not be
+# confusable with landing on a pad. They also align the grid to 0x0008.
+PAD_BASE = 0x0008               # first pad; the header above is exactly 8 bytes
+PAD_TOP = 0x0100                # one page of pads is plenty
+PAD_TARGET = 0x0040             # distinctive, 4-aligned, mid-grid
+
+
+def _pads():
+    """LDAI n; OUT; HALT at every 4-byte slot — exactly 4 bytes each."""
+    out = []
+    for a in range(PAD_BASE, PAD_TOP, 4):
+        if a == PAD_TARGET:
+            out.append("padtarget")
+        out += [("LDAI", a & 0xFF), ("OUT",), ("HALT",)]
+    return out
+
+
+PADS_PROGRAM = [
+    ("LDAI", POISON), ("OUT",),         # 0x0000-0x0002
+    ("JMP", Ref("padtarget")),          # 0x0003-0x0005
+    ("HALT",), ("HALT",),               # 0x0006-0x0007  fall-through trap
+] + _pads()
+
 # probe — THE SMALLEST QUESTION WORTH ASKING. LDAI then OUT, no ALU at all:
 # does an immediate byte reach A and come back out on OB? That splits the
 # milestone in half. If OB shows the constant, the load/store/OUT path is
@@ -466,6 +544,68 @@ IN_PROGRAM = [
     ("ADD",), ("OUT",), ("HALT",),
 ]
 
+# ---- cylon — THE VICTORY LAP -------------------------------------------
+# Not a coverage image and deliberately NOT in COVERAGE: it never halts and
+# has no final answer, so there is nothing for the block ladder to assert. It
+# exists to be LOOKED AT. Burned 2026-08-04, the day the whole ISA first ran.
+#
+# WHY IT IS UNROLLED, and what that says about the ISA:
+#
+#   1. B IS IMMEDIATE-ONLY. There is no LDB-from-memory and no MOV, so TMP_B
+#      can only ever hold a constant. `ADD` computes TMP_A + TMP_B, so the
+#      shift-left trick A+A is IMPOSSIBLE at runtime — the pattern cannot be
+#      computed, it has to be tabulated.
+#   2. THERE IS NO CALL/RET. The delay cannot be a subroutine, so every frame
+#      carries its own inlined copy. That is 34 bytes x 14 frames.
+#   3. THERE IS NO INDEXED ADDRESSING. The table cannot be walked with a
+#      pointer, so each frame is its own LDAI/OUT pair.
+#
+# Every one of those three is a step on the growth plan (shifter, stack,
+# D:E index pair). This program is what the machine looks like without them,
+# and it is worth keeping as the before-picture.
+#
+# TIMING at 1.024MHz (T = 976.6ns):
+#   inner iteration  LDA 4T + LDBI 2T + SUB 2T + STA 4T + JNZ 4T = 16T = 15.6us
+#   inner x 255                                             = 3.98ms
+#   outer iteration  = setup 6T + 4080T + 16T = 4102T       = 4.01ms
+#   outer x 25                                              = ~100ms per frame
+#   14 frames                                               = ~1.4s per sweep
+CYLON_INNER = RAM_BASE + 0x10       # clear of every coverage image's scratch
+CYLON_OUTER = RAM_BASE + 0x11
+CYLON_OUTER_N = 25                  # ~100ms per frame; raise to slow the sweep
+
+# One dot, out and back, no repeat at the ends — the eye never stalls.
+CYLON_FRAMES = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80,
+                0x40, 0x20, 0x10, 0x08, 0x04, 0x02]
+
+
+def _cylon_delay(tag):
+    """Nested count-down delay, inlined. Labels are per-frame because there
+    is no CALL/RET to share one copy with."""
+    return [
+        ("LDAI", CYLON_OUTER_N), ("STA", *_addr(CYLON_OUTER)),
+        f"{tag}_outer",
+        ("LDAI", 0xFF), ("STA", *_addr(CYLON_INNER)),
+        f"{tag}_inner",
+        ("LDA", *_addr(CYLON_INNER)), ("LDBI", 0x01), ("SUB",),
+        ("STA", *_addr(CYLON_INNER)),
+        ("JNZ", Ref(f"{tag}_inner")),
+        ("LDA", *_addr(CYLON_OUTER)), ("LDBI", 0x01), ("SUB",),
+        ("STA", *_addr(CYLON_OUTER)),
+        ("JNZ", Ref(f"{tag}_outer")),
+    ]
+
+
+def _build_cylon():
+    prog = ["sweep"]
+    for i, frame in enumerate(CYLON_FRAMES):
+        prog += [("LDAI", frame), ("OUT",)] + _cylon_delay(f"f{i}")
+    prog += [("JMP", Ref("sweep"))]        # forever. No HALT anywhere.
+    return prog
+
+
+CYLON_PROGRAM = _build_cylon()
+
 # images whose answer depends on the switches. Everything else is read with
 # the default, and the rig is told the setting rather than left to guess.
 COVERAGE_SW = {"in": IN_SW}
@@ -480,6 +620,8 @@ COVERAGE = {
     "mem": MEM_PROGRAM,
     "flow": FLOW_PROGRAM,
     "loop": LOOP_PROGRAM,
+    "mardisc": MARDISC_PROGRAM,
+    "pads": PADS_PROGRAM,
 }
 
 
@@ -635,8 +777,16 @@ def main():
         r = simulate(prog, switches=COVERAGE_SW.get(tag, 0x00))
         cov[tag] = (crc16(img), r["out"], r["ends"],
                     COVERAGE_SW.get(tag, 0x00), tag in COVERAGE_SW)
+    # cylon is written but NOT registered in PR_COVERAGE: it never halts, so
+    # it has no (OB, END) fingerprint for block4.stepped to match. Burning it
+    # and running block4.stepped will correctly report "no known image".
+    cyl = build_image(CYLON_PROGRAM)
+    with open(os.path.join(ROMS, "PROG_cylon.bin"), "wb") as f:
+        f.write(cyl)
+    cyl_crc = crc16(cyl)
+    cyl_len = len(assemble(CYLON_PROGRAM))
     emit_header(real, crcs, HDR, cov)
-    print(f"wrote {2 + len(cov)}x {SIZE}B bins -> {ROMS}")
+    print(f"wrote {3 + len(cov)}x {SIZE}B bins -> {ROMS}")
     print(f"wrote expect header -> {HDR}")
     print("burn order: DIAG first (rom.order proves 15 address lines),")
     print("            then REAL (the milestone program)")
@@ -645,6 +795,10 @@ def main():
         extra = f"  SW1=0x{sw:02X}" if needs else ""
         print(f"    PROG_{tag}.bin  crc=0x{crc:04X}  OB 0x{ob:02X}  "
               f"{ends} END pulses{extra}")
+    print(f"    PROG_cylon.bin  crc=0x{cyl_crc:04X}  {cyl_len} bytes  "
+          f"NEVER HALTS — {len(CYLON_FRAMES)} frames, ~"
+          f"{CYLON_OUTER_N * 4.006:.0f}ms each, ~"
+          f"{len(CYLON_FRAMES) * CYLON_OUTER_N * 4.006 / 1000:.1f}s per sweep")
     print(f"  program: {' '.join(s[0] for s in PROGRAM)}"
           f"  -> OUT should show 0x{EXPECT_SUM:02X}")
     for name, val in crcs.items():
