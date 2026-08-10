@@ -49,3 +49,11 @@ tests/dino_bringup/build/
 # in BRINGUP.md and in commit messages, not in a raw serial dump.
 screenlog.*
 *.log
+
+# AI/process working docs (specs, plans, SDD ledgers) live in .git/sdd/ --
+# local-only, never tracked. Repo-level engineering notes stay in docs/notes/.
+docs/superpowers/
+.superpowers/
+
+# Claude Code local state (settings, worktrees) -- never tracked.
+.claude/

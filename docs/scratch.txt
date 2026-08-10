@@ -1,3 +1,4 @@
 https://gitlab.com/DavidGriffith/minipro
+https://gitlab.com/8bitforce/retroshield-hw/-/raw/master/hardware/k8008/k8008_revB_directdrive.pdf?ref_type=heads&inline=true
 
 
