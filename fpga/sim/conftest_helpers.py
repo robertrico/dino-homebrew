@@ -71,6 +71,49 @@ def _stale(srcs, outs):
     return newest_src > oldest_out
 
 
+def _assert_crc(path, expected_bytes, crc16_fn, label):
+    """CRC guard (Task 8 VPLAN rider, port-phase follow-up #3). Asserts
+    the on-disk ROM file's content matches a FRESH in-memory rebuild --
+    every prepare_roms() call, not just when _stale()'s mtime heuristic
+    decides a regeneration is due. mtime alone cannot catch a roms/*.bin
+    that was hand-edited, bit-rotted, or checked out with a mtime that
+    postdates its generator source without the CONTENT actually matching
+    what that source would produce today -- exactly the gap this closes.
+
+    Review fix (task-8 fix round 1): compares the BYTES directly (strictly
+    stronger than a CRC-16 match -- a 16-bit CRC has real collisions,
+    bytes cannot) at zero extra cost (both are already in memory); the
+    CRC-16 stays in the failure message only as a short, human-legible
+    fingerprint alongside the definitive byte-length/first-mismatch-offset
+    report, not as the actual check.
+
+    A MISSING file is its own labeled failure (not a bare, unlabeled
+    FileNotFoundError) -- same "name the lying signal" doctrine as every
+    other check in this repo (CLAUDE.md "NO BLIND COUNTERS")."""
+    if not os.path.exists(path):
+        raise AssertionError(
+            f"prepare_roms CRC guard: {label} -- {path} does not exist "
+            f"(expected {len(expected_bytes)} bytes, crc16=0x"
+            f"{crc16_fn(expected_bytes):04X}) -- re-run its generator's "
+            f"main() (never hand-patch a ROM byte, CLAUDE.md rule 4/5)")
+    with open(path, "rb") as f:
+        on_disk = f.read()
+    if on_disk == expected_bytes:
+        return
+    got_crc = crc16_fn(on_disk)
+    want_crc = crc16_fn(expected_bytes)
+    first_diff = next((i for i, (a, b) in enumerate(zip(on_disk, expected_bytes))
+                        if a != b), min(len(on_disk), len(expected_bytes)))
+    raise AssertionError(
+        f"prepare_roms CRC guard: {label} ({path}) content mismatch -- "
+        f"on-disk {len(on_disk)} bytes (crc16=0x{got_crc:04X}) != "
+        f"expected {len(expected_bytes)} bytes (crc16=0x{want_crc:04X}) "
+        f"from the current generator source, first differing byte at "
+        f"offset {first_diff} -- the file is stale or was hand-edited; "
+        f"re-run its generator's main() (never hand-patch a ROM byte, "
+        f"CLAUDE.md rule 4/5)")
+
+
 def prepare_roms(tags=("real", "in")):
     """Regenerate roms/*.bin (via microcode_gen.main()/progrom_gen.main(),
     called IN-PROCESS -- both are idempotent, side-effect-only writers,
@@ -87,6 +130,11 @@ def prepare_roms(tags=("real", "in")):
     image -- Task 12's own coverage ladder (alu/mem/flow/loop/...) reuses
     this by passing a wider tags tuple, without needing its own copy of
     this staleness/conversion logic.
+
+    CRC guard: after the staleness-driven regeneration (if any), every
+    ROM this call is about to convert to hex is CRC-checked against a
+    fresh in-memory rebuild (_assert_crc, above) -- closes the port-phase
+    "prepare_roms CRC guard" follow-up (docs/notes/dino_fpga_vplan.md).
     """
     mc_outs = [os.path.join(ROMS_DIR, "U9.bin"), os.path.join(ROMS_DIR, "U15.bin")]
     if _stale([os.path.join(DOCS_NOTES, "microcode_gen.py")], mc_outs):
@@ -98,6 +146,30 @@ def prepare_roms(tags=("real", "in")):
                os.path.join(DOCS_NOTES, "progrom_gen.py")]
     if _stale(pr_srcs, pr_outs):
         progrom_gen.main()
+
+    # roms/U9.bin and U15.bin are the A12-GROUNDED chips: main() writes
+    # each 4096-byte half MIRRORED (microcode_gen._mirror() = half+half,
+    # 8192 bytes on disk), matching what the real AT28C64B reads with its
+    # top address line tied low. Comparing against just the un-mirrored
+    # half would CRC-mismatch every real committed file -- mirror the
+    # freshly-rebuilt half the same way before comparing.
+    mc_lo, mc_hi = microcode_gen.split(microcode_gen.build_real())
+    _assert_crc(mc_outs[0], microcode_gen._mirror(mc_lo),
+                microcode_gen.crc16, "U9 (microcode low byte, mirrored)")
+    _assert_crc(mc_outs[1], microcode_gen._mirror(mc_hi),
+                microcode_gen.crc16, "U15 (microcode high byte, mirrored)")
+    for tag in tags:
+        if tag not in progrom_gen.COVERAGE:
+            continue
+        out_path = os.path.join(ROMS_DIR, _prog_bin_name(tag))
+        # build_image(COVERAGE[tag]) == build_real() when tag == "real"
+        # (COVERAGE["real"] IS the PROGRAM build_real() assembles; the two
+        # functions are byte-identical bodies over the same source) --
+        # review fix round: collapsed the redundant tag=="real" branch
+        # rather than keep two code paths that can never actually differ.
+        expected = progrom_gen.build_image(progrom_gen.COVERAGE[tag])
+        _assert_crc(out_path, expected, progrom_gen.crc16,
+                    _prog_bin_name(tag))
 
     os.makedirs(HEX_DIR, exist_ok=True)
     bin2hex(os.path.join(ROMS_DIR, "U9.bin"), os.path.join(HEX_DIR, "U9.hex"))

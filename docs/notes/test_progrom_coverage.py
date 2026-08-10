@@ -18,6 +18,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import progrom_gen as pg
 from microcode_gen import OPCODES, INSTRUCTIONS
 
+try:
+    import pytest
+except ImportError:                    # pragma: no cover -- plain `python3
+    pytest = None                      # docs/notes/test_progrom_coverage.py`
+                                        # (this file's own header) has no
+                                        # pytest dependency; keep it that way.
+
 FAILS = []
 
 
@@ -250,6 +257,56 @@ def test_images_fit_and_safe_fill():
         check_eq(len(img), pg.SIZE, f"{tag}: image is a full {pg.SIZE}B ROM")
         check_eq(img[-1], pg.SAFE_FILL, f"{tag}: tail is the safe HALT fill")
         check(img[0] != pg.DIAG_ZERO, f"{tag}: byte 0 does not collide with DIAG")
+
+
+# ---- pytest bridge (Task 8 VPLAN audit, fix round 2) ---------------------
+# check()/check_eq()/check_raises() only APPEND to the module-level FAILS
+# list -- they never raise on their own, by design: the __main__ block
+# below wants to run every check in a test function and print a full
+# FAILS summary before exiting, not stop at the first failure. Left
+# alone, pytest sees every test_* function return None and reports PASS
+# regardless of what landed in FAILS -- confirmed HOLLOW by direct
+# mutation: patching progrom_gen.sim_supports() to reject NOP/LDCI left
+# `pytest -k test_simulator_against_microcode` reporting `1 passed` while
+# `python3 docs/notes/test_progrom_coverage.py` correctly printed FAILED
+# and exited 1.
+#
+# Fixed by wrapping every test_* function so a run UNDER PYTEST raises if
+# its OWN execution added anything to FAILS -- the assertion happens
+# INSIDE the wrapped call itself (the pytest "call" phase), not in a
+# fixture's post-yield teardown, so pytest reports a clean single FAILED
+# per test, never a confusing "1 passed" alongside a separate teardown
+# ERROR (the first draft of this fix used an autouse fixture and produced
+# exactly that confusing split -- caught before committing, replaced with
+# this wrapping approach instead).
+#
+# Guarded by `__name__ != "__main__"` so the direct-invocation path below
+# is completely untouched: this loop runs (if at all) BEFORE the
+# `if __name__ == "__main__":` block ever builds its own function-
+# reference tuple, but only mutates `globals()` when pytest is doing the
+# importing (pytest's collection never sets `__name__` to `"__main__"`
+# for a collected module) -- a plain `python3
+# docs/notes/test_progrom_coverage.py` run calls the UNWRAPPED originals
+# and keeps its own collect-everything-then-report-once behavior exactly
+# as it always has.
+if pytest is not None and __name__ != "__main__":
+    def _wrap_for_pytest(fn):
+        def _wrapped():
+            start = len(FAILS)
+            result = fn()
+            new = FAILS[start:]
+            if new:
+                raise AssertionError(
+                    f"{len(new)} check() failure(s) in {fn.__name__}:\n"
+                    + "\n".join(f"  - {f}" for f in new))
+            return result
+        _wrapped.__name__ = fn.__name__
+        _wrapped.__doc__ = fn.__doc__
+        return _wrapped
+
+    for _tname, _tobj in list(globals().items()):
+        if _tname.startswith("test_") and callable(_tobj):
+            globals()[_tname] = _wrap_for_pytest(_tobj)
 
 
 if __name__ == "__main__":

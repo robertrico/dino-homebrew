@@ -18,6 +18,12 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kicad_contracts as kc
 
+try:
+    import pytest
+except ImportError:            # pragma: no cover -- plain `python3
+    pytest = None               # docs/notes/test_kicad_blocks.py` has no
+                                 # pytest dependency; keep it that way.
+
 ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                      "..", "..", "dino_v0_0_2", "dino_v0_0_2.kicad_sch"))
 
@@ -392,6 +398,38 @@ def test_end_halt_never_move():
         if "CW12=END" in pins:
             check_eq(pins["CW12=END"], "PL4/D45", f"{b}: END on D45")
         check_eq(pins["CW15=HALT"], "PL7/D42", f"{b}: HALT on D42")
+
+
+# ---- pytest bridge (Task 8 VPLAN audit, fix round 2) ---------------------
+# Same hollowness-under-pytest fix as
+# docs/notes/test_progrom_coverage.py's own copy of this block --
+# check()/check_eq()/check_raises() only APPEND to FAILS, never raise, so
+# pytest would otherwise report every test_* function here as PASS
+# regardless of content. Wraps every test_* function so a run UNDER
+# PYTEST raises (inside the wrapped call itself, so pytest reports a
+# clean FAILED, never a passed-plus-teardown-error split) if its OWN
+# execution added anything to FAILS. Guarded by `__name__ != "__main__"`
+# so the direct-invocation path below keeps calling the UNWRAPPED
+# originals and its own collect-everything-then-report-once behavior is
+# untouched.
+if pytest is not None and __name__ != "__main__":
+    def _wrap_for_pytest(fn):
+        def _wrapped():
+            start = len(FAILS)
+            result = fn()
+            new = FAILS[start:]
+            if new:
+                raise AssertionError(
+                    f"{len(new)} check() failure(s) in {fn.__name__}:\n"
+                    + "\n".join(f"  - {f}" for f in new))
+            return result
+        _wrapped.__name__ = fn.__name__
+        _wrapped.__doc__ = fn.__doc__
+        return _wrapped
+
+    for _tname, _tobj in list(globals().items()):
+        if _tname.startswith("test_") and callable(_tobj):
+            globals()[_tname] = _wrap_for_pytest(_tobj)
 
 
 if __name__ == "__main__":

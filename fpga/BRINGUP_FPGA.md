@@ -365,6 +365,92 @@ other three are cheap enough to run once per synthesis-affecting change
 and expensive enough not to want them serialized into every single-tag
 build.
 
+## Verification -- `make -C fpga verify`
+
+The gates above prove one bitstream reproduces from source. A separate,
+cheap stack proves the *design behind the bitstream* stays correct as it
+evolves -- differential fuzzing against the Python oracle, plus the full
+cocotb TB ladder, in one command. `make -C fpga verify` runs it
+cheapest-first so a red step is found fast, and fails loud at the first
+one:
+
+    $ make -C fpga verify
+    ...
+    === VERIFY: ALL GREEN (137s wall) ===
+
+**137s wall (~2.3 min), exit 0, three stages, all green** (this task's
+own run). In order:
+
+1. **Host suite** -- `python3 -m pytest docs/notes/ -q` -> **147 passed**,
+   **~52s**. Every `docs/notes/test_*.py`: microcode/progrom encoders,
+   the netlist oracle, `fuzz_gen.py`'s own structural-guarantee tests, and
+   the VPLAN guard (`test_vplan.py`).
+2. **Fuzz** -- `python3 fpga/sim/test_core_fuzz.py`, `DINO_FUZZ_N` seeds
+   (default **20**) of `fuzz_gen.gen(seed)`'s randomly-generated,
+   structurally-guaranteed-to-halt legal programs, run against the real
+   `dino_core` elaboration and cross-checked against
+   `docs/notes/progrom_gen.py`'s own `simulate()` oracle on three
+   observables (final OB, `ram_writes`, `branches_taken` -- not OB alone,
+   see `test_core_fuzz.py`'s own header for the MAR-as-a-latch blind spot
+   OB-only would miss). Switches on `IN`-using programs are drawn
+   per-seed from `fuzz_gen.gen()`'s own RNG (`meta["switches"]`), not a
+   hardcoded value. This task's own run: **20/20 PASS, 14.9s wall**.
+3. **cocotb TB ladder** (`fpga/run_cocotb_ladder.sh`) -- 18
+   `fpga/ttl/test_*.py` chip-model invocations, 9
+   `fpga/sim/test_module_*.py` sheet-model invocations,
+   `test_core_milestone.py`'s 2 whole-core cases, and
+   `test_core_coverage.py`'s 8 coverage-image cases: 37 `make`
+   invocations total (one per MODEL/MODULE_UNDER_TEST/TESTCASE
+   combination -- there is no all-models target in `fpga/ttl/Makefile` or
+   `fpga/sim/Makefile`, and ROM content is a GHDL generic fixed at
+   elaboration, so each `dino_core` TESTCASE genuinely needs its own
+   invocation). These 37 invocations are the SOLE citation for roughly
+   half of `docs/notes/dino_fpga_vplan.md`'s rows (sections E/F/L/M plus
+   most of section A). This task's own run: **37/37 GREEN, 69s wall**.
+
+**Budgets and soak.** `DINO_FUZZ_N` (env var) sets the seed count; unset
+defaults to 20 (the number `verify` runs). `DINO_FUZZ_N` is a plain env
+var, so it threads straight through -- `DINO_FUZZ_N=500 make -C fpga
+verify` genuinely does run a 500-seed fuzz stage. For a soak, call
+`python3 fpga/sim/test_core_fuzz.py` directly (with `DINO_FUZZ_N=500`
+exported) instead, so only the fuzz stage re-runs. `test_core_fuzz.py`'s
+own header carries the 500-seed calibration: 500/500 PASS, 275.6s wall
+(0.55s/seed), 2500 metavalue warnings (exactly 5/seed, no variance across
+all 500 runs) -- that 5/seed floor is what pins
+`METAVALUE_PER_PROGRAM_BOUND = 8` above it, so a real per-program
+metavalue increase (not run-to-run noise) trips the budget check rather
+than silently passing.
+
+**The GAP list.** Not everything is a green check -- `docs/notes/
+dino_fpga_vplan.md` is the coverage map: every invariant CLAUDE.md/
+`BRINGUP.md`/the design specs claim, mapped to the artifact that would
+fail if it were wrong. **67 rows, 5 GAP** (un-policed rules or ledgered
+deferrals -- none silent; `docs/notes/test_vplan.py` guards the row/GAP
+counts against drift from the table itself). Read it before assuming a
+behavior is proven just because `verify` is green -- GREEN means
+"everything checked passed," not "everything is checked."
+
+**How to read a failure.** Each stage names a different kind of problem,
+and its own artifact says which:
+
+- **Host suite** -- `pytest`'s own `-q` output names the failing test
+  file and function directly. A `test_vplan.py` failure specifically
+  means the VPLAN table itself drifted (a citation went stale, or a row
+  changed status without `KNOWN_GAPS` following) -- a documentation bug,
+  not a hardware one.
+- **Fuzz** -- a `seed N: FAIL` line, followed by that seed's disassembled
+  program listing and the divergent observable (OB / `ram_writes` /
+  `branches_taken`). Reproduce with `fuzz_gen.gen(seed)`; shrink with
+  `limit=`. A metavalue-budget failure (not a seed FAIL) means some
+  program is driving more `'U'`/`'X'` propagation than the calibrated
+  5/seed floor -- a real per-program regression, not a threshold that
+  needs raising.
+- **cocotb TB ladder** -- the failing `make -C ttl`/`make -C sim`
+  invocation's own `results.xml` (`fpga/ttl/results.xml` or
+  `fpga/sim/results.xml`) names the failing test function; cocotb's own
+  console output above it shows the assertion and simulation time it
+  failed at.
+
 ## Rico flashes and checks
 
 Flash each `.bit`, confirm the LED pattern / DIP sweep / HALT-hold

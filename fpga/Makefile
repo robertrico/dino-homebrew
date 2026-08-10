@@ -138,6 +138,53 @@ prog-flash: bit
 check-images:
 	python3 $(CURDIR)/synth/check_images.py --hex --meminit
 
+# --- Consolidated verification meta-target ---------------------------------
+# `make -C fpga verify` -- host suite -> fuzz -> cocotb TB ladder, in
+# genuinely cheapest-first order so a red step is found fast: host suite
+# (every docs/notes/test_*.py under pytest), fuzz (fpga/sim/test_core_fuzz.py,
+# DINO_FUZZ_N seeds, defaults to 20 when unset), THEN the cocotb TB ladder
+# (fpga/run_cocotb_ladder.sh -- 18 ttl + 9 sim + 2 milestone + 8 coverage
+# invocations, 37 total). No ordering dependency exists between the three
+# (the host suite's drift/no-drift tests write into pytest's own tmp_path,
+# the cocotb ladder only READS fpga/gen/*.vhd, never touching it) --
+# reordering is purely a fail-fast optimization, not a correctness
+# requirement. `DINO_FUZZ_N=500 make -C fpga verify` threads through to the
+# fuzz stage for a soak (it's a plain env var Make passes to the recipe's
+# subprocess); see that file's own header for the calibration numbers.
+#
+# Deliberately NOT included: `bits`/`check-images`/postsynth -- those are
+# build-and-place gates over all nine image tags, not part of this target's
+# host/fuzz/cocotb stack, and are run separately per this file's own
+# "Reproducibility" section in BRINGUP_FPGA.md; folding a multi-image
+# synthesis ladder into every `verify` run would make the fast steps wait
+# on the slowest one for no correctness gain.
+#
+# Fails LOUD at the first red step (`|| exit 1` after every stage, plus a
+# named FAILED line so the banner alone says which stage broke) and prints
+# one final banner with wall time either way. Read the failing stage's own
+# artifact for the specific problem -- results.xml (host suite/fuzz),
+# fpga/ttl/results.xml or fpga/sim/results.xml (cocotb ladder) -- see
+# BRINGUP_FPGA.md's verification section for "how to read a failure" per
+# stage.
+#
+# `-n`/`-t`/`-q` are NOT dry runs against this target: this file's re-exec
+# block at the top trips GNU Make's documented "a recipe line referencing
+# $(MAKE) always executes, even under -n/-t/-q" rule, so `make -n verify`
+# still runs the real thing. There is no dry-run flag that is actually dry
+# against this Makefile; don't reach for one to "just check the recipe."
+.PHONY: verify
+verify:
+	@echo "=== verify: START $$(date) ==="
+	@t0=$$(date +%s); \
+	echo "--- [1/3] host suite: pytest docs/notes/ ---"; \
+	python3 -m pytest $(CURDIR)/../docs/notes -q || { echo "=== VERIFY FAILED at [1/3] host suite ==="; exit 1; }; \
+	echo "--- [2/3] fuzz (DINO_FUZZ_N=$${DINO_FUZZ_N:-20}) ---"; \
+	python3 $(CURDIR)/sim/test_core_fuzz.py || { echo "=== VERIFY FAILED at [2/3] fuzz ==="; exit 1; }; \
+	echo "--- [3/3] cocotb TB ladder (18 ttl + 9 sim + 2 milestone + 8 coverage) ---"; \
+	$(CURDIR)/run_cocotb_ladder.sh || { echo "=== VERIFY FAILED at [3/3] cocotb TB ladder ==="; exit 1; }; \
+	t1=$$(date +%s); \
+	echo "=== VERIFY: ALL GREEN ($$((t1-t0))s wall) ==="
+
 # Builds all eight required image tags in one invocation (this task's own
 # gate: "all eight tags build"). Recurses via $(MAKE) so each tag gets its
 # own IMAGE-driven pattern-rule expansion.
@@ -239,7 +286,7 @@ clean-bit:
 # is on PATH, but a needless coupling for a target that never touches
 # cocotb) and, more importantly, keeps this section reusable if a future
 # CI runner has one toolchain but not the other.
-ifeq ($(filter bit bits clean-bit check-images prog prog-flash,$(MAKECMDGOALS)),)
+ifeq ($(filter bit bits clean-bit check-images prog prog-flash verify,$(MAKECMDGOALS)),)
 include $(shell cocotb-config --makefiles)/Makefile.sim
 endif
 

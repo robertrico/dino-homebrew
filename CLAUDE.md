@@ -126,6 +126,21 @@ and closes timing on a real Lattice ECP5-5G Versa board.
 touching anything under `fpga/`. This is design-ahead, not a hardware
 swap: the breadboard machine is still THE machine.
 
+**A cheap verification stack sits under the port, independent of the
+bring-up gates above.** `make -C fpga verify` (137s wall, ~2.3 min, this
+task's own run — see BRINGUP_FPGA.md's Verification section for the exact
+figure) is one command, cheapest-first: the host suite (pytest over
+`docs/notes/`), a 20-seed differential fuzz run against the Python oracle
+(`DINO_FUZZ_N` raises the count for a soak, switches driven per-seed from
+`fuzz_gen.py`'s own RNG on every `IN`-using program, not a hardcoded
+value), then the cocotb TB ladder (18 TTL-model + 9 sheet-model + 2
+milestone + 8 coverage-image `make` invocations —
+`fpga/run_cocotb_ladder.sh`, all green). Green means every wired check
+passed, not that everything is checked — `docs/notes/dino_fpga_vplan.md`
+is the coverage map, 67 rows mapping every claimed invariant to the
+artifact that would fail if it were wrong, GAPs named as such (5), none
+silent.
+
 ## Integration is CONTROL FIRST, BLACK-BOX, and LOW-WIRE
 
 **The block law (2026-07-28).** Blocks are black-box tests. Module
