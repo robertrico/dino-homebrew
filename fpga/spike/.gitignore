@@ -1,0 +1,15 @@
+# Everything below is reproducible via `make` / `make synth` -- none of
+# it is source, so none of it belongs in the commit.
+__pycache__/
+sim_build/
+results.xml
+
+# GHDL simulation executables (named after the entity, no extension)
+spike_bus
+spike_xcvr
+
+# GHDL elaboration objects, synthesis/PnR intermediates and bitstreams
+*.o
+*.json
+*.cfg
+*.bit

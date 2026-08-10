@@ -1,0 +1,28 @@
+# Everything below is reproducible via `make MODEL=...` -- none of it is
+# source, so none of it belongs in the commit.
+__pycache__/
+sim_build/
+results.xml
+
+# GHDL simulation executables (named after the entity, no extension)
+ttl_74ls00
+ttl_74ls02
+ttl_74ls04
+ttl_74hc14
+ttl_74ls08
+ttl_74ls138
+ttl_74ls157
+ttl_74ls244
+ttl_74ls245
+ttl_74f382
+ttl_74ls74
+ttl_74ls163
+ttl_74ls193
+ttl_74ls273
+ttl_74ls373
+ttl_at28c64b
+ttl_at28c256
+ttl_mcm60256
+
+# GHDL elaboration objects
+*.o

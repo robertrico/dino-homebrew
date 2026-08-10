@@ -1,0 +1,48 @@
+# bus_resolve.ys -- shared-bus tri-state resolution pre-pass.
+#
+# Run on the freshly GHDL-imported design, AFTER `hierarchy`/`proc` and
+# BEFORE `synth_ecp5`. Paths are relative to fpga/ (yosys `script` does not
+# change directory); both fpga/Makefile's `bit` rule and
+# docs/notes/test_netlist_integrity.py invoke THIS file, so the sequence has
+# exactly one definition.
+#
+# Without this pre-pass, synth_ecp5's own coarse stage (`flatten;
+# tribuf -logic; ...`) leaves 24 multiply-driven nets -- the 16-bit M bus at
+# mar U54/U59 and the 8-bit MDR bus at mdr U18 -- and nextpnr-ecp5 aborts at
+# placement with "Net 'dino_core_i.m[0]' is multiply driven by cell ports".
+# Two independent mechanisms, both rooted in how ghdl-yosys-plugin hands a
+# VHDL resolved signal to yosys (it emits one `connect` per driver and leaves
+# the arbitration to `tribuf`):
+#
+#   1. VECTOR-WIDE vs BIT-WIDE tri-states never merge. `tribuf` groups
+#      tri-state drivers by the WHOLE SigSpec of their Y port, so the ONE
+#      8-bit-wide $tribuf that ttl_at28c256's `d_i <= q when ... else
+#      (others => 'Z')` becomes is a different dict key from the eight 1-bit
+#      $tribufs of the '245 sharing those same bits. Each group is then
+#      resolved INDEPENDENTLY and both results are connected to the same
+#      bits. `simplemap t:$tribuf` splits every vector $tribuf into per-bit
+#      $_TBUF_ first, so one net == one group.
+#
+#   2. PROVABLY-DEAD tri-state drivers are not removed. See
+#      synth/dead_tbuf.v for the full explanation -- constant-direction '245s
+#      leave an E=1'0 $_TBUF_ on a net whose real driver ('193 counter Q,
+#      registered ROM data) is not a tri-state at all and is therefore
+#      invisible to `tribuf -logic`.
+#
+# Both steps are exact, not heuristic: (1) is a pure re-grouping of the same
+# drivers, (2) removes cells that can never drive. Machine semantics are
+# unchanged -- the microcode's one-hot bus policing (microcode_gen.check_word)
+# still guarantees at most one enabled driver per bus per T-state, which is
+# what makes the resulting mux resolution equivalent to the board's wired-OR.
+#
+# synth_ecp5's coarse stage re-runs `flatten` (a no-op on an already-flat
+# design) and `tribuf -logic` (a no-op once this file has left zero tri-state
+# cells behind), so nothing here is undone or duplicated downstream.
+
+flatten
+opt_expr
+simplemap t:$tribuf
+opt_expr
+techmap -map synth/dead_tbuf.v
+tribuf -logic
+check

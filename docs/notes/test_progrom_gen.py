@@ -11,6 +11,8 @@ not from the generator's own structure:
     addresses (0 and each 2^k), so a swapped/stuck address line reports
     the address the chip actually decoded
 """
+import os
+import subprocess
 import sys
 import unittest
 
@@ -18,6 +20,7 @@ import progrom_gen as pg
 from microcode_gen import OPCODES, INSTRUCTIONS
 
 SIZE = 32768
+HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 class TestDiagImage(unittest.TestCase):
@@ -135,6 +138,72 @@ class TestCrc(unittest.TestCase):
     def test_images_have_distinct_crcs(self):
         self.assertNotEqual(pg.crc16(pg.build_real()),
                             pg.crc16(pg.build_diag()))
+
+
+class TestExpectedRows(unittest.TestCase):
+    """expected_rows()/print_expected() -- the bring-up sheet's generator
+    (fpga/BRINGUP_FPGA.md and tests/dino_bringup/BRINGUP.md's "everything
+    generated, nothing retyped" rule). in-process checks first, then one
+    subprocess check that the actual `--expected` CLI flag prints the
+    same numbers and does not touch roms/ (side-effect-free)."""
+
+    def test_covers_every_coverage_tag_in_order(self):
+        rows = pg.expected_rows()
+        self.assertEqual([r[0] for r in rows], list(pg.COVERAGE))
+
+    def test_matches_simulate_directly(self):
+        """No second model: expected_rows()'s ob/ends for every tag must
+        equal calling simulate() on that same COVERAGE program directly
+        -- the drift this generator exists to prevent."""
+        for tag, ob, ends, sw, needs in pg.expected_rows():
+            r = pg.simulate(pg.COVERAGE[tag],
+                            switches=pg.COVERAGE_SW.get(tag, 0x00))
+            self.assertEqual(ob, r["out"], tag)
+            self.assertEqual(ends, r["ends"], tag)
+            self.assertEqual(needs, tag in pg.COVERAGE_SW, tag)
+
+    def test_known_finals_match_claude_md(self):
+        """Anchors named in CLAUDE.md's 2026-08-04 'THE WHOLE ISA HAS
+        EXECUTED' section (bench-proven finals) -- catches a regression
+        in either the interpreter or a COVERAGE program that happens to
+        still reach HALT with a DIFFERENT wrong answer, which
+        test_matches_simulate_directly alone cannot: that test only
+        checks expected_rows() against simulate(), not against the
+        machine's own known-good history."""
+        known = {"real": 0x4D, "mardisc": 0x6B, "pads": 0x40, "mem": 0xC5,
+                 "flow": 0x39, "alu": 0x39, "loop": 0x15}
+        got = {tag: ob for tag, ob, *_ in pg.expected_rows()}
+        for tag, want in known.items():
+            self.assertEqual(got[tag], want, tag)
+
+    def test_cli_flag_prints_every_tag_and_writes_nothing(self):
+        """python3 progrom_gen.py --expected -- the exact invocation the
+        bring-up doc cites. ROMS/HDR are resolved from __file__, not cwd
+        (progrom_gen.py's own module-level constants), so "writes
+        nothing" is checked the only way that is actually meaningful
+        here: the real roms/*.bin and the expect header must be BYTE-
+        FOR-BYTE and MTIME identical before and after -- a regression
+        that made --expected fall through to main()'s normal write path
+        would rewrite these (same content, since nothing else changed,
+        but a NEW mtime) and this catches that even though the bytes
+        would look unchanged."""
+        watched = [os.path.join(pg.ROMS, "PROG_pads.bin"), pg.HDR]
+        before = {p: os.path.getmtime(p) for p in watched if os.path.exists(p)}
+        self.assertTrue(before, "expected roms/HDR outputs from a prior "
+                                "main() run to exist for this check")
+        r = subprocess.run(
+            [sys.executable, os.path.join(HERE, "progrom_gen.py"),
+             "--expected"],
+            check=True, capture_output=True, text=True)
+        for p, t in before.items():
+            self.assertEqual(os.path.getmtime(p), t,
+                             f"--expected must be read-only: {p} was rewritten")
+        for tag in pg.COVERAGE:
+            self.assertIn(tag, r.stdout, f"--expected output missing {tag!r}")
+        # spot-check known values render in the CLI's own format
+        self.assertIn("0x4D", r.stdout)
+        self.assertIn("0x6B", r.stdout)   # mardisc
+        self.assertIn("0x40", r.stdout)   # pads
 
 
 if __name__ == "__main__":

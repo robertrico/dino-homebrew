@@ -1,0 +1,27 @@
+# GHDL analysis/elaboration artifacts from running the Task 8 elaboration
+# gate (docs/notes/fpga_gen.py's report / CLAUDE.md rule 5) from this
+# directory -- reproducible via ghdl -a/-e, none of it is source.
+work-obj*.cf
+dino_core
+
+# Task 13 synthesis-gate artifacts (fpga/Makefile's `bit`/`bits` targets):
+# bitstreams, place&route configs/JSON, and yosys/nextpnr/ecppack logs.
+# Reproducible via `make -C fpga bit IMAGE=<tag>`, none of it is source --
+# same reasoning as sim_build/ below.
+build/
+
+# cocotb runner artifacts (Makefile's own MODEL=<entity> executables --
+# same convention as fpga/ttl/.gitignore's per-model list, but this
+# Makefile's MODEL set is exactly SHEETS-minus-root plus "dino_core", so a
+# wildcard is used instead of enumerating each one).
+sim_build/
+results.xml
+alu
+control_word
+input_output
+mar
+mdr
+memory
+microcode
+program_counter
+registers_a_b

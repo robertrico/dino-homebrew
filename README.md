@@ -1,8 +1,10 @@
 # DINO
 
 **D**iscrete **I**ntegrated **N**ISC **O**perator — an 8-bit CPU built from
-74-series logic on breadboards. No microcontroller, no FPGA, no simulation.
-Every register, every bus, every gate is a chip you can put a probe on.
+74-series logic on breadboards. That's the machine itself: no
+microcontroller, no FPGA. Every register, every bus, every gate is a chip
+you can put a probe on. (The repo does carry a generated FPGA twin for
+design-ahead — see [`fpga/BRINGUP_FPGA.md`](fpga/BRINGUP_FPGA.md).)
 
 Schematics in KiCad, microcode in EEPROM, and a bare-metal ATmega2560 test
 rig that brings the machine up one board at a time.

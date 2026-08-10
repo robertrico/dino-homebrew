@@ -1,0 +1,64 @@
+# versa.lpf (Task 13) -- nextpnr-ecp5 physical/timing constraints for
+# versa_top on the Lattice ECP5-5G Versa Development Board
+# (LFE5UM5G-45F, CABGA381).
+#
+# Pins/IO_TYPEs verified this session against litex-boards'
+# lattice_versa_ecp5.py (raw source fetched directly, reference platform
+# file -- clk100/rst_n/user_led/user_dip_btn tables) and cross-checked
+# against the ECP5-5G Versa Development Board User Guide (EB103/EB98) for
+# polarity (documented in versa_top.vhd's own header, not repeated here).
+
+# --- clock / reset ----------------------------------------------------
+LOCATE COMP "clk100" SITE "P3";
+IOBUF PORT "clk100" IO_TYPE=LVDS;
+FREQUENCY PORT "clk100" 100 MHZ;
+
+# clk_sys is the EHXPLLL output (versa_top.vhd, synth-rework-brief.md item
+# 6), NOT clk100 -- it is the clock every register in dino_core actually
+# runs on, so it is the one that has to be constrained. 12 MHz is chosen
+# from the repaired netlist's own measured Fmax with margin; the machine's
+# CLK is clk_sys/100 (versa_top's /25 Y1 divider, then U20's /4).
+# nextpnr cannot derive this through the PLL by itself here (the
+# FREQUENCY_PIN_* attribute route needs Verilog-side attributes GHDL does
+# not forward), so it is stated explicitly.
+FREQUENCY NET "clk_sys" 12 MHZ;
+
+LOCATE COMP "rst_n" SITE "T1";
+IOBUF PORT "rst_n" IO_TYPE=LVCMOS33;
+
+# --- LEDs (active-low, versa_top.vhd inverts at the boundary) --------
+LOCATE COMP "led[0]" SITE "E16";
+IOBUF PORT "led[0]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[1]" SITE "D17";
+IOBUF PORT "led[1]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[2]" SITE "D18";
+IOBUF PORT "led[2]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[3]" SITE "E18";
+IOBUF PORT "led[3]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[4]" SITE "F17";
+IOBUF PORT "led[4]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[5]" SITE "F18";
+IOBUF PORT "led[5]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[6]" SITE "E17";
+IOBUF PORT "led[6]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[7]" SITE "F16";
+IOBUF PORT "led[7]" IO_TYPE=LVCMOS25;
+
+# --- DIP switches (pass-through into dip_sw, see versa_top.vhd header
+# for the active-low polarity match rationale) -------------------------
+LOCATE COMP "dip[0]" SITE "H2";
+IOBUF PORT "dip[0]" IO_TYPE=LVCMOS15;
+LOCATE COMP "dip[1]" SITE "K3";
+IOBUF PORT "dip[1]" IO_TYPE=LVCMOS15;
+LOCATE COMP "dip[2]" SITE "G3";
+IOBUF PORT "dip[2]" IO_TYPE=LVCMOS15;
+LOCATE COMP "dip[3]" SITE "F2";
+IOBUF PORT "dip[3]" IO_TYPE=LVCMOS15;
+LOCATE COMP "dip[4]" SITE "J18";
+IOBUF PORT "dip[4]" IO_TYPE=LVCMOS25;
+LOCATE COMP "dip[5]" SITE "K18";
+IOBUF PORT "dip[5]" IO_TYPE=LVCMOS25;
+LOCATE COMP "dip[6]" SITE "K19";
+IOBUF PORT "dip[6]" IO_TYPE=LVCMOS25;
+LOCATE COMP "dip[7]" SITE "K20";
+IOBUF PORT "dip[7]" IO_TYPE=LVCMOS25;

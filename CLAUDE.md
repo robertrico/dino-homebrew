@@ -116,6 +116,16 @@ per-stage wiring, commands, expected output, failure meanings, and the
 integration plan. `tests/dino_bringup/README.md` has the progress
 checkboxes. `docs/notes/dino_test_bringup_design.md` is the spec.
 
+**The FPGA port exists, sim-proven and synthesized.** A generated VHDL
+twin (`fpga/gen/*.vhd`, emitted by `docs/notes/fpga_gen.py` — same
+nothing-is-retyped doctrine as everything else here, never hand-edited)
+reproduces the bench machine gate-for-gate; the whole ISA runs green
+against it in cocotb sim, and every image tag synthesizes, places, routes,
+and closes timing on a real Lattice ECP5-5G Versa board.
+`fpga/BRINGUP_FPGA.md` is the fabric bench bible — read it before
+touching anything under `fpga/`. This is design-ahead, not a hardware
+swap: the breadboard machine is still THE machine.
+
 ## Integration is CONTROL FIRST, BLACK-BOX, and LOW-WIRE
 
 **The block law (2026-07-28).** Blocks are black-box tests. Module
