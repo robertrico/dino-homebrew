@@ -8,6 +8,8 @@ entity control_word is
     clk_sys : in std_logic;
     cw : in std_logic_vector(8 downto 0);
     flag_z : in std_logic;
+    cw17_eq_n_src_bank : in std_logic;
+    cw18_eq_n_dst_bank : in std_logic;
     n_alu_out : out std_logic;
     n_reg_a_load : out std_logic;
     n_reg_b_load : out std_logic;
@@ -17,7 +19,9 @@ entity control_word is
     n_mar_lo_load : out std_logic;
     n_mdr_out : out std_logic;
     n_pc_clear : out std_logic;
+    n_pc_hi_out : out std_logic;
     n_pc_load : out std_logic;
+    n_pc_lo_out : out std_logic;
     n_ram_load : out std_logic;
     n_ram_out : out std_logic;
     n_reg_a_out : out std_logic;
@@ -26,6 +30,12 @@ entity control_word is
     n_reg_c_out : out std_logic;
     n_reg_out_load : out std_logic;
     n_rom_out : out std_logic;
+    n_sp_down : out std_logic;
+    n_sp_hi_load : out std_logic;
+    n_sp_hi_out : out std_logic;
+    n_sp_lo_load : out std_logic;
+    n_sp_lo_out : out std_logic;
+    n_sp_up : out std_logic;
     n_sw_out : out std_logic
   );
 end entity;
@@ -44,7 +54,7 @@ begin
       a2 => cw(5),
       e1_n => '0',
       e2_n => '0',
-      e3 => '1',
+      e3 => cw17_eq_n_src_bank,
       o7_n => n_sw_out,
       o6_n => n_alu_out,
       o5_n => n_reg_c_out,
@@ -62,9 +72,9 @@ begin
       e1_n => '0',
       e2_n => '0',
       e3 => '1',
-      o7_n => open,
+      o7_n => n_sp_down,
       o6_n => n_reg_out_load,
-      o5_n => open,
+      o5_n => n_sp_up,
       o4_n => n_mdr_out,
       o3_n => n_cond,
       o2_n => n_pc_load_jmp,
@@ -78,7 +88,7 @@ begin
       a2 => cw(2),
       e1_n => '0',
       e2_n => '0',
-      e3 => '1',
+      e3 => cw18_eq_n_dst_bank,
       o7_n => n_ram_load,
       o6_n => n_ir_load,
       o5_n => n_mar_hi_load,
@@ -102,5 +112,39 @@ begin
       a4 => '0',
       b4 => '0',
       y4 => open);
+
+  U70 : entity work.ttl_74ls138
+    port map (
+      a0 => cw(3),
+      a1 => cw(4),
+      a2 => cw(5),
+      e1_n => cw17_eq_n_src_bank,
+      e2_n => '0',
+      e3 => '1',
+      o7_n => open,
+      o6_n => open,
+      o5_n => open,
+      o4_n => open,
+      o3_n => n_pc_hi_out,
+      o2_n => n_pc_lo_out,
+      o1_n => n_sp_hi_out,
+      o0_n => n_sp_lo_out);
+
+  U71 : entity work.ttl_74ls138
+    port map (
+      a0 => cw(0),
+      a1 => cw(1),
+      a2 => cw(2),
+      e1_n => cw18_eq_n_dst_bank,
+      e2_n => '0',
+      e3 => '1',
+      o7_n => open,
+      o6_n => open,
+      o5_n => open,
+      o4_n => open,
+      o3_n => open,
+      o2_n => open,
+      o1_n => n_sp_hi_load,
+      o0_n => n_sp_lo_load);
 
 end architecture;

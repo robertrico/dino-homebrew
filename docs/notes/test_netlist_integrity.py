@@ -33,10 +33,11 @@ import pytest
 #   2. memrd census: after synth_ecp5's own `coarse` stage (flatten +
 #      tribuf -logic + opt_expr + opt_clean -- the exact point Task 13's
 #      CRITICAL FINDING traced the drop to), `select -count t:$memrd_v2`
-#      must read exactly 4 -- the two microcode ROMs (U9/U15) plus the
+#      must read exactly 5 -- the three microcode ROMs (U9/U15/U23) plus the
 #      program ROM (U24) and RAM (U26). Fewer than 4 means dead-code
 #      elimination ate a real memory, the Task-13 failure mode, byte for
-#      byte; more than 4 would mean an unexpected extra inferred memory.
+#      byte; more than 5 would mean an unexpected extra inferred memory.
+#      U23 (the third microcode EEPROM) joined the census 2026-08-10.
 #
 # Both checks run against fpga/gen/*.vhd + fpga/ttl/*.vhd directly (NOT
 # top/versa_top.vhd) -- dino_core is the composed machine gate; the board
@@ -56,7 +57,8 @@ GHDL_PREFIX = os.path.normpath(os.path.join(TOOLS, "..", "lib", "ghdl"))
 # last) mirrors fpga/Makefile's SYNTH_VHDL_SOURCES / fpga/sim/Makefile's
 # MODULE_UNDER_TEST=dino_core GEN_SHEETS, not reinvented here.
 GEN_SHEETS = ["alu", "control_word", "input_output", "mar", "mdr",
-              "memory", "microcode", "program_counter", "registers_a_b"]
+              "memory", "microcode", "program_counter", "registers_a_b",
+              "stack_pointer"]
 
 pytestmark = pytest.mark.skipif(
     not os.path.exists(YOSYS),
@@ -273,15 +275,15 @@ def test_synth_coarse_preserves_all_four_memories():
     m = re.findall(r"^(\d+) objects\.$", proc.stdout, re.M)
     assert m, f"no 'select -count' result found in yosys output:\n{proc.stdout}"
     count = int(m[-1])
-    assert count == 4, (
+    assert count == 5, (
         f"$mem_v2 count at the end of the production coarse stage: {count}, "
-        f"want 4 (microcode U9/U15 + program ROM U24 + RAM U26) -- fewer "
+        f"want 5 (microcode U9/U15/U23 + program ROM U24 + RAM U26) -- fewer "
         f"means dead-code elimination ate a real memory (Task 13's original "
         f"failure mode); more means an unexpected extra inferred memory.\n"
         f"{proc.stdout}")
 
 
-def test_full_synth_maps_all_four_memories_to_block_ram():
+def test_full_synth_maps_all_five_memories_to_block_ram():
     """Restated synthesis gate 1's ACTUAL wording -- "4 memories at end of
     synth_ecp5 (not just coarse)" -- and gate 3's fit half, neither of
     which had a test. Task 13's CRITICAL FINDING was a memory that
@@ -307,9 +309,9 @@ def test_full_synth_maps_all_four_memories_to_block_ram():
 
     mapped = re.findall(r"^mapping memory (\S+) via \$__DP16KD_", proc.stdout,
                         re.M)
-    assert len(mapped) == 4, (
+    assert len(mapped) == 5, (
         f"{len(mapped)} memories mapped to DP16KD block RAM at the END of "
-        f"synth_ecp5, want 4 (microcode U9/U15 + program ROM U24 + RAM "
+        f"synth_ecp5, want 5 (microcode U9/U15/U23 + program ROM U24 + RAM "
         f"U26). Mapped: {mapped}")
 
     ff_mapped = [ln for ln in proc.stdout.splitlines()

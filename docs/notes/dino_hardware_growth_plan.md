@@ -1,7 +1,39 @@
 # DINO hardware growth plan
 
-**2026-07-28, updated 2026-08-03. PLAN ONLY — nothing here is built or
-burned.**
+**2026-07-28, updated 2026-08-03, PARTLY BUILT 2026-08-10.**
+
+**Steps 4a and 4b are no longer plan.** The third microcode EEPROM, the SRC/DST
+bank switch, the stack pointer, and the PC->MDR taps exist in the schematic as
+of commit `9dc7217`. Everything else in this document is still plan.
+
+## What the 2026-08-10 build changed in this document
+
+Read this before trusting any section below — several were wrong, and the
+corrections are marked inline where they occur.
+
+- **`SRC3`/`DST3`/`MISC3` renamed** to `~{SRC_BANK}`/`~{DST_BANK}`/
+  `~{MISC_BANK}`. A '138 has three address pins; the new bit is an ENABLE.
+- **`COND[2:0]` renamed** to `FLAG_SEL0`/`FLAG_SEL1`/`FLAG_POL` — `COND0`
+  loses KiCad's alias sort against `CW21` and steals the net off the bus.
+- **`CIN` is a SELECT**, not a carry value. One ROM bit cannot be the carry.
+- **MISC had TWO free codes, not three** — `O0` is the `NONE` slot. Two is
+  enough only because `SP_LOAD` turned out to be a `DST` decode, not a MISC
+  code. **MISC is now full.**
+- **Zero slack was wrong.** `~{ADDR_SEL1}` and `~{MISC_BANK}` are burned and
+  unwired, held in reserve. 6 of 8 wired.
+- **`P0-P3`, not `D0-D3`**, on the '169.
+- **The '163/'169 pin-1 warning is rewritten.** "Check the datasheet" was
+  useless; the real fault is copying `U20`'s `pin 1 -> +5V` strap onto a '169.
+- **SP rides `MDR0-7`, not `W0-W7`.** Reason: selecting bank 1 disables
+  `U28`, so `SRC_ACTIVE` floats high and the `U25` bridge turns on pointed
+  MDR->W — a W-side bank-1 source would fight it every cycle. (A second
+  reason was cited at the time, "W measures 2.26V"; that reading was taken on
+  the broken machine and is not evidence. See dino_mar_lo_investigation.md.)
+- **`PC_LO`/`PC_HI` tap `PC0-15`, not `M`.** Tapping `M` makes `CALL`
+  impossible: the push row needs MAR on the address bus while reading the PC.
+- **Route C exists** and is documented under 4b, rejected with reasons.
+
+**2026-07-28 original note: PLAN ONLY — nothing here is built or burned.**
 
 **What the 2026-08-03 pass changed**, all of it netlist-verified with
 `kicad_netlist.build_report`, none of it from memory:
@@ -239,10 +271,11 @@ Priority order for the new bits, by value:
    The XOR is what gives both senses of every branch — `JZ`/`JNZ`, `JC`/`JNC`,
    `JN`/`JP`, `JV`/`JNV` — from one bit. `U62` gate4 is free for the glue.
    Three bits of the new word, ZERO new chip types, both parts on hand.
-3. **`SRC` widened to 4 bits**, which is what makes `SRC=PC_LO`/`PC_HI`
-   possible, which is what makes `CALL` possible. `DST` widens with it — the
+3. **`SRC` gains a bank bit**, which is what makes `SRC=PC_LO`/`PC_HI`
+   possible, which is what makes `CALL` possible. `DST` gains one with it — the
    D:E pair (step 5), `SP_LO`/`SP_HI` and the RET scratch all need DST codes
-   and DST is full.
+   and DST is full. (Called "widened to 4 bits" originally; it is one enable
+   selecting between two '138s, not a fourth address input.)
 
    **Netlist, 2026-08-03 — the enables are STRAPPED, and that is the good
    news:**
@@ -269,28 +302,59 @@ Priority order for the new bits, by value:
    nothing re-encodes.** That property is why widening beats renumbering:
    renumbering to reclaim slots would invalidate every row and every host test.
 
-   **`MISC` can dodge its second '138 entirely.** Free `O5` + `O7` + `O6` once
-   step 1 retires `REG_OUT_LOAD` = exactly 3 codes = exactly `SP_UP`,
-   `SP_DOWN`, `SP_LOAD`. Costs no bit and no chip; leaves zero MISC headroom
-   after. Decide at the time.
+   **`MISC` can dodge its second '138 entirely — and DID.** Built 2026-08-10.
+   `U29` has exactly **two** free codes, `O5` and `O7`; `O0` is the `NONE`
+   slot and can never be reclaimed, so the "3 free" this paragraph used to
+   claim was wrong. Two is enough, because **`SP_LOAD` is not a MISC code**:
+   the '169's `~PE` is a synchronous load enable driven straight from a `DST`
+   decode. So `O5` = `~{SP_UP}`, `O7` = `~{SP_DOWN}`, no bit, no chip.
+
+   **MISC is now FULL.** The next MISC code needs either `~{MISC_BANK}` wired
+   plus a second MISC '138, or step 1's I/O decode retiring `REG_OUT_LOAD` to
+   free `O6`.
 
 #### IS 8 BITS ENOUGH? Exactly 8. Zero slack.
 
-    bit(s)      buys                                              cost
-    CIN         ADD/ADC/SUB/SBB, 16-bit arithmetic                 1
-    SRC3        16 sources: PC_LO, PC_HI, SP_LO, SP_HI, shifter,   1
-                D, E, TMP
-    DST3        16 dests: D, E, SP_LO, SP_HI, TMP                  1
-    ADDR_SEL1   MUX becomes {MAR, PC, SP, -}                       1
-    COND[2:0]   '157 flag select + '86 polarity — all four flags,  3
-                both senses
-    MISC3       16 misc: SP_UP / SP_DOWN / SP_LOAD                 1
+**Names corrected 2026-08-10, when this was built.** The bits were called
+`SRC3`/`DST3`/`MISC3` here, which is misleading twice over: a '138 has exactly
+three address inputs, so there is no fourth, and nothing named `SRC0`-`SRC2`
+exists in the netlist either — those bits are positional (`CW3`,`CW4`,`CW5`).
+Each new bit is an **enable** picking which of two decoders listens. They are
+`~{SRC_BANK}`, `~{DST_BANK}`, `~{MISC_BANK}` as burned.
+
+    bit(s)          buys                                          cost
+    ~{CIN_SEL}      ADD/ADC/SUB/SBB, 16-bit arithmetic             1
+    ~{SRC_BANK}     16 sources: PC_LO, PC_HI, SP_LO, SP_HI,        1
+                    shifter, D, E, TMP
+    ~{DST_BANK}     16 dests: D, E, SP_LO, SP_HI, TMP              1
+    ~{ADDR_SEL1}    MUX becomes {MAR, PC, SP, -}                   1
+    FLAG_SEL[1:0]   '153 4:1 flag select — all four flags          2
+    FLAG_POL        '86 polarity — both senses                     1
+    ~{MISC_BANK}    16 misc                                        1
                                                              --------
                                                                 8 / 8
 
-Two ways to buy slack if wanted: drop `MISC3` and put SP control in MISC's
-three freed codes (7 used, 1 spare, zero MISC headroom after); or cut `COND`
-to 2 bits, flag-select only, losing branch polarity (2 spare).
+`COND[2:0]` was the old name for the last three. **Renamed 2026-08-10 for a
+concrete reason:** KiCad names a net after the alphabetically first label on
+it, and `COND0` beats `CW21` (`"CO" < "CW"`), stealing the net name off the
+`CW[0..23]` bus and producing `net_not_bus_member`. `FLAG_SEL0` sorts after
+`CW21` and does not. `FLAG_POL` is also a better name — it is a polarity bit,
+not a third select bit.
+
+**`~{CIN_SEL}` is a SELECT, not a carry value.** One ROM bit cannot *be* the
+carry — `ADC` needs `CIN = FLAG_C`, which is state from the previous op. The
+bit picks between the existing opcode-derived carry (`NOT(SA1 AND SA0)`, `U53`
+gate4 into `U50` gate4) and `FLAG_C`. `SBB` falls out of the same bit, since
+after `SUB` the carry-out is NOT-borrow.
+
+**Every bit is polarised so `0xFF` is today's machine.** Consequence worth
+stating: an erased AT28C64B is a valid third-ROM image for every row except
+`JNZ`'s, which carries `FLAG_SEL=Z`, `FLAG_POL=1`.
+
+As built, `~{ADDR_SEL1}` and `~{MISC_BANK}` are burned into all 4096 rows and
+**unwired** — held in reserve. `MISC` needed no widening (above), and SP took
+Route B (below), which needs no `ADDR_SEL`. So the real occupancy is 6 of 8
+wired, 2 in reserve, rather than the zero slack this section predicted.
 
 **Verdict: 8 covers this document and nothing more.** If a 4th ROM is ever
 needed it is the cheapest expansion in the machine — same shared
@@ -319,7 +383,7 @@ firmware follows via the regenerated header — nothing retyped.
 **What a stack is FOR, in one line:** so a subroutine can come back. Today no
 routine can `CALL`/`RET` — there is no place to remember where you came from,
 so every reusable chunk is copy-pasted at each use. `print_char` written once
-and called from forty places is the entire prize.
+and called from forty places is what it buys.
 
 **Three netlist facts (2026-08-03) that decide the design:**
 
@@ -351,19 +415,67 @@ to one direction LEVEL plus one count enable. **That deletes the worst wire
 class in the block law — a wrong driven STROBE — from the SP outright**, and
 `LXI SP` needs no stabiliser because the load is synchronous.
 
-'169 and '163 share the family pinout (16-pin, `CP` on 2, `D0-D3` on 3-6,
-`~PE` on 9, enables on 7/10, `TC` on 15); pin 1 differs — '163 `~MR`, '169
-`U/~D`. **Verify against the datasheet before wiring.**
+'169 and '163 share the family pinout (16-pin, `CP` on 2, parallel inputs on
+3-6, `~PE` on 9, enables on 7/10, `TC` on 15); pin 1 differs — '163 `~MR`,
+'169 `U/~D`.
+
+**The parallel inputs are `P0-P3`, not `D0-D3`** — Philips/NXP naming, matching
+`~PE`. Corrected 2026-08-10 off the actual KiCad symbol.
+
+**The pin-1 warning used to say "verify against the datasheet", which is
+useless** — you read the part number off the chip, you will not grab the wrong
+one. The real failure mode is **design by analogy**:
+
+    U6  '163  T-state counter   pin 1 ~MR = ~{END_OR_RESET}   live clear net
+    U20 '163  clock divider     pin 1 ~MR = +5V               strapped high
+
+Both '163s on this board wire pin 1 as a clear, one of them strapped to `+5V`.
+Doing the same on a '169 hardwires `U/~D` high, so **SP counts up only** —
+`~{SP_DOWN}` decodes, asserts, and does nothing. PUSH never decrements, the
+stack never moves, and a single PUSH/POP pair still works perfectly because
+the byte goes to a slot and comes back from the same slot. Nested calls
+silently corrupt.
+
+**The check is: pin 1 on the four '169s is a data input carrying `~{SP_DOWN}`,
+and it must toggle. If any wiring guide shows SP pin 1 going to `+5V` or a
+reset net, that is the bug.** It is invisible to a round-trip test — push-then-
+pop is self-consistent under it, exactly like the `Q`/`P` order trap below.
+Catching either needs a mirror-witness: push two DIFFERENT values and pop them
+in the order LIFO demands.
+
+**`Q` and `P` run opposite directions in the numbering** — `P0-P3` = 3,4,5,6
+ascending, `Q0-Q3` = 14,13,12,11 descending. On a DIP16 those pins sit
+directly opposite each other (3 faces 14, 6 faces 11), so wiring by physical
+position is safe. Wiring by "keep counting pin numbers" produces a whole-nibble
+reversal. It is a **numbering trap, not a layout trap** — a wiring-list
+ordering question.
 
 **GOTCHA — '169 HAS NO CLEAR.** None. The PC gets `PC_CLEAR_OR_RESET` from
 `U10`; SP will not. Power-on SP is random until software runs `LXI SP`. Fine
 for a stack, but write it down: "machine works, then randomly doesn't" traced
-to an unset SP is a miserable afternoon.
+to an unset SP is a hard fault to find.
 
-`LXI SP` needs no '245 either. Wire `W0-W7` straight to all four '169 `D`
-inputs and give the low and high pairs separate `~PE` strobes — exactly how
-MAR does it, `U55` and `U58` both sitting on `W0-W7` split by
-`LE_MAR_LO`/`LE_MAR_HI`. Two MISC codes, zero chips.
+`LXI SP` needs no '245 on the input side. Wire the bus straight to all four
+'169 `P` inputs and give the low and high pairs separate `~PE` strobes —
+exactly how MAR does it, `U55` and `U58` both sitting on one bus split by
+`LE_MAR_LO`/`LE_MAR_HI`.
+
+**Built 2026-08-10 on `MDR0-7`, NOT `W0-W7`.** This section said `W` by
+analogy to MAR. Two reasons it is wrong:
+
+1. **The choice is free.** Whenever any byte
+   moves, `SRC_ACTIVE` enables the `U25` bridge and BOTH buses carry it —
+   `bus_dir=1` for a W-side source, `0` for an MDR-side one. So a destination
+   can latch from either side, and the machine is already split that way
+   (`MAR`/`IR` latch from `W`; registers A/B/C latch from `MDR` through their
+   own '245s). `LXI SP` on `W` would add **eight** input loads to the bus
+   whose levels have never been characterised on a healthy machine.
+2. **SP's OUTPUT must be on MDR anyway** (see Route B below), so putting the
+   input side there keeps the whole SP — load and read — on one bus, in one
+   physical cluster.
+
+Two MISC codes, zero chips, and `SP_LOAD` is a `DST` decode rather than a MISC
+code.
 
 #### Two routes to the address bus — TAKE THE CHEAP ONE
 
@@ -382,15 +494,51 @@ exclusive BY CONSTRUCTION, no third state:
 decoder and is on hand, so no '139 is needed — and '138 leaves `E3` spare as a
 global address inhibit plus four unused codes.
 
-**Route B (cheap, RECOMMENDED). SP never touches `M`.** SP is just a number;
+**Route B — BUILT 2026-08-10. SP never touches `M`.** SP is just a number;
 MAR is the thing that points. Copy SP into MAR and let MAR point. `DST=MAR_LO`
 /`MAR_HI` are `U30.O4`/`O5` — already decoded, already burned, already policed.
+
+**Route C, found while building and rejected — record it so it is not
+re-proposed as new.** SP drives `MAR0-15` directly (the private net between the
+`'373` outputs and the `U54`/`U59` M-drivers), with `U55`/`U58` `OE` lifted off
+GND. Costs 2 '245s + one inverter, reuses the existing M drivers so there is no
+address-decode surgery, and **preserves MAR's contents while high-Z** — which
+kills the push-first ordering below AND the `RET` `PC_UP` convention, and halves
+PUSH/POP to two T-states each. Rejected because it makes `MAR0-15` a shared bus
+where it is currently point-to-point with a permanent driver, on proven copper,
+on a net already measuring 3.22V; and because it introduces a second mechanism
+for reaching the address bus, parallel to `SRC`->`DST`, needing its own policing.
+**Route B is also the reversible one:** C can be added on top later without
+undoing B, and `~{ADDR_SEL1}` is burned into all 4096 rows waiting for it.
+
+**Why SP's output rides `MDR`, not `W`.** Selecting bank 1 disables `U28`, so
+`SRC_ACTIVE` (`U28.O0`) floats high, `~{MDR_EN} = NOR(SRC_ACTIVE, MDR_OUT)`
+goes low, and `bus_dir = NAND(~ALU_OUT, ~SW_OUT)` reads 0 — **the bridge turns
+on pointed MDR->W on every bank-1 cycle.** An SP output '245 on `W` would fight
+it, every PUSH and every POP. On `MDR` it costs nothing: the bridge is already
+on and already pointed the right way, which is exactly how `ROM`/`RAM` work.
+Five of the seven bank-0 sources already live on `MDR`; only `ALU` and `SW`
+drive `W`, which is why `bus_dir` names precisely those two.
+
+**Corollary for every future bank-1 source: land it on `MDR0-7`.** And bank 1's
+`O0` must be a real source, never a `NONE` slot — `SRC_ACTIVE` reads "active"
+for every bank-1 code, so `SRC=8` with nothing driving would let MDR quietly
+supply `W`. Bank 1 therefore has 8 usable codes, not 7.
 
     PUSH A                          POP A
       T1  SP_LO -> MAR_LO             T1  SP_UP
       T2  SP_HI -> MAR_HI             T2  SP_LO -> MAR_LO
       T3  A     -> RAM                T3  SP_HI -> MAR_HI
       T4  SP_DOWN, END                T4  RAM   -> A, END
+
+**`PC_LO`/`PC_HI` tap `PC0-15`, NOT `M` — decided 2026-08-10, and `CALL` is
+the reason.** `PC0-15` are the '193 `Q` outputs, previously feeding only
+`U13`/`U14`'s B pins. Look at `T3` below: it writes to RAM, so the address bus
+must carry **MAR** (the stack slot), which means `PC_MAR_MUX` selects MAR and
+`M` is not carrying the PC at all. A `'244`/`'245` tapping `M` would push
+MAR's own value. **Tapping `M` makes `CALL` impossible.** Tapping `PC0-15` also
+removes any coupling between `SRC=PC_LO` and `MUX_PC`, so no `check_word` rule
+is needed for it.
 
 `CALL` needs two 16-bit values alive at once (target and return) and MAR is
 the only 16-bit holder — so **push first, fetch the target last**:
@@ -502,16 +650,23 @@ build it before there is a workload that needs it.
 
 Every device added to `W` adds load. The LED drive is the canary: a 74LS373
 sourcing roughly twice its rated `IOH` into a 330Ω LED, on the one node the
-whole milestone is read from. A pin sitting at 2.0V reads as a clean HIGH to
-the Mega and is garbage to a real gate — this project has already been bitten
-by exactly that at 1.67V (`U45.2`).
+whole milestone is read from. A pin sitting at 2.0V reads as a clean HIGH to the Mega and is garbage to a
+real gate. One confirmed instance: `U45.2` at 1.67V, found and fixed. No
+characterisation of a HEALTHY bus has ever been done — see
+dino_mar_lo_investigation.md for why the other recorded readings do not
+count as one.
 
-**Step 4b makes this sharper than it was.** Route B puts five new permanent
-`D`-input loads on `W` — four '169s (`LXI SP` wires `W0-W7` straight to their
-parallel inputs) plus the scratch '373 — on top of whatever the UART and the
-shifter add. These are inputs, not drivers, so no fight is possible; it is
-purely a DC level question, which is exactly the kind this project has lost
-before.
+**Step 4b was going to make this sharper, and as built it does not.** The
+original Route B put four '169s' parallel inputs on `W`, on top of whatever the
+UART and shifter add. **Built 2026-08-10 on `MDR0-7` instead** — partly for
+the bridge reason above (a W-side bank-1 source fights the U25 bridge, which
+is a netlist fact), partly to avoid adding eight input loads to a bus whose
+levels have never been characterised on a healthy machine. `W` gains nothing
+from the stack either way.
+
+`MDR0-7` gains two `P` inputs per bit (one chip per byte pair) plus four '245
+outputs (SP lo/hi, PC lo/hi). Those are the loads to watch on the next
+measurement pass.
 
 Before the UART and the shifter join `W`, that measurement stops being a
 nice-to-have and becomes a gate. Re-measure `W` levels after **every** device

@@ -31,24 +31,32 @@ int main(void) {
     struct { const char *path; uint16_t want; } chips[] = {
         {"../../../roms/U9.bin", MC_CRC_U9_REAL},
         {"../../../roms/U15.bin", MC_CRC_U15_REAL},
+        {"../../../roms/U23.bin", MC_CRC_U23_REAL},
         {"../../../roms/U9_diag.bin", MC_CRC_U9_DIAG},
         {"../../../roms/U15_diag.bin", MC_CRC_U15_DIAG},
+        {"../../../roms/U23_diag.bin", MC_CRC_U23_DIAG},
     };
-    for (unsigned i = 0; i < 4; i++) {
+    for (unsigned i = 0; i < 6; i++) {
         uint8_t *b = load(chips[i].path, 8192);
         assert(crc_over(b, 4096) == chips[i].want);       /* addressable half */
         assert(memcmp(b, b + 4096, 4096) == 0);           /* A12 mirror */
         free(b);
     }
 
-    /* MC_REAL_WORDS table vs the real bins: same image, two encodings */
+    /* MC_REAL_WORDS table vs the real bins: same image, two encodings.
+       THREE bytes since 2026-08-10 -- U23 carries CW16-23, and the table
+       widened to uint32_t. The masks matter: `>> 8` alone used to be a
+       whole byte and is now sixteen bits, which is exactly how this
+       assertion caught the widening. */
     uint8_t *lo = load("../../../roms/U9.bin", 8192);
     uint8_t *hi = load("../../../roms/U15.bin", 8192);
+    uint8_t *th = load("../../../roms/U23.bin", 8192);
     for (unsigned a = 0; a < 4096; a++) {
         assert((MC_REAL_WORDS[a] & 0xFF) == lo[a]);
-        assert((MC_REAL_WORDS[a] >> 8) == hi[a]);
+        assert(((MC_REAL_WORDS[a] >> 8) & 0xFF) == hi[a]);
+        assert(((MC_REAL_WORDS[a] >> 16) & 0xFF) == th[a]);
     }
-    free(lo); free(hi);
+    free(lo); free(hi); free(th);
 
     /* diag word function vs the diag bins */
     lo = load("../../../roms/U9_diag.bin", 8192);

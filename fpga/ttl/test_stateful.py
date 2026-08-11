@@ -556,3 +556,166 @@ async def latch373_no_stale_glitch_on_le_fall(dut):
     await _hold(dut)
     got = _read_bus(dut, "o", 8)
     assert got == NEW, f"o: settled after LE fell -> 0x{got:02X}, want held 0x{NEW:02X}"
+
+
+# --- '169: synchronous 4-bit UP/DOWN counter -------------------------------
+#
+# Four things separate this part from the '163 tested above, and each one is
+# a way a copied-from-'163 model would be silently wrong:
+#
+#   1. NO CLEAR. Pin 1 is U/~D, the direction level.
+#   2. The count enables are ACTIVE LOW (~CEP/~CET).
+#   3. ~TC is ACTIVE LOW and its terminal count depends on DIRECTION.
+#   4. The count is +1 or -1 per U/~D.
+#
+# The power-up value is deliberately non-zero (ttl_74ls169.vhd's por_value
+# generic) because a '169 has no clear and real silicon comes up random --
+# a model starting at 0000 would be kinder than the hardware. Every test
+# below therefore establishes state with an explicit synchronous load first
+# rather than assuming any particular reset value.
+
+async def _cp_tick(dut):
+    """One CP rising edge, returned to low."""
+    dut.cp.value = 1
+    await _hold(dut)
+    dut.cp.value = 0
+    await _hold(dut)
+
+
+async def _load169(dut, val):
+    dut.pe_n.value = 0
+    _set_bus(dut, "p", 4, val)
+    await _cp_tick(dut)
+    dut.pe_n.value = 1
+    await _hold(dut)
+
+
+@cocotb.test()
+async def counter169_updown_hold_and_load_priority(dut):
+    await _start(dut)
+
+    dut.pe_n.value = 1
+    dut.cep_n.value = 1          # ACTIVE LOW: 1 = disabled
+    dut.cet_n.value = 1
+    dut.u_d_n.value = 1          # up
+    _set_bus(dut, "p", 4, 0)
+    dut.cp.value = 0
+    await _hold(dut)
+
+    await _load169(dut, 0b0101)
+    got = _read_bus(dut, "q", 4)
+    assert got == 0b0101, f"q: after sync load P=0101 -> {got:04b}, want 0101"
+
+    # HOLD is the default state -- the machine spends almost every T-state
+    # here, so getting it wrong would corrupt SP on unrelated instructions.
+    # Both enables high, direction irrelevant, edge present -> unchanged.
+    await _cp_tick(dut)
+    got = _read_bus(dut, "q", 4)
+    assert got == 0b0101, (
+        f"q: ~CEP=~CET=1 + CP rise -> {got:04b}, want unchanged 0101 "
+        f"(hold is the default; the enables are ACTIVE LOW on a '169)"
+    )
+
+    # Each enable alone must NOT count -- catches a model that ORs them, or
+    # that inverted only one of the two.
+    for cep, cet, label in ((0, 1, "~CEP=0 ~CET=1"), (1, 0, "~CEP=1 ~CET=0")):
+        dut.cep_n.value = cep
+        dut.cet_n.value = cet
+        await _cp_tick(dut)
+        got = _read_bus(dut, "q", 4)
+        assert got == 0b0101, f"q: {label} + CP rise -> {got:04b}, want unchanged 0101"
+
+    # Both low -> count UP.
+    dut.cep_n.value = 0
+    dut.cet_n.value = 0
+    dut.u_d_n.value = 1
+    await _cp_tick(dut)
+    got = _read_bus(dut, "q", 4)
+    assert got == 0b0110, f"q: U/~D=1 count -> {got:04b}, want 0110"
+
+    # Direction is a LEVEL, not a strobe: flip it and the same enables count
+    # the other way. This is the check that catches pin 1 being treated as a
+    # clear (the '163 trap) -- a model with no direction handling would keep
+    # counting up here.
+    dut.u_d_n.value = 0
+    await _cp_tick(dut)
+    got = _read_bus(dut, "q", 4)
+    assert got == 0b0101, f"q: U/~D=0 count -> {got:04b}, want 0101 (back down)"
+    await _cp_tick(dut)
+    got = _read_bus(dut, "q", 4)
+    assert got == 0b0100, f"q: U/~D=0 second count -> {got:04b}, want 0100"
+
+    # LOAD HAS PRIORITY over the count enables: ~PE=0 with counting armed
+    # must load, not count. `LXI SP` relies on this.
+    dut.pe_n.value = 0
+    _set_bus(dut, "p", 4, 0b1001)
+    await _cp_tick(dut)
+    got = _read_bus(dut, "q", 4)
+    assert got == 0b1001, (
+        f"q: ~PE=0 with ~CEP=~CET=0 -> {got:04b}, want loaded 1001 "
+        f"(load must win over count)"
+    )
+    dut.pe_n.value = 1
+    await _hold(dut)
+
+    # There is NO CLEAR on this part. Nothing to assert directly -- the
+    # absence is proven by the load above being the only way to reach a
+    # known state, which every test here depends on.
+
+
+@cocotb.test()
+async def counter169_tc_is_active_low_and_direction_dependent(dut):
+    """~TC is the cascade signal -- U63.~TC -> U64.~CET and so on up the
+    16-bit stack pointer. Wrong polarity or a direction-blind terminal count
+    gives a counter that wraps at the wrong boundary, which on the bench
+    reads as "the stack works until it doesn't"."""
+    await _start(dut)
+
+    dut.pe_n.value = 1
+    dut.cep_n.value = 0
+    dut.cet_n.value = 0
+    dut.u_d_n.value = 1
+    dut.cp.value = 0
+    await _hold(dut)
+
+    # Counting UP, terminal count is 1111.
+    await _load169(dut, 0b1110)
+    dut.cep_n.value = 0
+    dut.cet_n.value = 0
+    dut.u_d_n.value = 1
+    await _settle(dut)
+    assert dut.tc_n.value == 1, (
+        f"tc_n at 1110 counting up -> {dut.tc_n.value}, want 1 (not terminal)")
+
+    await _cp_tick(dut)
+    got = _read_bus(dut, "q", 4)
+    assert got == 0b1111, f"q: -> {got:04b}, want 1111"
+    await _settle(dut)
+    assert dut.tc_n.value == 0, (
+        f"tc_n at 1111 counting UP -> {dut.tc_n.value}, want 0 "
+        f"(ACTIVE LOW terminal count)")
+
+    # Same 1111, now counting DOWN -- terminal count is 0000 in that
+    # direction, so ~TC must RELEASE. A direction-blind model fails here.
+    dut.u_d_n.value = 0
+    await _settle(dut)
+    assert dut.tc_n.value == 1, (
+        f"tc_n at 1111 counting DOWN -> {dut.tc_n.value}, want 1 "
+        f"(terminal count is direction-dependent: 0000 when counting down)")
+
+    # And 0000 counting down IS terminal.
+    await _load169(dut, 0b0000)
+    dut.cep_n.value = 0
+    dut.cet_n.value = 0
+    dut.u_d_n.value = 0
+    await _settle(dut)
+    assert dut.tc_n.value == 0, (
+        f"tc_n at 0000 counting DOWN -> {dut.tc_n.value}, want 0")
+
+    # ~CET gates ~TC (that is what makes the ripple chain work): release the
+    # enable and ~TC must go inactive even at terminal count.
+    dut.cet_n.value = 1
+    await _settle(dut)
+    assert dut.tc_n.value == 1, (
+        f"tc_n at 0000/down with ~CET=1 -> {dut.tc_n.value}, want 1 "
+        f"(~TC is gated by ~CET, which is what cascades U63->U64->U65->U66)")

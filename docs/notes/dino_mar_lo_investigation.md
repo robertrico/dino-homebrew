@@ -130,7 +130,7 @@ proven instead by the absolute-address images: `flow` returning `0x39` requires
     loop     0x15    JNZ TAKEN arm x3, two live RAM cells, flags held across
                      STA, exact iteration count (3 x 7 = 21)
     PROG     0x4D    the milestone, unchanged
-    cylon    ---     never halts; the victory lap
+    cylon    ---     never halts; the soak image
 
 `LDA`, `STA`, `JMP`, `JNZ` and seven of the eight ALU codes were burned and
 policed but had **never executed** before 2026-08-04. Only `LDCI` and `NOP`
@@ -152,12 +152,13 @@ Second, smaller: **same-chip jumpers are invisible the same way.** `CLK` at
 no test drives or samples. `layout_gen.py` knows which wires these are; they
 deserve their own line in the same checklist.
 
-## STILL OPEN — two level/margin items, neither blocking
+## STILL OPEN — two items, neither blocking
 
 **1. HALT does not HOLD.** The machine halts correctly, then escapes after a
 few seconds, varying run to run. `CET` on the '163 (`U6.10 = ~HALT` from `U61`
 gate 2) is sampled on every clock edge — a million decisions per second — so
-one escape in a few million clocks is a marginal level, not a logic fault.
+one escape in a few million clocks is more likely a level problem than a
+logic fault. That is an inference, not a measurement.
 
 Invisible on every other image: their bytes after `HALT` are all `0xFF` fill,
 so an escape just re-halts. **`PROG_flow` is the first image in this machine's
@@ -165,17 +166,39 @@ life with live, reachable code past a `HALT`** (the `bad:` block), which turns
 `0x39` into `0xE7` seconds later. Scope `U61.5/6` (`HALT`) and `U61.4` =
 `U6.10` (`~HALT`), and beep the `U61.5<->U61.6` jumper.
 
-**2. Marginal levels.** Measured during the hunt and never explained:
+**2. Level readings — TAKEN ON THE BROKEN MACHINE, NEVER RE-TAKEN.**
 
-    W            2.26V     260mV of noise margin over VIH
+Measured during the hunt:
+
+    W            2.26V
     PC_MAR_MUX   1.0V avg
     MAR3         3.22V     against a healthy LS VOH of 3.4-3.5V
 
-This is the fan-out gate from `dino_hardware_growth_plan.md` arriving early and
-uninvited, and it is the same class as `U45.2` at 1.67V. **No instrument in the
-kit reports it as a failure** — the LA reads 2.26V as a clean 1. Item 1 above
-may well be a symptom of it: during normal execution T advances every clock
-anyway, so a stray count is unobservable, and **the halt is the only state in
-the machine where noise margin becomes visible.**
+**Re-assessed 2026-08-11, and the conditions matter more than the numbers.**
+These were taken while the fault above was still present — that is, while
+`W[0..7] -> U55/U58 D pins` was **unwired**. Eight floating inputs, on the
+exact bus that read 2.26V. This same document states two paragraphs up that a
+floating LS input reads HIGH; `MAR3` is a MAR output, and MAR was latching
+`0xFF` from those same floating inputs.
 
-Scope, not meter. `VOL`/`VOH` on `W` at `U55.8` with the machine running.
+So the most likely reading of this table is that it measured the FAULT, not a
+standing property of the machine. It cannot be settled either way from what
+was recorded: there is no note of whether the probe was on the driver or the
+receiver end, no note of what the machine was executing, and no measurement
+after the wires were landed.
+
+**These numbers were being carried in CLAUDE.md as standing fact and used to
+justify design decisions** (they were cited as a reason to keep new loads off
+`W`). Removed from there 2026-08-11. The design decision they were cited for
+stands on other grounds; the numbers do not stand on their own.
+
+What would settle it: scope `VOL`/`VOH` on `W` at `U55.8`, and the other two
+nets, on the CURRENT machine, running, with the rig detached — and write down
+the conditions. Note that any reading taken with the rig attached is suspect
+regardless, because rig lines feed the DUT through clamp diodes (the phantom-
+power finding). No such characterisation has ever been done on a healthy
+board.
+
+Item 1 above may still be a level problem. That is an inference from "CET is
+sampled every clock, so a rare escape is unlikely to be logic" — not a
+measurement, and not evidence for this table.

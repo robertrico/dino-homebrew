@@ -70,7 +70,7 @@ MODULE_UNDER_TEST ?= program_counter
 # there is no test_module_dino_core.py, this task's test lives under its
 # own name.
 ifeq ($(MODULE_UNDER_TEST),dino_core)
-GEN_SHEETS := alu control_word input_output mar mdr memory microcode program_counter registers_a_b
+GEN_SHEETS := alu control_word input_output mar mdr memory microcode program_counter registers_a_b stack_pointer
 VHDL_SOURCES := $(wildcard $(PWD)/../ttl/*.vhd) $(patsubst %,$(PWD)/../gen/%.vhd,$(GEN_SHEETS)) $(PWD)/../gen/dino_core.vhd
 # MODULE (cocotb's own variable, which .py file under fpga/sim/ it loads
 # @cocotb.test()s from) defaults to Task 11's whole-core suite but is a
@@ -101,6 +101,7 @@ EXTRA_ARGS += --std=08
 # $(PWD).
 ifeq ($(MODULE_UNDER_TEST),microcode)
 SIM_ARGS += -gu9_init_file=$(PWD)/hex/U9.hex -gu15_init_file=$(PWD)/hex/U15.hex
+SIM_ARGS += -gu23_init_file=$(PWD)/hex/U23.hex
 else ifeq ($(MODULE_UNDER_TEST),memory)
 SIM_ARGS += -gu24_init_file=$(PWD)/hex/PROG.hex -gu26_init_file=$(PWD)/hex/RAM.hex
 # ttl_at28c256/ttl_mcm60256's `load_mem()` (fpga/ttl/ttl_mcm60256.vhd)
@@ -130,6 +131,7 @@ else ifeq ($(MODULE_UNDER_TEST),dino_core)
 # hard-gate program without any override.
 DINO_PROG_HEX ?= hex/PROG.hex
 SIM_ARGS += -gu9_init_file=$(PWD)/hex/U9.hex -gu15_init_file=$(PWD)/hex/U15.hex
+SIM_ARGS += -gu23_init_file=$(PWD)/hex/U23.hex
 SIM_ARGS += -gu24_init_file=$(PWD)/$(DINO_PROG_HEX) -gu26_init_file=$(PWD)/hex/RAM.hex
 SIM_ARGS += --max-stack-alloc=1024
 

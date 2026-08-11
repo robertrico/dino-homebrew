@@ -15,16 +15,14 @@ entity program_counter is
     reset : in std_logic;
     m_i : in std_logic_vector(14 downto 0);
     m_o : out std_logic_vector(14 downto 0);
+    pc_i : in std_logic_vector(15 downto 0);
+    pc_o : out std_logic_vector(15 downto 0);
     m15_eq_rom_en_i : in std_logic;
     m15_eq_rom_en_o : out std_logic
   );
 end entity;
 
 architecture rtl of program_counter is
-  signal pc0 : std_logic;
-  signal pc1 : std_logic;
-  signal pc2 : std_logic;
-  signal pc3 : std_logic;
   signal pcd0 : std_logic;
   signal pcd1 : std_logic;
   signal pcd2 : std_logic;
@@ -48,18 +46,6 @@ architecture rtl of program_counter is
   signal pcd13 : std_logic;
   signal pcd14 : std_logic;
   signal pcd15 : std_logic;
-  signal pc4 : std_logic;
-  signal pc5 : std_logic;
-  signal pc6 : std_logic;
-  signal pc7 : std_logic;
-  signal pc8 : std_logic;
-  signal pc9 : std_logic;
-  signal pc10 : std_logic;
-  signal pc11 : std_logic;
-  signal pc12 : std_logic;
-  signal pc13 : std_logic;
-  signal pc14 : std_logic;
-  signal pc15 : std_logic;
   signal n_bo2 : std_logic;
   signal n_co2 : std_logic;
   signal n_bo3 : std_logic;
@@ -71,12 +57,12 @@ begin
     port map (
       clk_sys => clk_sys,
       b => pcd1,
-      qb => pc1,
-      qa => pc0,
+      qb => pc_o(1),
+      qa => pc_o(0),
       down => '1',
       up => pc_up_stable,
-      qc => pc2,
-      qd => pc3,
+      qc => pc_o(2),
+      qd => pc_o(3),
       d => pcd3,
       c => pcd2,
       load_n => n_pc_load_stable,
@@ -193,22 +179,22 @@ begin
       a6_o => m_o(6),
       a7_i => m_i(7),
       a7_o => m_o(7),
-      b7_i => pc7,
-      b7_o => pc7,
-      b6_i => pc6,
-      b6_o => pc6,
-      b5_i => pc5,
-      b5_o => pc5,
-      b4_i => pc4,
-      b4_o => pc4,
-      b3_i => pc3,
-      b3_o => pc3,
-      b2_i => pc2,
-      b2_o => pc2,
-      b1_i => pc1,
-      b1_o => pc1,
-      b0_i => pc0,
-      b0_o => pc0,
+      b7_i => pc_i(7),
+      b7_o => pc_o(7),
+      b6_i => pc_i(6),
+      b6_o => pc_o(6),
+      b5_i => pc_i(5),
+      b5_o => pc_o(5),
+      b4_i => pc_i(4),
+      b4_o => pc_o(4),
+      b3_i => pc_i(3),
+      b3_o => pc_o(3),
+      b2_i => pc_i(2),
+      b2_o => pc_o(2),
+      b1_i => pc_i(1),
+      b1_o => pc_o(1),
+      b0_i => pc_i(0),
+      b0_o => pc_o(0),
       ce_n => n_pc_mar_mux);
 
   U14 : entity work.ttl_74ls245
@@ -230,34 +216,34 @@ begin
       a6_o => m_o(14),
       a7_i => m15_eq_rom_en_i,
       a7_o => m15_eq_rom_en_o,
-      b7_i => pc15,
-      b7_o => pc15,
-      b6_i => pc14,
-      b6_o => pc14,
-      b5_i => pc13,
-      b5_o => pc13,
-      b4_i => pc12,
-      b4_o => pc12,
-      b3_i => pc11,
-      b3_o => pc11,
-      b2_i => pc10,
-      b2_o => pc10,
-      b1_i => pc9,
-      b1_o => pc9,
-      b0_i => pc8,
-      b0_o => pc8,
+      b7_i => pc_i(15),
+      b7_o => pc_o(15),
+      b6_i => pc_i(14),
+      b6_o => pc_o(14),
+      b5_i => pc_i(13),
+      b5_o => pc_o(13),
+      b4_i => pc_i(12),
+      b4_o => pc_o(12),
+      b3_i => pc_i(11),
+      b3_o => pc_o(11),
+      b2_i => pc_i(10),
+      b2_o => pc_o(10),
+      b1_i => pc_i(9),
+      b1_o => pc_o(9),
+      b0_i => pc_i(8),
+      b0_o => pc_o(8),
       ce_n => n_pc_mar_mux);
 
   U2 : entity work.ttl_74ls193
     port map (
       clk_sys => clk_sys,
       b => pcd5,
-      qb => pc5,
-      qa => pc4,
+      qb => pc_o(5),
+      qa => pc_o(4),
       down => n_bo1,
       up => n_co1,
-      qc => pc6,
-      qd => pc7,
+      qc => pc_o(6),
+      qd => pc_o(7),
       d => pcd7,
       c => pcd6,
       load_n => n_pc_load_stable,
@@ -270,12 +256,12 @@ begin
     port map (
       clk_sys => clk_sys,
       b => pcd9,
-      qb => pc9,
-      qa => pc8,
+      qb => pc_o(9),
+      qa => pc_o(8),
       down => n_bo2,
       up => n_co2,
-      qc => pc10,
-      qd => pc11,
+      qc => pc_o(10),
+      qd => pc_o(11),
       d => pcd11,
       c => pcd10,
       load_n => n_pc_load_stable,
@@ -303,12 +289,12 @@ begin
     port map (
       clk_sys => clk_sys,
       b => pcd13,
-      qb => pc13,
-      qa => pc12,
+      qb => pc_o(13),
+      qa => pc_o(12),
       down => n_bo3,
       up => n_co3,
-      qc => pc14,
-      qd => pc15,
+      qc => pc_o(14),
+      qd => pc_o(15),
       d => pcd15,
       c => pcd14,
       load_n => n_pc_load_stable,

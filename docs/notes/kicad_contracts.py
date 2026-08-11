@@ -13,6 +13,8 @@ sheet-internal nets are excluded — the contract is exactly what a bench rig
 
 Usage:
   python3 kicad_contracts.py            # print contracts + write markdown
+  python3 kicad_contracts.py --continuity U23 U63 U64 U65 U66 U67 U68 U69 U70 U71 U72 U73
+                                        # continuity walk for the named chips
   python3 kicad_contracts.py --stamp    # also place/refresh a text block on
                                         # each .kicad_sch (idempotent: any
                                         # previous MODULE CONTRACT block is
@@ -557,8 +559,11 @@ BLOCKS = {
         # low samples after the ROM has settled. Sampled, so driven is
         # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
         "qualify": _TIMING,
+        # stack_pointer joins here (2026-08-10): SP is an MDR provider with
+        # exactly the shape of registers A/B/C -- one SRC code, one DST code
+        # -- so it comes up with the datapath, not before it.
         "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
-                    "mdr", "registers", "alu"],
+                    "mdr", "registers", "alu", "stack_pointer"],
         "primary": "milestone",
         "drive": [],
         "retire": {},
@@ -577,7 +582,7 @@ BLOCKS = {
         # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
         "qualify": _TIMING,
         "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
-                    "mdr", "registers", "alu", "io"],
+                    "mdr", "registers", "alu", "io", "stack_pointer"],
         "primary": "run",
         "drive": [],
         "retire": {},
@@ -1007,6 +1012,66 @@ def expand(label):
     return [f"{base}{i}" for i in range(a, b + 1)]
 
 
+
+def continuity_checklist(root, refs=None):
+    """Per-net continuity walk: every net that leaves a sheet, with its pin
+    endpoints, optionally narrowed to the nets touching `refs`.
+
+    THIS IS THE ARTIFACT THE MAR-LO POST-MORTEM ASKED FOR. That fault was two
+    board-to-board runs, nine wires, never landed -- and the reason nothing
+    caught it is that a COPPER wire is driven by no test and sampled by no
+    test. The fix is not a new test; it is walking the list with a meter
+    before power. The list has to come from the netlist, because the failure
+    mode is a wire that was never on the hand-written list at all.
+
+    `refs` narrows to newly-added chips: pass the new designators and you get
+    exactly the stubs to land and beep, with the existing pins on each net
+    shown as the other end to beep against.
+    """
+    import collections
+    from kicad_netlist import build_report
+    import glob as _glob
+    refs = set(refs or [])
+    pins = collections.defaultdict(list)
+    base = os.path.dirname(root)
+    for f in sorted(_glob.glob(os.path.join(base, "*.kicad_sch"))):
+        b = os.path.basename(f)
+        if b.startswith("_") or f == root:
+            continue
+        for line in build_report(f)[0]:
+            m = re.match(r"(\S+)\s+pin\s+(\d+)\s+(\S*)\s*net=(\S+)", line)
+            if not m:
+                continue
+            ref, pin, fn, net = m.groups()
+            if net.startswith("N$anon") or net in ("GND", "+5V"):
+                continue
+            pins[net].append((ref, int(pin), b[:-len(".kicad_sch")]))
+    out = []
+    for net, ps in sorted(pins.items()):
+        if len({p[2] for p in ps}) < 2:
+            continue
+        if refs and not any(p[0] in refs for p in ps):
+            continue
+        new = sorted((r, p) for r, p, _ in ps if r in refs)
+        old = sorted((r, p) for r, p, _ in ps if r not in refs)
+        out.append((net, new, old))
+    return out
+
+
+def print_continuity(root, refs=None):
+    rows = continuity_checklist(root, refs)
+    n_new = sum(len(new) for _, new, _ in rows)
+    print(f"# continuity checklist -- {len(rows)} nets, {n_new} new pins to land")
+    print("# beep each NEW pin against any OTHER pin on the same net, and")
+    print("# against its own neighbours (one-hole slips are the common fault).")
+    print("# BOARD OFF. In-circuit leg-to-leg on a live board reads clamp diodes.")
+    print()
+    for net, new, old in rows:
+        tag = "  ".join(f"{r}.{p}" for r, p in new) or "-"
+        others = "  ".join(f"{r}.{p}" for r, p in old) or "-"
+        print(f"{net:22s} NEW: {tag:28s} against: {others}")
+
+
 if __name__ == "__main__":
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.normpath(os.path.join(here, "..", "..",
@@ -1019,6 +1084,10 @@ if __name__ == "__main__":
     print(f"[written to {out}]")
     if "--stamp" in sys.argv:
         stamp(contracts, root)
+    if "--continuity" in sys.argv:
+        i = sys.argv.index("--continuity")
+        refs = [a for a in sys.argv[i + 1:] if not a.startswith("--")]
+        print_continuity(root, refs)
     if "--pinmap" in sys.argv:
         out = os.path.normpath(os.path.join(here, "..", "..", "tests",
                                             "dino_bringup", "src", "pinmap_gen.h"))

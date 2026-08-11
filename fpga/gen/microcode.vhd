@@ -8,7 +8,9 @@ entity microcode is
     u9_init_file : string := "sim/hex/U9.hex";
     u9_addr_bits : positive := 13;
     u15_init_file : string := "sim/hex/U15.hex";
-    u15_addr_bits : positive := 13
+    u15_addr_bits : positive := 13;
+    u23_init_file : string := "sim/hex/U23.hex";
+    u23_addr_bits : positive := 13
   );
   port (
     clk_sys : in std_logic;
@@ -18,6 +20,8 @@ entity microcode is
     cw11_eq_sa0 : out std_logic;
     cw10_eq_sa1 : out std_logic;
     cw9_eq_sa2 : out std_logic;
+    cw17_eq_n_src_bank : out std_logic;
+    cw18_eq_n_dst_bank : out std_logic;
     cw12_eq_end : out std_logic;
     cw15_eq_halt : out std_logic;
     cw14_eq_pc_mar_mux : out std_logic;
@@ -26,18 +30,24 @@ entity microcode is
 end entity;
 
 architecture rtl of microcode is
-  signal net_u15_a0 : std_logic;
-  signal net_u15_a1 : std_logic;
-  signal net_u15_a2 : std_logic;
-  signal net_u15_a3 : std_logic;
-  signal net_u15_a4 : std_logic;
-  signal net_u15_a5 : std_logic;
-  signal net_u15_a6 : std_logic;
-  signal net_u15_a7 : std_logic;
-  signal net_u15_a8 : std_logic;
-  signal net_u15_a9 : std_logic;
-  signal net_u15_a10 : std_logic;
-  signal net_u15_a11 : std_logic;
+  signal mca0 : std_logic;
+  signal mca1 : std_logic;
+  signal mca2 : std_logic;
+  signal mca3 : std_logic;
+  signal mca4 : std_logic;
+  signal mca5 : std_logic;
+  signal mca6 : std_logic;
+  signal mca7 : std_logic;
+  signal mca8 : std_logic;
+  signal mca9 : std_logic;
+  signal mca10 : std_logic;
+  signal mca11 : std_logic;
+  signal cw16 : std_logic;
+  signal cw19 : std_logic;
+  signal cw20 : std_logic;
+  signal cw21 : std_logic;
+  signal cw22 : std_logic;
+  signal cw23 : std_logic;
 begin
 
   U15 : entity work.ttl_at28c64b
@@ -45,14 +55,14 @@ begin
     port map (
       clk_sys => clk_sys,
       a12 => '0',
-      a7 => net_u15_a7,
-      a6 => net_u15_a6,
-      a5 => net_u15_a5,
-      a4 => net_u15_a4,
-      a3 => net_u15_a3,
-      a2 => net_u15_a2,
-      a1 => net_u15_a1,
-      a0 => net_u15_a0,
+      a7 => mca7,
+      a6 => mca6,
+      a5 => mca5,
+      a4 => mca4,
+      a3 => mca3,
+      a2 => mca2,
+      a1 => mca1,
+      a0 => mca0,
       io0 => cw(8),
       io1 => cw9_eq_sa2,
       io2 => cw10_eq_sa1,
@@ -62,32 +72,32 @@ begin
       io6 => cw14_eq_pc_mar_mux,
       io7 => cw15_eq_halt,
       ce_n => '0',
-      a10 => net_u15_a10,
+      a10 => mca10,
       oe_n => '0',
-      a11 => net_u15_a11,
-      a9 => net_u15_a9,
-      a8 => net_u15_a8,
+      a11 => mca11,
+      a9 => mca9,
+      a8 => mca8,
       we_n => '1');
 
   U16 : entity work.ttl_74ls244
     port map (
       s1g_n => '0',
       s1a1 => irb(0),
-      s2y4 => net_u15_a11,
+      s2y4 => mca11,
       s1a2 => irb(1),
-      s2y3 => net_u15_a10,
+      s2y3 => mca10,
       s1a3 => irb(2),
-      s2y2 => net_u15_a9,
+      s2y2 => mca9,
       s1a4 => irb(3),
-      s2y1 => net_u15_a8,
+      s2y1 => mca8,
       s2a1 => irb(4),
-      s1y4 => net_u15_a7,
+      s1y4 => mca7,
       s2a2 => irb(5),
-      s1y3 => net_u15_a6,
+      s1y3 => mca6,
       s2a3 => irb(6),
-      s1y2 => net_u15_a5,
+      s1y2 => mca5,
       s2a4 => irb(7),
-      s1y1 => net_u15_a4,
+      s1y1 => mca4,
       s2g_n => '0');
 
   U17 : entity work.ttl_74ls244
@@ -102,28 +112,57 @@ begin
       s1a4 => t(3),
       s2y1 => open,
       s2a1 => '0',
-      s1y4 => net_u15_a3,
+      s1y4 => mca3,
       s2a2 => '0',
-      s1y3 => net_u15_a2,
+      s1y3 => mca2,
       s2a3 => '0',
-      s1y2 => net_u15_a1,
+      s1y2 => mca1,
       s2a4 => '0',
-      s1y1 => net_u15_a0,
+      s1y1 => mca0,
       s2g_n => '1');
+
+  U23 : entity work.ttl_at28c64b
+    generic map (init_file => u23_init_file, addr_bits => u23_addr_bits)
+    port map (
+      clk_sys => clk_sys,
+      a12 => '0',
+      a7 => mca7,
+      a6 => mca6,
+      a5 => mca5,
+      a4 => mca4,
+      a3 => mca3,
+      a2 => mca2,
+      a1 => mca1,
+      a0 => mca0,
+      io0 => cw16,
+      io1 => cw17_eq_n_src_bank,
+      io2 => cw18_eq_n_dst_bank,
+      io3 => cw19,
+      io4 => cw20,
+      io5 => cw21,
+      io6 => cw22,
+      io7 => cw23,
+      ce_n => '0',
+      a10 => mca10,
+      oe_n => '0',
+      a11 => mca11,
+      a9 => mca9,
+      a8 => mca8,
+      we_n => '1');
 
   U9 : entity work.ttl_at28c64b
     generic map (init_file => u9_init_file, addr_bits => u9_addr_bits)
     port map (
       clk_sys => clk_sys,
       a12 => '0',
-      a7 => net_u15_a7,
-      a6 => net_u15_a6,
-      a5 => net_u15_a5,
-      a4 => net_u15_a4,
-      a3 => net_u15_a3,
-      a2 => net_u15_a2,
-      a1 => net_u15_a1,
-      a0 => net_u15_a0,
+      a7 => mca7,
+      a6 => mca6,
+      a5 => mca5,
+      a4 => mca4,
+      a3 => mca3,
+      a2 => mca2,
+      a1 => mca1,
+      a0 => mca0,
       io0 => cw(0),
       io1 => cw(1),
       io2 => cw(2),
@@ -133,11 +172,11 @@ begin
       io6 => cw(6),
       io7 => cw(7),
       ce_n => '0',
-      a10 => net_u15_a10,
+      a10 => mca10,
       oe_n => '0',
-      a11 => net_u15_a11,
-      a9 => net_u15_a9,
-      a8 => net_u15_a8,
+      a11 => mca11,
+      a9 => mca9,
+      a8 => mca8,
       we_n => '1');
 
 end architecture;

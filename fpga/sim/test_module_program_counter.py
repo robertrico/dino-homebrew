@@ -47,7 +47,31 @@ M_WIDTH = 15  # m(14 downto 0); bit 15 lives on the m15_eq_rom_en port
 
 async def _start(dut):
     cocotb.start_soon(Clock(dut.clk_sys, 10, unit="ns").start())
+    # pc_i / pc_o (2026-08-10): PC0-15 used to be private signals inside this
+    # sheet. They became a PORT PAIR when U72/U73 (mdr sheet) tapped the '193
+    # Q outputs to feed MDR, so CALL can push a return address -- sixteen new
+    # board-to-board wires, the largest crossing added since the MAR-lo
+    # post-mortem named that category.
+    #
+    # This sheet is the only real DRIVER of PC0-15 (the '193 Q pins, totem-
+    # pole). The emitter still split the net because U13/U14's B pins are
+    # tri_state and it cannot know DIR is strapped B->A.
+    #
+    # On the real board PC0-15 is ONE net. dino_core.vhd reconnects the
+    # halves by wiring pc_i and pc_o to the same resolved signal; a module TB
+    # has no top level to do that, so it loops them back here. Without the
+    # loopback U13/U14's B pins sit at 'U' and every read of m_o raises
+    # "Can't convert LogicArray to int" -- which is how this surfaced.
+    cocotb.start_soon(_pc_loopback(dut))
     await Timer(SETTLE, unit="ns")
+
+
+async def _pc_loopback(dut):
+    """Mirror pc_o back onto pc_i, forever -- the module-TB stand-in for
+    dino_core.vhd's `pc_i => pc, pc_o => pc`."""
+    while True:
+        await Timer(1, unit="ns")
+        dut.pc_i.value = dut.pc_o.value
 
 
 async def _settle(dut):

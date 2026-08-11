@@ -9,6 +9,8 @@ entity dino_core is
     u9_addr_bits : positive := 13;
     u15_init_file : string := "sim/hex/U15.hex";
     u15_addr_bits : positive := 13;
+    u23_init_file : string := "sim/hex/U23.hex";
+    u23_addr_bits : positive := 13;
     u24_init_file : string := "sim/hex/PROG.hex";
     u24_addr_bits : positive := 15;
     u26_init_file : string := "sim/hex/RAM.hex";
@@ -37,12 +39,15 @@ architecture rtl of dino_core is
   signal n_pc_mar_mux : std_logic;
   signal cw13_eq_pc_up : std_logic;
   signal m : std_logic_vector(14 downto 0);
+  signal pc : std_logic_vector(15 downto 0);
   signal m15_eq_rom_en : std_logic;
   signal irb : std_logic_vector(7 downto 0);
   signal cw : std_logic_vector(8 downto 0);
   signal cw11_eq_sa0 : std_logic;
   signal cw10_eq_sa1 : std_logic;
   signal cw9_eq_sa2 : std_logic;
+  signal cw17_eq_n_src_bank : std_logic;
+  signal cw18_eq_n_dst_bank : std_logic;
   signal cw14_eq_pc_mar_mux : std_logic;
   signal flag_z : std_logic;
   signal n_alu_out : std_logic;
@@ -53,6 +58,8 @@ architecture rtl of dino_core is
   signal n_mar_hi_load : std_logic;
   signal n_mar_lo_load : std_logic;
   signal n_mdr_out : std_logic;
+  signal n_pc_hi_out : std_logic;
+  signal n_pc_lo_out : std_logic;
   signal n_ram_load : std_logic;
   signal n_ram_out : std_logic;
   signal n_reg_a_out : std_logic;
@@ -61,6 +68,12 @@ architecture rtl of dino_core is
   signal n_reg_c_out : std_logic;
   signal n_reg_out_load : std_logic;
   signal n_rom_out : std_logic;
+  signal n_sp_down : std_logic;
+  signal n_sp_hi_load : std_logic;
+  signal n_sp_hi_out : std_logic;
+  signal n_sp_lo_load : std_logic;
+  signal n_sp_lo_out : std_logic;
+  signal n_sp_up : std_logic;
   signal n_sw_out : std_logic;
   signal write_dir : std_logic;
   signal w : std_logic_vector(7 downto 0);
@@ -219,11 +232,13 @@ begin
       reset => reset,
       m_i => m,
       m_o => m,
+      pc_i => pc,
+      pc_o => pc,
       m15_eq_rom_en_i => m15_eq_rom_en,
       m15_eq_rom_en_o => m15_eq_rom_en);
 
   microcode_i : entity work.microcode
-    generic map (u9_init_file => u9_init_file, u9_addr_bits => u9_addr_bits, u15_init_file => u15_init_file, u15_addr_bits => u15_addr_bits)
+    generic map (u9_init_file => u9_init_file, u9_addr_bits => u9_addr_bits, u15_init_file => u15_init_file, u15_addr_bits => u15_addr_bits, u23_init_file => u23_init_file, u23_addr_bits => u23_addr_bits)
     port map (
       clk_sys => clk_sys,
       irb => irb,
@@ -232,6 +247,8 @@ begin
       cw11_eq_sa0 => cw11_eq_sa0,
       cw10_eq_sa1 => cw10_eq_sa1,
       cw9_eq_sa2 => cw9_eq_sa2,
+      cw17_eq_n_src_bank => cw17_eq_n_src_bank,
+      cw18_eq_n_dst_bank => cw18_eq_n_dst_bank,
       cw12_eq_end => cw12_eq_end,
       cw15_eq_halt => cw15_eq_halt,
       cw14_eq_pc_mar_mux => cw14_eq_pc_mar_mux,
@@ -242,6 +259,8 @@ begin
       clk_sys => clk_sys,
       cw => cw,
       flag_z => flag_z,
+      cw17_eq_n_src_bank => cw17_eq_n_src_bank,
+      cw18_eq_n_dst_bank => cw18_eq_n_dst_bank,
       n_alu_out => n_alu_out,
       n_reg_a_load => n_reg_a_load,
       n_reg_b_load => n_reg_b_load,
@@ -251,7 +270,9 @@ begin
       n_mar_lo_load => n_mar_lo_load,
       n_mdr_out => n_mdr_out,
       n_pc_clear => n_pc_clear,
+      n_pc_hi_out => n_pc_hi_out,
       n_pc_load => n_pc_load,
+      n_pc_lo_out => n_pc_lo_out,
       n_ram_load => n_ram_load,
       n_ram_out => n_ram_out,
       n_reg_a_out => n_reg_a_out,
@@ -260,6 +281,12 @@ begin
       n_reg_c_out => n_reg_c_out,
       n_reg_out_load => n_reg_out_load,
       n_rom_out => n_rom_out,
+      n_sp_down => n_sp_down,
+      n_sp_hi_load => n_sp_hi_load,
+      n_sp_hi_out => n_sp_hi_out,
+      n_sp_lo_load => n_sp_lo_load,
+      n_sp_lo_out => n_sp_lo_out,
+      n_sp_up => n_sp_up,
       n_sw_out => n_sw_out);
 
   mdr_i : entity work.mdr
@@ -270,11 +297,15 @@ begin
       src_active => src_active,
       n_ir_load => n_ir_load,
       n_mdr_out => n_mdr_out,
+      n_pc_hi_out => n_pc_hi_out,
+      n_pc_lo_out => n_pc_lo_out,
       n_ram_load => n_ram_load,
       n_ram_out => n_ram_out,
       n_rom_out => n_rom_out,
       n_sw_out => n_sw_out,
       irb => irb,
+      pc_i => pc,
+      pc_o => pc,
       write_dir => write_dir,
       w_i => w,
       w_o => w,
@@ -348,6 +379,19 @@ begin
       n_sw_out => n_sw_out,
       w => w,
       dip_sw => dip_sw);
+
+  stack_pointer_i : entity work.stack_pointer
+    port map (
+      clk_sys => clk_sys,
+      clk => clk,
+      n_sp_down => n_sp_down,
+      n_sp_hi_load => n_sp_hi_load,
+      n_sp_hi_out => n_sp_hi_out,
+      n_sp_lo_load => n_sp_lo_load,
+      n_sp_lo_out => n_sp_lo_out,
+      n_sp_up => n_sp_up,
+      mdr_i => mdr,
+      mdr_o => mdr);
 
   ob_led <= ob;
   halt <= cw15_eq_halt;

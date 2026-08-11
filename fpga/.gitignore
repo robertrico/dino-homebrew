@@ -25,3 +25,4 @@ memory
 microcode
 program_counter
 registers_a_b
+stack_pointer

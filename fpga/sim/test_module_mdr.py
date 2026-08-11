@@ -109,6 +109,12 @@ async def _bind_idle(dut):
     dut.n_ram_out.value = 1
     dut.n_rom_out.value = 1
     dut.n_sw_out.value = 1
+    # The PC->MDR taps (U72/U73, 2026-08-10). Idle-high like every other
+    # strobe; pc_i is the PC bus this sheet READS (the '193 outputs live on
+    # the pc sheet -- U72/U73 only buffer them onto MDR).
+    dut.n_pc_lo_out.value = 1
+    dut.n_pc_hi_out.value = 1
+    dut.pc_i.value = 0
     dut.src_active.value = 0
     dut.clk.value = 1
     await _settle(dut)
@@ -235,3 +241,56 @@ async def test_mdr_write_dir_follows_ram_load(dut):
     )
     dut.n_ram_load.value = 1
     await _settle(dut)
+
+
+# --- PC -> MDR taps (U72/U73, 2026-08-10) ---------------------------------
+
+@cocotb.test()
+async def test_pc_taps_put_the_right_half_on_mdr(dut):
+    """U72/U73 buffer PC0-7 and PC8-15 onto MDR0-7 so CALL can push a return
+    address.
+
+    They tap `PC0-15` -- the '193 Q outputs -- NOT the M bus, and that is the
+    whole reason CALL is possible: CALL's push row writes to RAM, so the
+    address bus must carry MAR (the stack slot) and M is not carrying the PC
+    at all. A tap on M would push MAR's own value.
+
+    Two DIFFERENT halves, so a swapped pair cannot pass: 0x1234 puts 0x34 on
+    MDR for PC_LO and 0x12 for PC_HI. Reading 0x12 from the LO code would
+    mean U72/U73 were crossed; reading a bit-reversed byte would mean the
+    '245 was wired by pin NUMBER rather than by name (B0=18 counts DOWN to
+    B7=11 on that package).
+    """
+    await _bind_idle(dut)
+    dut.pc_i.value = 0x1234
+    await _settle(dut)
+
+    dut.n_pc_lo_out.value = 0
+    await _settle(dut)
+    got = int(dut.mdr_o.value)
+    assert got == 0x34, (
+        f"PC_LO_OUT asserted with PC=0x1234 -> MDR=0x{got:02X}, want 0x34 "
+        f"(0x12 would mean the LO and HI taps are crossed)")
+    dut.n_pc_lo_out.value = 1
+    await _settle(dut)
+
+    dut.n_pc_hi_out.value = 0
+    await _settle(dut)
+    got = int(dut.mdr_o.value)
+    assert got == 0x12, (
+        f"PC_HI_OUT asserted with PC=0x1234 -> MDR=0x{got:02X}, want 0x12")
+    dut.n_pc_hi_out.value = 1
+    await _settle(dut)
+
+
+@cocotb.test()
+async def test_pc_taps_release_mdr_when_idle(dut):
+    """Both taps off -> MDR floats. They share MDR0-7 with ROM, RAM, all
+    three registers and the stack pointer; a buffer that failed to release
+    would fight every one of them, on every cycle."""
+    await _bind_idle(dut)
+    dut.pc_i.value = 0xBEEF
+    await _settle(dut)
+    val = dut.mdr_o.value
+    assert "Z" in str(val).upper(), (
+        f"mdr_o with both PC taps idle -> {val}, want high-Z on every bit")

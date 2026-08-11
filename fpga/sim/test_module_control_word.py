@@ -52,6 +52,7 @@ OUT_NAMES = [
     "src_active", "n_rom_out", "n_ram_out", "n_reg_a_out", "n_reg_b_out",
     "n_reg_c_out", "n_alu_out", "n_sw_out",
     "n_pc_clear", "n_mdr_out", "n_reg_out_load", "n_pc_load",
+    "n_sp_up", "n_sp_down",
 ]
 
 # DST code -> the ONE n_* output that must read LOW (0 = no output wired).
@@ -68,7 +69,12 @@ SRC_LOW = {
 # MISC code -> the ONE directly-wired output that must read LOW (codes 2/3
 # drive internal n_pc_load_jmp/n_cond instead -- handled via n_pc_load in
 # _expect below, not listed here).
-MISC_LOW = {0: None, 1: "n_pc_clear", 4: "n_mdr_out", 6: "n_reg_out_load"}
+# Codes 5 and 7 were U29's last two free slots and the stack spends both
+# (2026-08-10) -- MISC is full now. Adding them here rather than only in the
+# bank tests below is what makes the MISC_walk sweep prove they decode, and
+# it is what coverage_lint checks for.
+MISC_LOW = {0: None, 1: "n_pc_clear", 4: "n_mdr_out", 5: "n_sp_up",
+            6: "n_reg_out_load", 7: "n_sp_down"}
 
 
 def _expect(dst, src, misc, z):
@@ -105,9 +111,19 @@ def _cw_set(dst, src, misc):
     return dst | (src << 3) | (misc << 6)
 
 
-async def _drive(dut, dst, src, misc, z):
+async def _drive(dut, dst, src, misc, z, src_bank=1, dst_bank=1):
     dut.cw.value = _cw_set(dst, src, misc)
     dut.flag_z.value = 1 if z else 0
+    # 2026-08-10: the sheet gained two bank-select inputs. BOTH DEFAULT TO 1
+    # here, which is BANK 0 -- today's machine. The polarity is the whole
+    # point: E3 is active-high and E1 active-low, so bank 0 hangs off U28/
+    # U30's E3 and bank 1 off U70/U71's E1 of the SAME bit, and a blank third
+    # EEPROM (0xFF) leaves bank 0 enabled. Leaving these undriven is what
+    # made every assertion below fail the first time the ladder ran with the
+    # new sheet: an undriven input reads 0, which selects bank 1 and darkens
+    # every bank-0 decode.
+    dut.cw17_eq_n_src_bank.value = src_bank
+    dut.cw18_eq_n_dst_bank.value = dst_bank
     await _settle(dut)
 
 
@@ -151,6 +167,8 @@ async def _bind_idle(dut):
     # there is no testbench-side fix, and none is warranted here.
     dut.cw.value = 0
     dut.flag_z.value = 1
+    dut.cw17_eq_n_src_bank.value = 1     # bank 0 -- see _drive()'s comment
+    dut.cw18_eq_n_dst_bank.value = 1
     await _settle(dut)
 
 
@@ -222,3 +240,103 @@ async def test_control_word_cond_truth(dut):
     assert int(dut.n_pc_load.value) == 1, "n_pc_load: idle Z=0 -> want 1 (no load)"
     await _drive(dut, 0, 0, 0, True)
     assert int(dut.n_pc_load.value) == 1, "n_pc_load: idle Z=1 -> want 1 (no load)"
+
+
+# --- bank switching (2026-08-10) -------------------------------------------
+#
+# ~{SRC_BANK} and ~{DST_BANK} are CW17/CW18 off the third microcode EEPROM.
+# The '138's own enable structure gives complementary banks for ZERO
+# inverters: E3 is active-HIGH and E1 active-LOW, so
+#
+#     U28 SRC0  E1=E2=GND  E3=~{SRC_BANK}     enabled when the bit is 1
+#     U70 SRC1  E1=~{SRC_BANK}  E3=+5V        enabled when the bit is 0
+#
+# and the same shape for U30/U71 on ~{DST_BANK}. A blank third EEPROM reads
+# 0xFF, holds both bits high, and leaves bank 0 enabled -- which is exactly
+# why the erased-safe polarity was chosen.
+#
+# NOTE ON SRC_ACTIVE, and it is load-bearing: it is U28.O0, low ONLY when
+# SRC=NONE *and* U28 is enabled. A disabled U28 floats it HIGH, i.e. reads
+# "a source is active" -- which is correct, because every bank-1 code IS a
+# real source, and it is what turns the U25 bridge on (pointed MDR->W) so a
+# bank-1 byte reaches W. It is also why bank 1 must never have a NONE slot.
+
+SRC_BANK1 = {0: "n_sp_lo_out", 1: "n_sp_hi_out",
+             2: "n_pc_lo_out", 3: "n_pc_hi_out"}
+DST_BANK1 = {0: "n_sp_lo_load", 1: "n_sp_hi_load"}
+SRC_BANK0_OUTS = ["n_rom_out", "n_ram_out", "n_reg_a_out", "n_reg_b_out",
+                  "n_reg_c_out", "n_alu_out", "n_sw_out"]
+DST_BANK0_OUTS = ["n_reg_a_load", "n_reg_b_load", "n_reg_c_load",
+                  "n_mar_lo_load", "n_mar_hi_load", "n_ir_load", "n_ram_load"]
+
+
+@cocotb.test()
+async def test_src_bank1_darkens_bank0_and_decodes_one_hot(dut):
+    """Asserting ~{SRC_BANK} must (a) turn every bank-0 source enable
+    inactive and (b) decode bank 1 one-hot. Both halves matter: a bank
+    switch that enabled bank 1 without darkening bank 0 would put two
+    drivers on MDR."""
+    await _bind_idle(dut)
+
+    for code, wire in SRC_BANK1.items():
+        await _drive(dut, dst=0, src=code, misc=0, z=True, src_bank=0)
+
+        for name in SRC_BANK0_OUTS:
+            assert int(getattr(dut, name).value) == 1, (
+                f"src_bank=0 code={code}: bank-0 output {name} is still "
+                f"asserted -- U28 must be dark, or MDR gets two drivers")
+        assert int(dut.src_active.value) == 1, (
+            "src_bank=0: SRC_ACTIVE must float HIGH with U28 disabled -- that "
+            "is what enables the U25 bridge so a bank-1 byte reaches W")
+
+        assert int(getattr(dut, wire).value) == 0, (
+            f"src_bank=0 code={code}: {wire} should be asserted")
+        for other_code, other in SRC_BANK1.items():
+            if other_code != code:
+                assert int(getattr(dut, other).value) == 1, (
+                    f"src_bank=0 code={code}: {other} also asserted -- "
+                    f"bank 1 is not one-hot")
+
+
+@cocotb.test()
+async def test_dst_bank1_darkens_bank0_and_decodes_one_hot(dut):
+    """Same for the destination side. A DST bank switch that left bank 0
+    live would fire a register load alongside an SP load."""
+    await _bind_idle(dut)
+
+    for code, wire in DST_BANK1.items():
+        await _drive(dut, dst=code, src=0, misc=0, z=True, dst_bank=0)
+
+        for name in DST_BANK0_OUTS:
+            assert int(getattr(dut, name).value) == 1, (
+                f"dst_bank=0 code={code}: bank-0 output {name} is still "
+                f"asserted -- two destinations would latch the same byte")
+
+        assert int(getattr(dut, wire).value) == 0, (
+            f"dst_bank=0 code={code}: {wire} should be asserted")
+        for other_code, other in DST_BANK1.items():
+            if other_code != code:
+                assert int(getattr(dut, other).value) == 1, (
+                    f"dst_bank=0 code={code}: {other} also asserted -- "
+                    f"bank 1 is not one-hot")
+
+
+@cocotb.test()
+async def test_the_two_banks_are_independent(dut):
+    """SRC and DST bank bits are SEPARATE, and the stack sequences need them
+    that way: PUSH's address setup is `SRC=SP_LO (bank 1), DST=MAR_LO
+    (bank 0)`, and `LXI SP` is `SRC=ROM (bank 0), DST=SP_LO (bank 1)`. One
+    shared bit could express neither."""
+    await _bind_idle(dut)
+
+    # bank-1 source into a bank-0 destination: the PUSH address setup
+    await _drive(dut, dst=4, src=0, misc=0, z=True, src_bank=0, dst_bank=1)
+    assert int(dut.n_sp_lo_out.value) == 0, "SP_LO_OUT should be asserted"
+    assert int(dut.n_mar_lo_load.value) == 0, (
+        "MAR_LO_LOAD should be asserted -- a bank-0 DST must survive a bank-1 SRC")
+
+    # bank-0 source into a bank-1 destination: LXI SP
+    await _drive(dut, dst=0, src=1, misc=0, z=True, src_bank=1, dst_bank=0)
+    assert int(dut.n_rom_out.value) == 0, "ROM_OUT should be asserted"
+    assert int(dut.n_sp_lo_load.value) == 0, (
+        "SP_LO_LOAD should be asserted -- a bank-1 DST must survive a bank-0 SRC")

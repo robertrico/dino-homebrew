@@ -15,9 +15,59 @@ function (`path::name`), `test_vplan.py` mechanically verifies that
 function exists in that file — a citation is no longer just a
 plausible-looking path.
 
-**GAP count: 5** (of 67 rows). Named in full in "Gap list" below; every
+**GAP count: 5** (of 92 rows). Named in full in "Gap list" below; every
 one is a genuinely un-policed rule (printed WARNING, never enforced) or a
 ledgered deferral. None are silent.
+
+## The 2026-08-10 stack phase — covered, but not yet ROWED
+
+Twelve chips and seven instructions landed after this table was written.
+They are **exercised** — the artifacts below all exist and all pass — but
+they do not yet have their own rows, because the table is mechanically
+coupled to `test_vplan.py`'s `KNOWN_GAPS` literal and rowing them properly
+is its own pass. Named here so none of it reads as silently covered:
+
+    U23           third microcode EEPROM, CW16-23
+    U70 / U71     SRC / DST bank-1 '138s
+    U63-U66       '169 stack pointer
+    U67 / U68     SP readback '245s -> MDR
+    U69           '08, ~{SP_CE}
+    U72 / U73     PC0-15 -> MDR '245s
+
+    LXISP  PUSHA  PUSHB  POPA  POPB  CALL  RET
+
+Artifacts that would fail if the behaviour were wrong:
+
+- `fpga/ttl/test_stateful.py::counter169_updown_hold_and_load_priority` and
+  `::counter169_tc_is_active_low_and_direction_dependent` — the four ways a
+  '169 differs from the '163 it was copied from.
+- `fpga/sim/test_module_stack_pointer.py` — five cases, including a
+  mirror-witness load/readback and a byte-boundary carry that would have
+  caught the crossed `~TC` cascade the schematic was first drawn with.
+- `fpga/sim/test_module_control_word.py::test_src_bank1_darkens_bank0_and_decodes_one_hot`
+  and its DST twin and independence case.
+- `fpga/sim/test_core_coverage.py::stack_round_trips_through_lifo_and_returns`
+  — the whole machine, and the ONLY execution of the stack anywhere: the rig
+  is detached and this hardware has never existed outside a netlist.
+- `docs/notes/test_microcode_gen.py` — the 24-bit word, the `0xFF`-is-inert
+  property row by row, the three new `check_word` rules, and a CRC tripwire
+  on all three ROM images.
+
+**Two rules in `check_word` exist because the gate model refused what
+reasoning had accepted**, and both are worth rows of their own eventually:
+
+- `src=RAM` cannot write `MAR` in the same word. The RAM address IS MAR and
+  the '373s are transparent while CLK is low, so it closes a live loop:
+  `MAR -> M -> RAM -> MDR -> U25 -> W -> MAR`.
+- `misc=MDR_OUT` must be the state IMMEDIATELY after the read that parked the
+  byte. `LE_MDR` falls at the T-state boundary and can latch whatever the
+  NEXT source is turning on. RET's second draft parked a byte, moved another
+  one, then replayed — and loaded the PC with `0x0C0C` instead of `0x000C`.
+
+Still genuinely uncovered, and stated as such: **`~{CIN_SEL}`,
+`~{MISC_BANK}`, `~{ADDR_SEL1}`, `FLAG_SEL0/1` and `FLAG_POL` are burned into
+all 4096 rows and wired to nothing.** No artifact can fail on them, because
+no consumer exists. They are reserve, not coverage.
 
 **Status legend:**
 - `COVERED-EXHAUSTIVE` — full-space differential sweep against an
@@ -112,7 +162,7 @@ See RES-06.
 | SYN-01 | BRINGUP_FPGA.md "gate 1" (netlist-integrity) | GHDL import severs no declared signal | every generated entity | directed | docs/notes/test_netlist_integrity.py::test_ghdl_import_severs_no_declared_signal | COVERED-DIRECTED |
 | SYN-02 | BRINGUP_FPGA.md "gate 1" | The tri-state bus-resolution pre-pass (`bus_resolve.ys`) leaves no multiply-driven net | full synth | directed | docs/notes/test_netlist_integrity.py::test_bus_resolve_leaves_no_multiply_driven_net | COVERED-DIRECTED |
 | SYN-03 | BRINGUP_FPGA.md "gate 5" motivation (opt_clean regression) | Coarse synthesis preserves all four memories (ROM x2 half-bytes, program ROM, RAM) — none get eaten by `opt_clean` | full synth | directed | docs/notes/test_netlist_integrity.py::test_synth_coarse_preserves_all_four_memories | COVERED-DIRECTED |
-| SYN-04 | port-design spec, "Written to be BRAM-inferable" | Full synthesis maps all four memories to real block RAM (DP16KD), not distributed logic | full synth | directed | docs/notes/test_netlist_integrity.py::test_full_synth_maps_all_four_memories_to_block_ram | COVERED-DIRECTED |
+| SYN-04 | port-design spec, "Written to be BRAM-inferable" | Full synthesis maps all four memories to real block RAM (DP16KD), not distributed logic | full synth | directed | docs/notes/test_netlist_integrity.py::test_full_synth_maps_all_five_memories_to_block_ram | COVERED-DIRECTED |
 | SYN-05 | BRINGUP_FPGA.md "hex-vs-roms staleness check" | Every committed `.hex` matches its committed `roms/*.bin`, byte-for-byte | every image tag | directed | fpga/synth/check_images.py::check_hex (run on every `make bit`) | COVERED-DIRECTED |
 | SYN-06 | BRINGUP_FPGA.md "check-images ... --meminit gate" | The synthesized `$mem_v2` INIT content matches `roms/*.bin` byte-for-byte, for every image tag — the bytes Rico actually burns | every image tag, full synth | directed | fpga/synth/check_images.py::check_meminit (`make -C fpga check-images`) | COVERED-DIRECTED |
 | SYN-07 | BRINGUP_FPGA.md "the timing gate" | Post-route timing closes at the `clk_sys` constraint (Fmax PASS) for every image tag | every image tag | directed | fpga/Makefile ($(BUILD_DIR)/dino_%.bit "timing gate" recipe step) | COVERED-DIRECTED |
@@ -172,10 +222,53 @@ cover.
 
 | ID | Spec cite | Assertion | Conditions | Check type | Check artifact | Status |
 |----|-----------|-----------|------------|------------|-----------------|--------|
-| MOD-01 | CLAUDE.md "Hard-won rules" (mirror-witness) / mdr sheet netlist facts (BRINGUP.md Stage 10) | The mdr sheet's W<->MDR bridge (U25) asserts asymmetrically in both directions, not merely as a blind round trip | both directions | directed | fpga/sim/test_module_mdr.py::test_mdr_bridge_both_directions_asymmetric | COVERED-DIRECTED |
+| MOD-01 | CLAUDE.md "Established rules" (mirror-witness) / mdr sheet netlist facts (BRINGUP.md Stage 10) | The mdr sheet's W<->MDR bridge (U25) asserts asymmetrically in both directions, not merely as a blind round trip | both directions | directed | fpga/sim/test_module_mdr.py::test_mdr_bridge_both_directions_asymmetric | COVERED-DIRECTED |
 | MOD-02 | mdr sheet netlist facts (BRINGUP.md Stage 10: `CE = ~{MDR_EN}`) | With the bridge disabled (`SRC_ACTIVE` low and no MDR replay), both W and MDR float | bridge off | directed | fpga/sim/test_module_mdr.py::test_mdr_bridge_off_both_float | COVERED-DIRECTED |
 | MOD-03 | mdr sheet netlist facts (BRINGUP.md Stage 10: `WRITE_DIR = INV(~{RAM_LOAD})`) | `WRITE_DIR` tracks `~RAM_LOAD` exactly | all reachable combos | directed | fpga/sim/test_module_mdr.py::test_mdr_write_dir_follows_ram_load | COVERED-DIRECTED |
 | MOD-04 | port-design spec, "Chip model contract" + CLAUDE.md "expensive to keep real" (schematic bug 4 reasoning applied to the io switch gate) | The `input_output` sheet's switch gate (io `'244`) passes the DIP-switch byte through when selected and floats `'Z'` when not | both states | directed | fpga/sim/test_module_input_output.py::test_input_output_switch_passthrough_and_tristate | COVERED-DIRECTED |
+
+### N. Stack pointer + third microcode EEPROM (2026-08-10)
+
+Twelve chips and seven instructions. **None of this has run on real
+hardware** -- the rig is detached, so every artifact below is the FPGA or a
+host test. That is a change of kind, not degree: for the rest of this table
+the fabric confirms a machine the bench had already proven, and here it is
+the only witness there is.
+
+| ID | Spec cite | Assertion | Conditions | Check type | Check artifact | Status |
+|----|-----------|-----------|------------|------------|-----------------|--------|
+| STK-01 | fpga/ttl/ttl_74ls169.vhd header; growth plan 4b | '169 synchronous load (`~PE`) has PRIORITY over the count enables, so `LXI SP` needs no stabiliser | load asserted with counting armed | directed | fpga/ttl/test_stateful.py::counter169_updown_hold_and_load_priority | COVERED-DIRECTED |
+| STK-02 | fpga/ttl/ttl_74ls169.vhd header | Count enables are ACTIVE LOW and BOTH must assert; direction is a LEVEL on `U/~D`; neither asserted = HOLD | each enable alone, both, both directions | directed | fpga/ttl/test_stateful.py::counter169_updown_hold_and_load_priority | COVERED-DIRECTED |
+| STK-03 | fpga/ttl/ttl_74ls169.vhd header | `~TC` is ACTIVE LOW, gated by `~CET`, and its terminal count depends on DIRECTION (1111 up, 0000 down) | both directions at both terminal values, `~CET` released | directed | fpga/ttl/test_stateful.py::counter169_tc_is_active_low_and_direction_dependent | COVERED-DIRECTED |
+| STK-04 | stack_pointer.kicad_sch; CLAUDE.md mirror-witness rule | SP's 16-bit load/readback is ORDER-correct -- lo/hi not swapped, `Q0-Q3` not reversed against `P0-P3` | two DIFFERENT bytes, read back per byte | directed | fpga/sim/test_module_stack_pointer.py::sp_load_and_readback_is_a_mirror_witness | COVERED-DIRECTED |
+| STK-05 | stack_pointer.kicad_sch (`~{SP_CE}` = AND of the two MISC codes) | SP HOLDS on every T-state that asserts neither `~{SP_UP}` nor `~{SP_DOWN}` -- i.e. almost all of them | four clocked T-states, both enables idle | directed | fpga/sim/test_module_stack_pointer.py::sp_holds_when_neither_up_nor_down_is_asserted | COVERED-DIRECTED |
+| STK-06 | stack_pointer.kicad_sch (`~TC` chain U63->U64->U65->U66) | The carry chain runs in WEIGHT order, so a carry crosses the byte boundary: 0x00FF+1 = 0x0100 and 0x0100-1 = 0x00FF | increment and decrement across the boundary | directed | fpga/sim/test_module_stack_pointer.py::sp_crosses_the_byte_boundary | COVERED-DIRECTED |
+| STK-07 | stack_pointer.kicad_sch (`U67`/`U68` CE) | Both readback '245s RELEASE `MDR0-7` when neither `_OUT` code is asserted -- SP shares that bus with ROM, RAM and three registers | neither enable | directed | fpga/sim/test_module_stack_pointer.py::sp_releases_the_bus_when_neither_readback_is_enabled | COVERED-DIRECTED |
+| STK-08 | growth plan 4b (empty-descending stack) | SP counts UP and DOWN by the same amount -- a stuck `U/~D` (the '163 pin-1 trap) changes the result | 3 up then 5 down | directed | fpga/sim/test_module_stack_pointer.py::sp_counts_both_directions | COVERED-DIRECTED |
+| BNK-01 | control_word.kicad_sch (`U28.E3` / `U70.E1` complementary) | Asserting `~{SRC_BANK}` darkens EVERY bank-0 source enable AND decodes bank 1 one-hot; `SRC_ACTIVE` floats high, which is what keeps the U25 bridge on | all four bank-1 SRC codes | directed | fpga/sim/test_module_control_word.py::test_src_bank1_darkens_bank0_and_decodes_one_hot | COVERED-DIRECTED |
+| BNK-02 | control_word.kicad_sch (`U30.E3` / `U71.E1`) | Same for `~{DST_BANK}` -- a DST bank switch that left bank 0 live would fire a register load alongside an SP load | both bank-1 DST codes | directed | fpga/sim/test_module_control_word.py::test_dst_bank1_darkens_bank0_and_decodes_one_hot | COVERED-DIRECTED |
+| BNK-03 | microcode_gen.py word() (bank bit derived from the code) | The two bank bits are INDEPENDENT: a bank-1 SRC composes with a bank-0 DST (PUSH's address setup) and vice versa (`LXI SP`) | both mixed combinations | directed | fpga/sim/test_module_control_word.py::test_the_two_banks_are_independent | COVERED-DIRECTED |
+| MCC-01 | microcode_gen.py `INERT_THIRD`; CLAUDE.md erased-EEPROM rule | `0xFF` in `CW16-23` IS today's machine: no row outside the seven stack opcodes touches a third-ROM field | all 4096 rows | exhaustive | docs/notes/test_microcode_gen.py | COVERED-EXHAUSTIVE |
+| MCC-02 | microcode_gen.py word() | The bank bit is DERIVED from the SRC/DST code, never passed by hand, so a caller cannot select `SP_LO` and forget to switch banks | both banks, both fields | directed | docs/notes/test_microcode_gen.py | COVERED-DIRECTED |
+| MCC-03 | microcode_gen.py emit_header() | `U23.bin`/`U23_diag.bin`, their CRCs, and the 24-bit `MC_REAL_WORDS` table agree with `build_real()` and with each other | per-byte over the image | directed | docs/notes/test_microcode_gen.py; tests/dino_bringup/hosttest/test_crc16.c | COVERED-DIRECTED |
+| MCC-04 | CLAUDE.md "adding an instruction costs a three-ROM burn" | A reburn is always DELIBERATE: all three image CRCs are pinned as literals, so any content change fails loudly | every generator run | directed | docs/notes/test_microcode_gen.py | COVERED-DIRECTED |
+| MCC-05 | fpga/gen/microcode.vhd (U23 instance) | The third ROM reads back through the real sheet for the two WIRED bits, row by row, against `build_real()` | all 4096 rows | exhaustive | fpga/sim/test_module_microcode.py::test_microcode_full_image_matches_build_real | COVERED-EXHAUSTIVE |
+| POL-01 | microcode_gen.check_word (RAM-writes-MAR rule) | `src=RAM` with `dst=MAR_LO/MAR_HI` is REJECTED -- the RAM address IS MAR and the '373s are transparent while CLK is low, closing a live loop | crafted word | directed | docs/notes/test_microcode_gen.py | COVERED-DIRECTED |
+| POL-02 | microcode_gen._check_mdr_replay_is_immediate | `misc=MDR_OUT` must be the state IMMEDIATELY after the read that parked the byte -- MDR holds for exactly one state | every opcode block | directed | docs/notes/test_microcode_gen.py | COVERED-DIRECTED |
+| POL-03 | microcode_gen.check_word (MDR-bus fight, bank-aware) | `misc=MDR_OUT` with ANY source in EITHER bank is rejected; the field decode folds in the bank bits, so bank-1 `PC_LO` is not mistaken for bank-0 `RAM` | crafted words, both banks | directed | docs/notes/test_microcode_gen.py | COVERED-DIRECTED |
+| POL-04 | microcode_gen._check_mar_before_ram | No instruction touches RAM before BOTH MAR halves are loaded within that same instruction | every opcode block | directed | docs/notes/test_microcode_gen.py | COVERED-DIRECTED |
+| POL-05 | microcode_gen.check_word (SP count-and-read) | SP cannot be counted and read in the same word -- the '169s commit on the edge that ENDS the T-state, so the byte read during it is the PRE-count value | crafted word | directed | docs/notes/test_microcode_gen.py | COVERED-DIRECTED |
+| STACK-1 | progrom_gen.STACK_PROGRAM | The whole machine round-trips two DIFFERENT bytes through LIFO and returns from a subroutine: `LXISP`, `PUSHA/B`, `POPA/B`, `CALL`, `RET`. The single OUT sits AFTER the return and reports a value computed inside it | whole core, one image | directed | fpga/sim/test_core_coverage.py::stack_round_trips_through_lifo_and_returns | COVERED-DIRECTED |
+| STACK-2 | progrom_gen.simulate() (bank-aware decode) | The Python oracle and the gate model agree on every stack instruction -- the oracle folds the bank bits into its field decode and models `LE_MDR` as a transparent latch, not a sampler | the stack image | directed | fpga/sim/test_core_coverage.py::stack_round_trips_through_lifo_and_returns | COVERED-DIRECTED |
+| STACK-3 | progrom_gen.COVERAGE ladder | Every instruction in `INSTRUCTIONS` is exercised by some coverage image except `LDCI` (C is RET's scratch) and `NOP` | the whole ladder | directed | docs/notes/test_progrom_coverage.py::test_coverage_is_progressive | COVERED-DIRECTED |
+| SYN-09 | CLAUDE.md FPGA paragraph ("every image tag synthesizes... and closes timing") | The design still infers and block-RAM-maps FIVE memories with the third microcode ROM present, with no flip-flop fallback | full synth_ecp5 | directed | docs/notes/test_netlist_integrity.py::test_full_synth_maps_all_five_memories_to_block_ram | COVERED-DIRECTED |
+
+**Deliberately NOT rows: the six unwired word bits.** `~{CIN_SEL}`,
+`~{MISC_BANK}`, `~{ADDR_SEL1}`, `FLAG_SEL0/1` and `FLAG_POL` are burned into
+all 4096 rows and connected to nothing. There is no behaviour to assert, so
+there is no row to write and no gap to declare -- MCC-01 covers the only
+claim that exists about them today (that they read inert everywhere). They
+become rows when they get consumers.
 
 ---
 
@@ -213,10 +306,10 @@ deferrals.
 
 ## Row-count summary
 
-| Status | Count (of 67 rows) |
+| Status | Count (of 92 rows) |
 |--------|------|
-| COVERED-EXHAUSTIVE | 5 |
-| COVERED-DIRECTED | 55 |
+| COVERED-EXHAUSTIVE | 7 |
+| COVERED-DIRECTED | 77 |
 | COVERED-INCIDENTAL | 2 |
 | GAP | 5 |
 

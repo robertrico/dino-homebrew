@@ -216,6 +216,37 @@ PIN_MAP["74LS163"] = {
     15: "tc", 16: "vcc",
 }
 
+# '169 (dino_v0_0_2/stack_pointer.kicad_sch -- U63-U66, the stack pointer,
+# added 2026-08-10). Pin functions read straight off the netlist via
+# `python3 fpga_gen.py --dump-pinmap`, never a datasheet (rule 5):
+#
+#   1: U/~{D}_1   2: CP_2   3-6: P0_3..P3_6   7: ~{CEP}_7   8: GND_8
+#   9: ~{PE}_9   10: ~{CET}_10   11-14: Q3_11..Q0_14   15: ~{TC}_15
+#   16: VCC_16
+#
+# Same family pinout as the '163 above, with four differences the model has
+# to honour (see fpga/ttl/ttl_74ls169.vhd's header for the full statement):
+# pin 1 is the direction LEVEL U/~D and NOT a clear -- this part has no clear
+# of any kind; the count enables and TC are ACTIVE LOW where the '163's CEP/
+# CET/TC are active high; and terminal count depends on direction (1111 up,
+# 0000 down).
+#
+# The parallel inputs are named P0-P3, not D0-D3. That is the symbol's own
+# Philips/NXP naming, matching ~PE ("parallel enable"), and it is what the
+# netlist reports -- dino_hardware_growth_plan.md said "D0-D3 on 3-6" and was
+# corrected against the symbol on 2026-08-10.
+#
+# "u_d_n" transcribes `U/~{D}`: the "/" is dropped as a separator and the
+# trailing "_n" carries the bar, which sits over the D half only. Consistent
+# with cep_n/cet_n/pe_n/tc_n on this same part, where the bar covers the whole
+# name.
+PIN_MAP["74LS169"] = {
+    1: "u_d_n", 2: "cp", 3: "p0", 4: "p1", 5: "p2", 6: "p3", 7: "cep_n",
+    8: "gnd",
+    9: "pe_n", 10: "cet_n", 11: "q3", 12: "q2", 13: "q1", 14: "q0",
+    15: "tc_n", 16: "vcc",
+}
+
 # '193 (dino_v0_0_2/program_counter.kicad_sch, 74LS193_1_0, lines
 # 2073-2363): DOWN (line 2131/2138) and UP (line 2149/2156) are drawn as
 # KiCad's special "input clock" pin TYPE, each its own real clock input --
@@ -376,7 +407,8 @@ PIN_MAP["MCM60256AP"] = {
 # rig verifies, it never programs" -- there is no write path to gate on a
 # clock here at all).
 STATEFUL_TYPES = {
-    "74LS74", "74LS163", "74LS193", "74LS273", "74LS373", "MCM60256AP",
+    "74LS74", "74LS163", "74LS169", "74LS193", "74LS273", "74LS373",
+    "MCM60256AP",
 }
 
 # Task-13 rework item 2 (synth-rework-brief.md): AT28C64B/AT28C256 gained a
@@ -521,9 +553,14 @@ def dump_pinmap(root):
 # tokens agree with kicad_contracts.py's own `short()` convention -- both
 # modules must land on the SAME token space, since `sheet_ports` below is
 # keyed through this exact mapping and Task 8 joins it against `instances`.
+# "stack_pointer" added 2026-08-10 (U63-U66 '169 + U67/U68 '245 + U69 '08 --
+# the 16-bit stack pointer). Two OTHER lists must gain it too and neither is
+# derived from this one: run_cocotb_ladder.sh's SIM_MODULES and
+# fpga/synth/check_images.py's GEN_SHEETS, both hand-mirrored by this repo's
+# own "no Python in a shell script's critical path" convention.
 SHEETS = (
     "root", "program_counter", "microcode", "control_word", "mdr",
-    "registers_a_b", "mar", "memory", "alu", "input_output",
+    "registers_a_b", "mar", "memory", "alu", "input_output", "stack_pointer",
 )
 
 
@@ -749,6 +786,7 @@ TTL_ENTITY = {
     "74HC14": "ttl_74hc14", "74LS08": "ttl_74ls08", "74LS138": "ttl_74ls138",
     "74LS157": "ttl_74ls157", "74LS244": "ttl_74ls244", "74LS245": "ttl_74ls245",
     "74F382": "ttl_74f382", "74LS74": "ttl_74ls74", "74LS163": "ttl_74ls163",
+    "74LS169": "ttl_74ls169",
     "74LS193": "ttl_74ls193", "74LS273": "ttl_74ls273", "74LS373": "ttl_74ls373",
     "AT28C64B": "ttl_at28c64b", "AT28C256": "ttl_at28c256",
     "MCM60256AP": "ttl_mcm60256",
@@ -760,7 +798,8 @@ TTL_ENTITY = {
 # fpga/gen/gated_clocks.txt (every net driving one of these pins on a real
 # instance, except the literal net "CLK" itself and power ties).
 CLOCK_LATCH_PINS = {
-    "74LS74": {"clk1", "clk2"}, "74LS163": {"cp"}, "74LS193": {"up", "down"},
+    "74LS74": {"clk1", "clk2"}, "74LS163": {"cp"}, "74LS169": {"cp"},
+    "74LS193": {"up", "down"},
     "74LS273": {"cp"}, "74LS373": {"le"}, "MCM60256AP": {"we_n"},
 }
 
@@ -797,6 +836,13 @@ MEMORY_INSTANCES = {
     "microcode": [
         ("U9", 13, "sim/hex/U9.hex"),
         ("U15", 13, "sim/hex/U15.hex"),
+        # U23, the third microcode EEPROM (CW16-23), schematic 2026-08-10.
+        # Same shared {IR[7:0],T[3:0]} address as U9/U15, same 8K part, so
+        # addr_bits is 13 like theirs. The image is all-0xFF today and that
+        # is CORRECT, not a placeholder: every field in the third word is
+        # polarised so a blank third ROM reproduces the 16-bit machine
+        # exactly (microcode_gen.THIRD_INERT).
+        ("U23", 13, "sim/hex/U23.hex"),
     ],
     "memory": [
         ("U24", 15, "sim/hex/PROG.hex"),
@@ -1404,7 +1450,8 @@ def _regenerate(root, gen_dir, hex_dir, roms_dir):
     print(f"wrote {len(SHEETS) - 1} sheet entities + dino_core.vhd + "
           f"gated_clocks.txt -> {gen_dir}")
     os.makedirs(hex_dir, exist_ok=True)
-    for label, bin_name in (("U9", "U9.bin"), ("U15", "U15.bin"), ("PROG", "PROG.bin")):
+    for label, bin_name in (("U9", "U9.bin"), ("U15", "U15.bin"),
+                            ("U23", "U23.bin"), ("PROG", "PROG.bin")):
         n = bin2hex(os.path.join(roms_dir, bin_name), os.path.join(hex_dir, f"{label}.hex"))
         print(f"  {label}.hex: {n} bytes <- roms/{bin_name}")
     with open(os.path.join(hex_dir, "RAM.hex"), "w"):

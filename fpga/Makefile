@@ -77,7 +77,7 @@ IMAGE ?= real
 # absent from this list -- it still builds fine via `make bit
 # IMAGE=cylon` because check_images.py's TAGS table (below this
 # Makefile's own HEX_cylon entry) carries it independently.
-IMAGE_TAGS := real in alu mem flow loop mardisc pads
+IMAGE_TAGS := real in alu mem flow loop mardisc pads stack
 BUILD_DIR := $(CURDIR)/build
 
 # progrom_gen.COVERAGE tag -> fpga/-relative committed hex path
@@ -93,6 +93,9 @@ HEX_flow    := sim/hex/PROG_flow.hex
 HEX_loop    := sim/hex/PROG_loop.hex
 HEX_mardisc := sim/hex/PROG_mardisc.hex
 HEX_pads    := sim/hex/PROG_pads.hex
+# stack: the witness for LXISP/PUSH/POP/CALL/RET and the bank-1 codes
+# (2026-08-10). Nothing else in the coverage set can reach any of them.
+HEX_stack   := sim/hex/PROG_stack.hex
 # cylon: never halts, not in progrom_gen.COVERAGE, but roms/PROG_cylon.bin
 # exists and bin2hex()s the same way every other image does -- burned as
 # the victory-lap/soak image (fpga/BRINGUP_FPGA.md). `make bit
@@ -105,7 +108,7 @@ HEX_cylon   := sim/hex/PROG_cylon.hex
 # depends on all 9 sub-sheets, must be analyzed LAST; a bare glob sorts
 # it 3rd alphabetically and fails). top/versa_top.vhd goes last of all --
 # it depends on dino_core.
-GEN_SHEETS := alu control_word input_output mar mdr memory microcode program_counter registers_a_b
+GEN_SHEETS := alu control_word input_output mar mdr memory microcode program_counter registers_a_b stack_pointer
 SYNTH_VHDL_SOURCES := $(wildcard $(CURDIR)/ttl/*.vhd) $(patsubst %,$(CURDIR)/gen/%.vhd,$(GEN_SHEETS)) $(CURDIR)/gen/dino_core.vhd $(CURDIR)/top/versa_top.vhd
 SYNTH_SCRIPTS := $(CURDIR)/synth/bus_resolve.ys $(CURDIR)/synth/dead_tbuf.v
 

@@ -172,8 +172,14 @@ _DST = {v: k for k, v in DST.items()}
 _SRC = {v: k for k, v in SRC.items()}
 _MISC = {v: k for k, v in MISC.items()}
 _SA = {v: k for k, v in SA.items()}
+from microcode_gen import SRC_BANK_N, DST_BANK_N, MISC_BANK_N  # noqa: E402
 
 RAM_BASE = 0x8000       # M15 selects: ROM 0x0000-0x7FFF, RAM 0x8000-0xFFFF
+
+# Deliberately not 0x0000: see simulate()'s own comment. Points into ROM
+# space, so a stack access before LXISP writes nowhere and reads program
+# bytes -- loudly wrong rather than quietly plausible.
+SP_POISON = 0x5A5A
 
 
 def sim_supports(name):
@@ -224,6 +230,13 @@ def simulate(program, max_steps=100000, switches=0x00):
     tmp_a = tmp_b = 0
     pc = 0
     mar = 0
+    # A '169 has NO CLEAR, so SP is random at power-up on real silicon and
+    # every program must run LXISP first. Starting the oracle at 0 would be
+    # KINDER THAN THE HARDWARE and would let a program that forgot LXISP
+    # agree with the model and then fail on the bench -- the same trap the
+    # '169 VHDL model's por_value generic exists to avoid.
+    sp = SP_POISON
+    mdr = 0
     out = None
     flag_z = 0
     st = {"ram_writes": 0, "ram_reads": 0, "branches_taken": 0,
@@ -245,13 +258,21 @@ def simulate(program, max_steps=100000, switches=0x00):
         if name is None or name not in INSTRUCTIONS:
             raise BuildError(f"pc=0x{pc-1:04X}: no instruction for 0x{op:02X}")
         for w in INSTRUCTIONS[name][1]:
-            dst, src = _DST[w & 7], _SRC[(w >> 3) & 7]
+            # BANK-AWARE DECODE. `(w >> 3) & 7` alone is wrong since the
+            # third EEPROM landed: bank-1 code 10 (PC_LO) has the same low
+            # three bits as bank-0 code 2 (RAM), so a bank-blind oracle would
+            # read a PC push as a RAM read and agree with nothing. Same fault
+            # class check_word had, and it is worth stating plainly because
+            # both the coverage images and the differential fuzz harness
+            # trust this function as ground truth.
+            src = _SRC[((w >> 3) & 7) | (0 if w & SRC_BANK_N else 8)]
+            dst = _DST[(w & 7) | (0 if w & DST_BANK_N else 8)]
                 # CW9..CW11 hold the '382 code BIT-REVERSED — CW9 is labelled SA2
             # and wired to the chip's select MSB. _sa_bits is its own inverse,
             # so the same call unpacks it. Reading the field raw here would
             # make the interpreter compute AND where the hardware computes ADD,
             # which is the very fault this encoding change fixes.
-            misc = _MISC[(w >> 6) & 7]
+            misc = _MISC[((w >> 6) & 7) | (0 if w & MISC_BANK_N else 8)]
             sa = _SA[_sa_bits((w >> 9) & 7)]
             halt, pc_up = (w >> 15) & 1, (w >> 13) & 1
 
@@ -269,6 +290,42 @@ def simulate(program, max_steps=100000, switches=0x00):
                 val = C
             elif src == "SW":
                 val = switches
+            elif src == "SP_LO":
+                val = sp & 0xFF
+            elif src == "SP_HI":
+                val = (sp >> 8) & 0xFF
+            elif src == "PC_LO":
+                # PC0-15 is tapped at the '193 outputs (U72/U73), NOT off the
+                # M bus -- so this reads the PC whatever the address mux is
+                # doing, which is exactly what CALL needs while MAR points at
+                # the stack slot.
+                val = pc & 0xFF
+            elif src == "PC_HI":
+                val = (pc >> 8) & 0xFF
+            elif misc == "MDR_OUT":
+                # MDR replay. U18 holds whatever last crossed the bus, and
+                # LE_MDR = NAND(~{RAM_LOAD}, READS_IDLE) latches it as soon
+                # as the read ends -- so it is a free second scratch, which
+                # is exactly what RET uses to carry the return address's HI
+                # byte while MAR is re-pointed.
+                val = mdr
+
+            # MDR is a TRANSPARENT LATCH, not a register that samples every
+            # transfer:
+            #     LE_MDR   = NAND(~{RAM_LOAD}, READS_IDLE)      U39 gate2
+            #     READS_IDLE = AND(~{ROM_OUT}, ~{RAM_OUT})      U39 g1 + U37
+            # so it follows the bus ONLY during a memory read or a RAM write,
+            # and HOLDS otherwise.
+            #
+            # Modelling it as "shadows everything" is wrong and was wrong
+            # here first: RET parks the return address's HI byte in MDR and
+            # then moves the LO byte from C to MAR_LO. With an over-eager
+            # shadow that register-to-register move clobbers the parked byte,
+            # MAR_HI gets 0x0C instead of 0x00, and the return lands in the
+            # weeds -- which is exactly what the oracle reported before this
+            # was corrected.
+            if val is not None and (src in ("ROM", "RAM") or dst == "RAM"):
+                mdr = val
             elif src == "ALU":
                 val, _c = _alu_op(sa, tmp_a, tmp_b)
                 flag_z = 1 if val == 0 else 0       # U48 mux: commits only
@@ -292,6 +349,10 @@ def simulate(program, max_steps=100000, switches=0x00):
                 ram[mar] = val
                 st["ram_writes"] += 1
                 st["stored"] = val
+            elif dst == "SP_LO":
+                sp = (sp & 0xFF00) | val
+            elif dst == "SP_HI":
+                sp = (sp & 0x00FF) | (val << 8)
 
             if misc == "PC_CLEAR":
                 pc = 0
@@ -306,6 +367,10 @@ def simulate(program, max_steps=100000, switches=0x00):
                     st["branches_not_taken"] += 1
             elif misc == "REG_OUT_LOAD":
                 out = A
+            elif misc == "SP_UP":
+                sp = (sp + 1) & 0xFFFF
+            elif misc == "SP_DOWN":
+                sp = (sp - 1) & 0xFFFF
 
             if halt:
                 st.update(out=out, halted=True, A=A, B=B, C=C, flag_z=flag_z)
@@ -420,6 +485,59 @@ LOOP_PROGRAM = [
     ("JNZ", Ref("loop")),
     ("LDA", *_addr(RAM_ACC)),
     ("OUT",), ("HALT",),
+]
+
+# stack — the witness for the whole 2026-08-10 addition: LXISP, PUSH, POP,
+# CALL and RET, plus the bank-1 SRC/DST codes and the third EEPROM's two
+# wired bits. Nothing else in the coverage set can reach any of them.
+#
+# SP must be initialised before anything touches the stack: a '169 has NO
+# CLEAR, so SP is RANDOM at power-up. LXISP is therefore the first
+# instruction, not a nicety.
+#
+# The stack lives at the TOP of RAM and grows DOWN (empty-descending: SP
+# points at the next free slot, PUSH stores then decrements). RAM_ACC/RAM_CNT
+# sit at the BOTTOM, so a stack that runs away collides with them loudly
+# rather than silently overwriting the answer.
+#
+# ONE OUT, AND IT IS THE LAST INSTRUCTION BEFORE HALT. OB is the only
+# datapath observable the coverage harness reads, and it reads it at halt --
+# so an earlier OUT would let a BROKEN CALL/RET leave a correct-looking value
+# behind. The single OUT sits after the return, and the value is computed
+# INSIDE the subroutine, so reaching it at all proves the return address was
+# pushed, stored, popped back and loaded into the PC.
+#
+# THE ANSWER PROVES ORDER, NOT MERELY SURVIVAL. Two DIFFERENT bytes go in and
+# come back into SWAPPED registers, and the subroutine SUBTRACTS rather than
+# adds -- a sum is order-independent and would pass with the bytes reversed.
+#     correct LIFO   0x53 - 0x2C = 0x27
+#     wrong order    0x2C - 0x53 = 0xD9
+# That is the mirror-witness rule applied to the stack. A push-then-pop round
+# trip with ONE value is self-consistent under a crossed ~TC cascade, a stuck
+# direction pin, and a nibble-reversed readback alike -- all three of which
+# are live failure modes here.
+STACK_TOP = RAM_BASE + 0xFF
+STACK_PUSH_A = 0x2C
+STACK_PUSH_B = 0x53
+# A - B after a CORRECT LIFO round trip. SUB, not ADD, on purpose: a sum is
+# order-independent, so it would pass with the two bytes swapped. 0x53-0x2C
+# and 0x2C-0x53 are 0x27 and 0xD9 -- a wrong order names itself.
+STACK_EXPECT = (STACK_PUSH_B - STACK_PUSH_A) & 0xFF   # 0x27
+
+STACK_PROGRAM = [
+    ("LXISP", STACK_TOP & 0xFF, STACK_TOP >> 8),
+    ("LDAI", STACK_PUSH_A),
+    ("LDBI", STACK_PUSH_B),
+    ("PUSHA",),
+    ("PUSHB",),
+    ("POPA",),                          # LIFO: A <- what B pushed = 0x53
+    ("POPB",),                          #       B <- what A pushed = 0x2C
+    ("CALL", Ref("sub")),
+    ("OUT",),                           # the ONLY OUT -- see below
+    ("HALT",),
+    "sub",
+    ("SUB",),                           # A = A - B, computed INSIDE the call
+    ("RET",),
 ]
 
 # ---- DIAGNOSTIC images for the 2026-08-03 PROG_flow failure -------------
@@ -622,6 +740,7 @@ COVERAGE = {
     "loop": LOOP_PROGRAM,
     "mardisc": MARDISC_PROGRAM,
     "pads": PADS_PROGRAM,
+    "stack": STACK_PROGRAM,
 }
 
 

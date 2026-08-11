@@ -143,7 +143,7 @@ def test_coverage_is_progressive():
     }
     seen = set()
     order = ["probe", "adda", "addb", "real", "in", "alu", "mem", "flow", "loop",
-             "mardisc", "pads"]
+             "mardisc", "pads", "stack"]
     check_eq(list(pg.COVERAGE), order, "images in ladder order")
     for tag in order:
         used = {s[0] for s in pg.COVERAGE[tag] if not isinstance(s, str)}
@@ -151,9 +151,16 @@ def test_coverage_is_progressive():
               f"{tag}: adds a new instruction or a declared new behaviour")
         seen |= used
     unreached = set(INSTRUCTIONS) - seen
-    # LDCI is unreachable by design: C is write-only until MOV exists
+    # LDCI is unreachable by design: C is write-only until MOV exists -- and
+    # RET now clobbers C as its return-address scratch, which is the second
+    # reason it stays unavailable to user code.
+    #
+    # The stack image exercises all four push/pop variants -- pushing two
+    # DIFFERENT bytes and popping them into SWAPPED registers is what makes
+    # LIFO order observable, so both register pairs are load-bearing rather
+    # than decorative.
     check_eq(unreached, {"LDCI", "NOP"},
-             "only LDCI (C is write-only) and NOP go unexercised")
+             "only LDCI (C is RET's scratch) and NOP go unexercised")
 
 
 def test_in_image_takes_its_operand_from_the_switches():

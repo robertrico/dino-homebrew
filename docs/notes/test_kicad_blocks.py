@@ -82,6 +82,16 @@ JMP4 = {"~{PC_CLEAR}", "~{MDR_OUT}", "~{REG_OUT_LOAD}", "~{PC_LOAD}"}
 SA3 = {"CW9=SA2", "CW10=SA1", "CW11=SA0"}
 PCBITS = {"CW13=PC_UP", "CW14=PC_MAR_MUX"}
 ENDHALT = {"CW12=END", "CW15=HALT"}
+# 2026-08-10: control_word's eight new outputs, all consumed by the stack
+# pointer sheet. Four bank-1 SRC decodes (U70), two bank-1 DST decodes (U71),
+# and the two MISC codes that were U29's last free slots.
+SPCTL8 = {"~{SP_LO_OUT}", "~{SP_HI_OUT}", "~{PC_LO_OUT}", "~{PC_HI_OUT}",
+          "~{SP_LO_LOAD}", "~{SP_HI_LOAD}", "~{SP_UP}", "~{SP_DOWN}"}
+# 2026-08-10: PC0-15 leave the pc sheet for the first time -- U72/U73 tap the
+# '193 Q outputs into MDR so CALL can push a return address. Sixteen new
+# board-to-board wires, the largest single crossing added since the MAR-lo
+# post-mortem named that category.
+PCBUS16 = {f"PC{i}" for i in range(16)}
 # CLK is sampled in every block as a CAPTURE QUALIFIER, never as an assertion:
 # the ROM outputs are invalid for one access time after T changes, and a blind
 # sampler splits one T-state into several frames. Gating on CLK low samples
@@ -110,8 +120,12 @@ def test_block_names_and_order():
              "five blocks, in ladder order")
     check_eq(SURF["block1"]["members"], ["root", "microcode", "control_word"],
              "block1 members")
-    check_eq(len(SURF["block5"]["members"]), 10,
-             "block5 is all ten modules — the ladder ENDS here")
+    check_eq(len(SURF["block5"]["members"]), 11,
+             "block5 is all eleven modules — the ladder ENDS here")
+    check("stack_pointer" in SURF["block5"]["members"],
+          "stack_pointer is in the final block")
+    check("stack_pointer" not in SURF["block3"]["members"],
+          "stack_pointer arrives with the datapath, not before it")
 
 
 def test_driven_gate():
@@ -130,8 +144,8 @@ def test_driven_gate():
 def test_sample_counts():
     print("sample ladder")
     counts = [len(SURF[b]["sample"]) for b in SURF]
-    check_eq(counts, [31, 15, 15, 15, 15],
-             "sampled ladder 31,15,15,15,15 (CLK+T0-3 in every block)")
+    check_eq(counts, [39, 31, 15, 15, 15],
+             "sampled ladder 39,31,15,15,15 (CLK+T0-3 in every block)")
     for b in SURF:
         check_eq(SURF[b]["qualify"], ["CLK", "T0", "T1", "T2", "T3"],
                  f"{b} carries the standing timing set")
@@ -140,9 +154,9 @@ def test_sample_counts():
 def test_block1_surface():
     print("block1 — control")
     s = SURF["block1"]
-    want = DST7 | SRC8 | JMP4 | SA3 | PCBITS | ENDHALT | QUAL1
+    want = DST7 | SRC8 | JMP4 | SA3 | PCBITS | ENDHALT | QUAL1 | SPCTL8
     check_eq(set(s["sample"]), want,
-             "block1 samples the 26 + CLK + T0-3 as sample labels")
+             "block1 samples the 34 + CLK + T0-3 as sample labels")
     check(T03 <= set(s["copper"]), "T0-3 is copper")
     check(CW08 <= set(s["copper"]), "CW0-8 is copper")
     check(ENDHALT <= set(s["copper"]), "END/HALT are copper as well as sampled")
@@ -164,8 +178,8 @@ def test_block1_surface():
 def test_block2_surface():
     print("block2 — + pc + mar + memory")
     s = SURF["block2"]
-    check_eq(set(s["sample"]), MDR | ENDHALT | TIMING,
-             "block2 samples MDR0-7 + END/HALT + CLK + T0-3")
+    check_eq(set(s["sample"]), MDR | ENDHALT | TIMING | PCBUS16,
+             "block2 samples MDR0-7 + PC0-15 + END/HALT + CLK + T0-3")
     check(all(f"M{i}" in s["copper"] for i in range(15)), "M0-14 are copper")
     check("M15=ROM_EN" in s["copper"], "M15=ROM_EN is copper")
     check_eq(set(s["strap"]), {"FLAG_Z", "WRITE_DIR"} | {f"W{i}" for i in range(8)},

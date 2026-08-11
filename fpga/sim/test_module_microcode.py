@@ -67,7 +67,27 @@ async def _mc_read(dut, row):
         | (int(dut.cw13_eq_pc_up.value) << 13)
         | (int(dut.cw14_eq_pc_mar_mux.value) << 14)
         | (int(dut.cw15_eq_halt.value) << 15)
+        # CW16-23 (U23, the third microcode EEPROM, 2026-08-10). Only the
+        # two WIRED bits leave this sheet as ports -- ~{SRC_BANK} and
+        # ~{DST_BANK} have consumers on control_word; CW16 and CW19-23 are
+        # burned but wired to nothing, so they stay internal signals with no
+        # port to read. The other six bits are therefore taken from
+        # build_real() rather than from the DUT (see _want() below), which
+        # is stated plainly instead of quietly masking them off.
+        | (int(dut.cw17_eq_n_src_bank.value) << 17)
+        | (int(dut.cw18_eq_n_dst_bank.value) << 18)
     )
+
+
+# The six unwired third-ROM bits have no port on this sheet. Compare against
+# build_real() with exactly those bits taken from the expectation, so the two
+# bits that ARE observable are genuinely checked and the six that are not are
+# visibly excluded rather than silently passing.
+_UNWIRED_THIRD = (1 << 16) | (0b11111 << 19)
+
+
+def _want(row):
+    return REAL_WORDS[row] & ~_UNWIRED_THIRD
 
 
 @cocotb.test()
@@ -90,11 +110,12 @@ async def test_microcode_known_rows_match_build_real(dut):
         "undefined (LDBI T3, safe-fill)": OPCODES["LDBI"] * 16 + 3,
     }
     for label, row in rows.items():
-        got = await _mc_read(dut, row)
-        want = REAL_WORDS[row]
+        got = await _mc_read(dut, row) & ~_UNWIRED_THIRD
+        want = _want(row)
         assert got == want, (
             f"cw+composites: row 0x{row:03X} ({label}) -> 0x{got:04X}, "
-            f"want 0x{want:04X} (build_real()[0x{row:03X}])"
+            f"want 0x{want:06X} (build_real()[0x{row:03X}], six unwired "
+            f"third-ROM bits masked -- see _want())"
         )
 
 
@@ -109,8 +130,8 @@ async def test_microcode_full_image_matches_build_real(dut):
     bad = 0
     first_bad = None
     for row in range(4096):
-        got = await _mc_read(dut, row)
-        want = REAL_WORDS[row]
+        got = await _mc_read(dut, row) & ~_UNWIRED_THIRD
+        want = _want(row)
         if got != want:
             bad += 1
             if first_bad is None:

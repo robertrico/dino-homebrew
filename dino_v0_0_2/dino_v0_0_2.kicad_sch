@@ -11139,6 +11139,52 @@
 		)
 	)
 	(sheet
+		(at 182.88 16.51)
+		(size 12.7 3.81)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "24261abe-cc51-4721-a517-eb214e9b8f63")
+		(property "Sheetname" "Stack Pointer"
+			(at 182.88 15.7984 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "stack_pointer.kicad_sch"
+			(at 182.88 20.9046 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "dino_v0_0_2"
+				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541"
+					(page "11")
+				)
+			)
+		)
+	)
+	(sheet
 		(at 212.09 26.67)
 		(size 12.7 3.81)
 		(exclude_from_sim no)

@@ -9,6 +9,55 @@ generated-from-the-same-source fabric, and a bench-vs-FPGA divergence on
 the same image is a finding about the *bench wiring*, not the fabric (see
 "What the fabric tells the bench" below).
 
+## Status 2026-08-11 — the fabric is the primary verification
+
+The rig is detached and unwired, and the workflow is schematics first, FPGA
+second, hardware last. This document stops being design-ahead: logic errors
+get found here now.
+
+**The stack and third EEPROM run here and nowhere else.** `make -C fpga
+verify` is green in ~148s -- host suite 147/147, 20-seed differential fuzz,
+cocotb ladder 40/40 (19 TTL models + 10 sheet models + 2 milestone + 9
+coverage images). `PROG_stack` exercises `LXISP`, `PUSHA/B`, `POPA/B`, `CALL`
+and `RET` and lands `OB=0x27`.
+
+Every image tag synthesizes, places, routes and closes timing:
+`DP16KD 40/108`, `TRELLIS_COMB 910/43848`, 17.22MHz against a 12MHz
+constraint.
+
+### What the fabric found that reading the schematic did not
+
+Three microcode hazards, all now `check_word`/`check_table` rules. Recorded
+because they are the concrete argument for simulating before wiring:
+
+1. `src=RAM` writing MAR in one word closes a live combinational loop
+   (`MAR -> M -> RAM -> MDR -> U25 -> W -> MAR`); the '373s are transparent
+   while CLK is low. `RET`'s first draft hung with the PC at 0x8D00.
+2. `misc=MDR_OUT` holds for exactly one state. `LE_MDR` falls at the T-state
+   boundary and can latch whatever the next source turns on. `RET`'s second
+   draft loaded the PC with 0x0C0C instead of 0x000C.
+3. A 3-bit field decode is bank-blind: bank-1 `PC_LO` (code 10) shares its
+   low bits with bank-0 `RAM` (code 2).
+
+### Model fidelity, two standing notes
+
+- The `'163`'s header defers an edge-detect alignment question that only held
+  because `U20`'s parallel inputs are tied to `'0'`. SP's are live, so the
+  `'169` re-answers it; `test_module_stack_pointer.py` is the covering check.
+- **A '169 has no clear, so real silicon powers up random.** `ttl_74ls169.vhd`
+  powers up non-zero (`por_value`) and `progrom_gen.simulate()` matches
+  (`SP_POISON`). A model starting at zero would be kinder than the hardware
+  and would hide a missing `LXISP`.
+
+### Lists that are hand-kept and do not glob
+
+`run_cocotb_ladder.sh`'s `SIM_MODULES`, `fpga/synth/check_images.py`'s
+`GEN_SHEETS`, `fpga/Makefile`'s `GEN_SHEETS` and `IMAGE_TAGS`,
+`fpga/sim/Makefile`'s `GEN_SHEETS`, and `test_netlist_integrity.py`'s own
+copy. `TTL_MODELS` globs `ttl/*.vhd` and needs nothing.
+
+---
+
 Every number in this document comes from a command shown next to it —
 `python3 docs/notes/progrom_gen.py --expected`, a build log, or `--list-
 boards` — never retyped by hand. Regenerate rather than trust stale
@@ -216,7 +265,7 @@ here):
 (ratio 1.024 MHz / 120 kHz = 8.53x slower — the LED sweep is a visibly
 lazier cylon on the Versa board than on the bench, nothing more.)
 
-## cylon — the victory lap, fabric edition
+## cylon — the soak image, fabric edition
 
 `cylon` is **not** in `progrom_gen.COVERAGE` (it never halts, so it has
 no `(OB, ends)` fingerprint — `progrom_gen.py`'s own comment) and
@@ -376,9 +425,9 @@ one:
 
     $ make -C fpga verify
     ...
-    === VERIFY: ALL GREEN (137s wall) ===
+    === VERIFY: ALL GREEN (148s wall) ===
 
-**137s wall (~2.3 min), exit 0, three stages, all green** (this task's
+**~148s wall, exit 0, three stages, all green** (this task's
 own run). In order:
 
 1. **Host suite** -- `python3 -m pytest docs/notes/ -q` -> **147 passed**,
@@ -399,14 +448,14 @@ own run). In order:
    `fpga/ttl/test_*.py` chip-model invocations, 9
    `fpga/sim/test_module_*.py` sheet-model invocations,
    `test_core_milestone.py`'s 2 whole-core cases, and
-   `test_core_coverage.py`'s 8 coverage-image cases: 37 `make`
+   `test_core_coverage.py`'s 9 coverage-image cases: 40 `make`
    invocations total (one per MODEL/MODULE_UNDER_TEST/TESTCASE
    combination -- there is no all-models target in `fpga/ttl/Makefile` or
    `fpga/sim/Makefile`, and ROM content is a GHDL generic fixed at
    elaboration, so each `dino_core` TESTCASE genuinely needs its own
-   invocation). These 37 invocations are the SOLE citation for roughly
+   invocation). These 40 invocations are the sole citation for roughly
    half of `docs/notes/dino_fpga_vplan.md`'s rows (sections E/F/L/M plus
-   most of section A). This task's own run: **37/37 GREEN, 69s wall**.
+   most of section A). Latest run: **40/40 green**.
 
 **Budgets and soak.** `DINO_FUZZ_N` (env var) sets the seed count; unset
 defaults to 20 (the number `verify` runs). `DINO_FUZZ_N` is a plain env
@@ -424,7 +473,7 @@ than silently passing.
 **The GAP list.** Not everything is a green check -- `docs/notes/
 dino_fpga_vplan.md` is the coverage map: every invariant CLAUDE.md/
 `BRINGUP.md`/the design specs claim, mapped to the artifact that would
-fail if it were wrong. **67 rows, 5 GAP** (un-policed rules or ledgered
+fail if it were wrong. **92 rows, 5 GAP** (un-policed rules or ledgered
 deferrals -- none silent; `docs/notes/test_vplan.py` guards the row/GAP
 counts against drift from the table itself). Read it before assuming a
 behavior is proven just because `verify` is green -- GREEN means

@@ -482,6 +482,11 @@ def _ghdl_run_seed(seed):
            "--work=work", "dino_core", f"--vpi={vpi}",
            f"-gu9_init_file={os.path.join(HERE, 'hex', 'U9.hex')}",
            f"-gu15_init_file={os.path.join(HERE, 'hex', 'U15.hex')}",
+           # U23, the third microcode EEPROM (2026-08-10). Its generic has no
+           # default -- ttl_at28c64b's init_file is `string;` with no value --
+           # so omitting this is an ELABORATION error ("cannot open file
+           # sim/hex/U23.hex"), not a wrong-content one.
+           f"-gu23_init_file={os.path.join(HERE, 'hex', 'U23.hex')}",
            f"-gu24_init_file={os.path.join(HERE, hexrel)}",
            f"-gu26_init_file={os.path.join(HERE, 'hex', 'RAM.hex')}",
            "--max-stack-alloc=1024"]

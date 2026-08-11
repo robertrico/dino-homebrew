@@ -65,13 +65,19 @@ GHDL_PREFIX = os.path.normpath(os.path.join(TOOLS, "..", "lib", "ghdl"))
 TAGS = {"real": "PROG", "in": "PROG_in", "alu": "PROG_alu",
         "mem": "PROG_mem", "flow": "PROG_flow", "loop": "PROG_loop",
         "mardisc": "PROG_mardisc", "pads": "PROG_pads",
+        "stack": "PROG_stack",
         "cylon": "PROG_cylon"}
 
 # The two microcode ROMs are the SAME in every image tag (every tag shares
 # the one burned microcode); checked once per run, not once per tag.
-MICROCODE = ["U9", "U15"]
+# U23 joined 2026-08-10 -- the third microcode EEPROM (CW16-23). Its image
+# is all-0xFF today and that is the correct content, not a placeholder: every
+# field in the third word is polarised so a blank third ROM reproduces the
+# 16-bit machine exactly.
+MICROCODE = ["U9", "U15", "U23"]
 
 GEN_SHEETS = ["alu", "control_word", "input_output", "mar", "mdr", "memory",
+              "stack_pointer",
               "microcode", "program_counter", "registers_a_b"]
 
 

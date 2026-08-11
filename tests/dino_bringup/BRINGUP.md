@@ -5,6 +5,196 @@ what to wire, where, what to type, what you should see, and what a failure
 means. Deeper rationale lives in `../../docs/notes/dino_test_bringup_design.md`
 (the spec); this document is the bench procedure.
 
+## STATUS 2026-08-10 — THE RIG IS DETACHED. READ THIS FIRST.
+
+**The Mega is unwired.** No stage in this document can be run as written.
+Everything below describes the rig-driven procedure and is preserved as the
+record of how the ten modules and five blocks were proven — it is history, not
+a runnable procedure, until instrumentation returns.
+
+**The workflow changed.** Schematics are always first now: draw everything,
+verify on the FPGA, find logic errors, refine, and only then hardware.
+
+**What replaces the rig, for the schematic phase committed as `9dc7217`:**
+
+    TL866 read-back      proves the CHIP        (against MC_CRC_U23_REAL)
+    continuity, DEAD     proves the WIRES       (beep, board unpowered)
+    coverage ROMs        proves the MACHINE     (8 known OB values, on LEDs)
+    cocotb / FPGA        proves the LOGIC       (exhaustive, off-bench)
+
+**Test the wire, not the part.** A '138's decode *and enable* behaviour is
+already covered exhaustively in sim (`dino_fpga_vplan.md` BUS-03,
+`fpga/ttl/test_msi.py::decoder_truth_table`). Re-asking it on the bench is
+re-proving a datasheet. Bench effort belongs on wires nothing else checks —
+which is exactly where the MAR-lo run went missing.
+
+**Twelve new chips are in the schematic and none of them has run.** `U23`
+(third microcode EEPROM), `U70`/`U71` (SRC/DST bank-1 '138s), `U63`-`U66`
+(the '169 stack pointer), `U67`/`U68` (SP readback '245s), `U69` ('08),
+`U72`/`U73` (PC->MDR '245s). `microcode_gen` still emits a 16-bit word, so no
+row asserts any new bit.
+
+**Two new bench-critical traps, both invisible to a round-trip test:**
+
+1. **'169 pin 1 is `U/~D`, not `~MR`.** Both '163s on this board (`U6`, `U20`)
+   wire pin 1 as a clear, one of them strapped to `+5V`. Doing that on a '169
+   hardwires SP to count up only — `~{SP_DOWN}` asserts and does nothing.
+   PUSH never decrements; a single PUSH/POP pair still works because the byte
+   goes to a slot and comes back from the same slot. Nested calls corrupt.
+2. **`P` and `Q` number in opposite directions** (`P0-P3` = 3,4,5,6 ascending;
+   `Q0-Q3` = 14,13,12,11 descending). On a DIP16 those pins sit directly
+   opposite each other, so wiring by *position* is safe and wiring by *pin
+   number sequence* gives a whole-nibble reversal.
+
+   Both need a **mirror-witness** to catch: push two DIFFERENT values and pop
+   them in the order LIFO demands. A round trip is self-consistent under either.
+
+**Also: `avr-gcc` is broken in this environment** — missing
+`/opt/homebrew/opt/isl/lib/libisl.23.dylib`. `brew reinstall isl` before the
+rig ever comes back.
+
+---
+
+## STACK + THIRD EEPROM BRING-UP — DRAFT, needs refining at the bench
+
+**Status: schematic and simulation only.** Twelve chips, seven instructions,
+zero seconds on real silicon. `make -C fpga verify` is green (147/147 host,
+20/20 fuzz, 40/40 cocotb) and every image synthesizes and closes timing, but
+that is a statement about a netlist and a simulator.
+
+This section is a SKELETON, deliberately. It carries the facts that are
+already derivable and marks the rest as open, so it can be refined with the
+board in front of you rather than guessed at now.
+
+### Order
+
+    1  COPPER        land and beep every new wire      <- start here
+    2  BURN          three ROMs, not one
+    3  LA            watch the stack instructions execute
+    4  SHOWCASE      an LED program that makes it visible   <- to design
+
+### 1. Copper — generated, walk it with the board OFF
+
+The list comes from the netlist, never a reading. That is the whole lesson of
+the MAR-lo fault: two runs, nine wires, never landed, and nothing caught them
+because a copper wire is driven by no test and sampled by no test. The fix is
+a meter and a list that cannot be incomplete.
+
+    python3 docs/notes/kicad_contracts.py --continuity \
+        U23 U63 U64 U65 U66 U67 U68 U69 U70 U71 U72 U73
+
+39 nets. Each line names the NEW pins to land and the existing pins to beep
+them against. Beep each new pin against its own NEIGHBOURS too — a one-hole
+slip on an adjacent gate pin is this board's most common fault.
+
+Two traps specific to these parts, both invisible to a round-trip test:
+
+- **'169 pin 1 is `U/~D`, not `~MR`.** Both '163s on this board (`U6`, `U20`)
+  wire pin 1 as a clear, and `U20`'s is strapped to `+5V`. Doing that here
+  hardwires SP to count up only: `~{SP_DOWN}` asserts and nothing happens.
+  PUSH never decrements, so a single PUSH/POP pair still works perfectly and
+  nested calls corrupt.
+- **`P` and `Q` number in opposite directions** (`P0-P3` = 3,4,5,6 ascending;
+  `Q0-Q3` = 14,13,12,11 descending). On a DIP16 those pins sit directly
+  opposite each other, so wiring by POSITION is safe and wiring by
+  pin-number sequence gives a whole-nibble reversal.
+
+### 2. Burn — three ROMs
+
+Adding instructions writes rows in every byte of the 24-bit word, so `U9` and
+`U15` are no longer "never leave their sockets" for this change.
+
+    python3 docs/notes/microcode_gen.py     # prints all six CRCs
+    python3 docs/notes/progrom_gen.py       # PROG_stack.bin among others
+
+Verify each with the TL866's own read-back after burning. CRCs are pinned as
+literals in `test_microcode_gen.py`, so if the generator ever prints
+something different, that is a deliberate change or a bug — not drift.
+
+`U23_diag.bin` exists but there is currently nothing that can walk 4096 rows
+in-circuit (that was the rig). Burn the real image; the diag pair is there
+for when instrumentation returns.
+
+### 3. LA — what to watch, and what it should show
+
+The T-state traces below are generated from the microcode, not transcribed:
+
+    LXISP   T1 ROM->SP_LO   T2 ROM->SP_HI, END
+    PUSHA   T1 SP_LO->MAR_LO  T2 SP_HI->MAR_HI  T3 A->RAM  T4 SP_DOWN, END
+    POPA    T1 SP_UP  T2 SP_LO->MAR_LO  T3 SP_HI->MAR_HI  T4 RAM->A, END
+    CALL    T1-T4  push PC_HI   T5-T8  push PC_LO
+            T9/T10 ROM->MAR_LO/HI (PC++ on both)   T11 PC_LOAD, END
+    RET     T1 SP_UP  T2/T3 SP->MAR  T4 RAM->C
+            T5 SP_UP  T6/T7 SP->MAR  T8 RAM (parks in MDR)
+            T9 MDR_OUT->MAR_HI   T10 C->MAR_LO
+            T11 PC_LOAD   T12/T13 PC_UP x2, END
+
+Regenerate any time:
+
+    python3 -c "import sys;sys.path.insert(0,'docs/notes');import microcode_gen as g;\
+    print(g.INSTRUCTIONS['RET'])"
+
+**Two rows are worth a channel each.** Not because they are suspect — the
+committed microcode passes on the gate model, `PROG_stack` lands `OB=0x27` —
+but because they are where a COPPER fault would be most legible:
+
+- **`RET` T8/T9 is the tightest sequential dependency in the ISA.** T8 parks
+  the return address's HI byte in MDR; T9 replays it into `MAR_HI`. MDR holds
+  for exactly ONE state: `LE_MDR = NAND(~{RAM_LOAD}, READS_IDLE)` falls at
+  the T-state boundary and can latch whatever the next source turns on. One
+  state of slack, so MDR-side wiring trouble surfaces here first.
+- **`CALL` T3/T7 is the only place `PC0-15` is used.** Sixteen new wires,
+  exercised by exactly these two rows. They push `PC_HI` then `PC_LO`, in
+  that order, read from `PC0-15` and NOT from `M` — the address bus is
+  carrying MAR (the stack slot) during both.
+
+For the record, since the traces above may look fussy: both constraints exist
+because EARLIER DRAFTS of this microcode violated them and the gate model
+refused. Draft 1 of `RET` used `src=RAM, dst=MAR_HI` in one word, closing a
+live loop `MAR -> M -> RAM -> MDR -> U25 -> W -> MAR`, and hung with the PC
+at `0x8D00`. Draft 2 parked in MDR but moved another byte before replaying,
+and loaded the PC with `0x0C0C` instead of `0x000C`. Both are now
+`check_word`/`check_table` rules; neither can be re-encoded.
+
+**OPEN — which 16 channels.** Not decided. Candidates: `T0-3` + `CLK` as the
+frame (5), leaving 11 for some mix of `~{SP_LO_OUT}`, `~{SP_HI_OUT}`,
+`~{SP_LO_LOAD}`, `~{SP_HI_LOAD}`, `~{SP_UP}`, `~{SP_DOWN}`, `~{PC_LO_OUT}`,
+`~{PC_HI_OUT}`, `~{RAM_LOAD}`, `~{MDR_OUT}` and `HALT`. Decide at the bench
+against what actually needs discriminating.
+
+**OPEN — STEP-CLOCK has no driver.** It was the rig's, injected at `CLKIN`
+(`U20.2`) with Y1 disabled. A debounced button ('14 + RC) restores it. With
+the clock stopped a DMM and one probe see everything, one net at a time,
+which is most of what a wide bus watcher would buy.
+
+### 4. Showcase program — TO DESIGN
+
+`PROG_stack` exists and is the correctness witness: two different bytes
+pushed, popped back into swapped registers, subtracted inside a subroutine,
+one `OUT` after the `RET`. `OB = 0x27` if everything worked; `0xD9` means the
+pops came back in the wrong order; no `OUT` at all means `CALL`/`RET` never
+returned.
+
+That proves it. It does not SHOW it — one number at the end.
+
+**Open: a demonstration image.** Something that makes the stack legible on
+eight LEDs while it runs — nested calls at visible depth, or a pattern that
+could only be produced by correct LIFO. `PROG_cylon` is the precedent for
+"an image whose job is to be watched." Design it at the bench, against what
+is actually readable at 1.024MHz.
+
+### What is NOT verified by any of this
+
+The FPGA cannot see analog levels, real propagation on breadboard wire,
+fan-out, or whether a wire was landed. Those are bench questions.
+
+Note also that this machine's recorded bus levels were all taken during a
+debugging session on a board with a known fault — see
+`docs/notes/dino_mar_lo_investigation.md`. A healthy-bus characterisation has
+never been done and is its own initiative.
+
+---
+
 STATUS 2026-08-02: all ten module stages AND all five integration
 blocks are DONE, and the ISA has its first interactive instruction (`IN`,
 opcode 0x52). Timing is retired — blocks 4 and 5 free-run at 1.024MHz with

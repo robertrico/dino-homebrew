@@ -260,6 +260,21 @@ async def _arm_reset(dut, reset_ns=500):
     it only actually waits when escaping a prior HALT."""
     dut.btn_reset_n.value = 0          # ARM: button held (active low)
     await Timer(reset_ns, unit="ns")
+    # The reset PAIR, asserted while the button is held. Nothing else in the
+    # suite checks these by name -- every other test just relies on the
+    # machine coming up cleared, which is true right up until it isn't.
+    # `reset` clears the PC (U10's un-gated leg) and `~{RESET}` is U49's
+    # ~MR, the flag latch's only clear; a stuck pair means the machine
+    # starts wherever it stopped, which reads as a program bug.
+    if _resolvable(dut.reset.value):
+        assert str(dut.reset.value) == "1", (
+            f"reset did not assert while btn_reset_n was held "
+            f"(reset={dut.reset.value}) -- the PC would not clear")
+    if _resolvable(dut.n_reset.value):
+        assert str(dut.n_reset.value) == "0", (
+            f"~{{RESET}} did not assert while btn_reset_n was held "
+            f"(n_reset={dut.n_reset.value}) -- U49's flag latch would not "
+            f"clear and flags would survive a reset")
     dut.btn_reset_n.value = 1          # release -- `reset` itself falls
                                         # on the NEXT clk edge, not now
     for _ in range(RESET_ESCAPE_CYCLES):
@@ -327,15 +342,17 @@ async def rerun(dut, switches=0x00, max_us=500, reset_ns=500):
 
 
 def _read_pc(dut):
-    """16-bit PC value, decoded from program_counter_i's own per-bit
-    signals (pc0..pc15 -- there is no single 'pc' bus signal on this
-    sheet, see fpga/gen/program_counter.vhd). Diagnostic-only."""
-    val = 0
-    for i in range(16):
-        bit = getattr(dut.program_counter_i, f"pc{i}").value
-        if str(bit) in ("0", "1"):
-            val |= (int(bit) & 1) << i
-    return val
+    """16-bit PC value. Diagnostic-only.
+
+    Read off dino_core's own `pc` signal since 2026-08-10. PC0-15 used to be
+    sixteen private per-bit signals INSIDE program_counter_i; they became a
+    real sheet port pair (pc_i/pc_o) when U72/U73 on the mdr sheet tapped the
+    '193 outputs so CALL could push a return address. dino_core wires both
+    halves to one resolved `pc` vector, which is now the honest place to
+    read it -- and the old `program_counter_i.pc0` path stopped existing,
+    which is how this surfaced.
+    """
+    return _resolved_int(dut.pc.value) or 0
 
 
 async def wait_halt(dut, timeout_us=500):

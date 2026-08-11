@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # run_cocotb_ladder.sh -- `make -C fpga verify` (below) never ran the
 # cocotb testbench ladder (fpga/ttl/test_*.py's 18 chip models,
-# fpga/sim/test_module_*.py's 9 sheet models, test_core_milestone.py's 2
-# whole-core cases, test_core_coverage.py's 8 coverage-image cases -- 37
+# fpga/sim/test_module_*.py's 10 sheet models, test_core_milestone.py's 2
+# whole-core cases, test_core_coverage.py's 9 coverage-image cases -- 37
 # `make` invocations total). There is no all-models target in
 # fpga/ttl/Makefile or fpga/sim/Makefile (each `make` runs exactly one
 # MODEL/MODULE_UNDER_TEST/TESTCASE combination, and dino_core's ROM
@@ -36,17 +36,17 @@ export PATH="$VENV:$TOOLS:$PATH"
 
 cd "$HERE"
 
-# 18 TTL chip models -- every fpga/ttl/*.vhd file, stripped of the ttl/
+# 19 TTL chip models -- every fpga/ttl/*.vhd file, stripped of the ttl/
 # prefix and .vhd suffix. Globbing the real directory instead of a
 # hand-kept list means this loop can never silently fall behind an added
 # or removed model.
 TTL_MODELS=$(cd ttl && for f in *.vhd; do basename "$f" .vhd; done)
 
-# 9 sheet models -- fpga/synth/check_images.py's own GEN_SHEETS list (the
+# 10 sheet models -- fpga/synth/check_images.py's own GEN_SHEETS list (the
 # same 9 entities dino_core.vhd instantiates; hand-mirrored here per this
 # repo's existing convention for shell contexts with no Python in their
 # critical path -- see fpga/Makefile's own GEN_SHEETS comment).
-SIM_MODULES="alu control_word input_output mar mdr memory microcode program_counter registers_a_b"
+SIM_MODULES="alu control_word input_output mar mdr memory microcode program_counter registers_a_b stack_pointer"
 
 n=0
 echo "=== cocotb ladder: 18 TTL models ==="
@@ -56,7 +56,7 @@ for model in $TTL_MODELS; do
     make -C ttl MODEL="$model" || { echo "COCOTB LADDER FAILED: ttl MODEL=$model" >&2; exit 1; }
 done
 
-echo "=== cocotb ladder: 9 sheet modules ==="
+echo "=== cocotb ladder: 10 sheet modules ==="
 for mod in $SIM_MODULES; do
     n=$((n+1))
     echo "--- [$n] sim MODULE_UNDER_TEST=$mod ---"
@@ -75,7 +75,7 @@ make -C sim MODULE_UNDER_TEST=dino_core MODULE=test_core_milestone \
     TESTCASE=in_tracks_switches DINO_PROG_HEX=hex/PROG_in.hex || {
     echo "COCOTB LADDER FAILED: in_tracks_switches" >&2; exit 1; }
 
-echo "=== cocotb ladder: whole-core coverage (8 tags) ==="
+echo "=== cocotb ladder: whole-core coverage (9 tags) ==="
 # tag:testcase pairs -- test_core_coverage.py's own @cocotb.test() names,
 # each against its matching hex/PROG_<tag>.hex (conftest_helpers.
 # prepare_roms() regenerates every progrom_gen.COVERAGE tag's hex up
@@ -83,7 +83,8 @@ echo "=== cocotb ladder: whole-core coverage (8 tags) ==="
 COVERAGE_CASES="alu:alu_covers_every_sa_code mem:mem_witnesses_mar_as_a_latch \
 flow:flow_takes_the_jump_and_falls_through loop:loop_takes_the_jnz_branch \
 adda:adda_isolates_tmp_a addb:addb_isolates_tmp_b \
-mardisc:mardisc_discriminates_mar_lo pads:pads_lands_the_jmp_at_the_named_pad"
+mardisc:mardisc_discriminates_mar_lo pads:pads_lands_the_jmp_at_the_named_pad \
+stack:stack_round_trips_through_lifo_and_returns"
 for pair in $COVERAGE_CASES; do
     tag="${pair%%:*}"
     testcase="${pair##*:}"
@@ -95,4 +96,4 @@ for pair in $COVERAGE_CASES; do
         exit 1; }
 done
 
-echo "=== cocotb ladder: ALL $n invocations GREEN (18 ttl + 9 sim + 2 milestone + 8 coverage) ==="
+echo "=== cocotb ladder: ALL $n invocations GREEN (19 ttl + 10 sim + 2 milestone + 9 coverage) ==="

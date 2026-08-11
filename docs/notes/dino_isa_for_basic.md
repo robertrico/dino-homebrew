@@ -30,21 +30,37 @@ shape the answer.
 
 ## 1. Three hardware facts that bound the ISA
 
-### 1.1 The microcode word is FULL
+### 1.1 The microcode word is FULL — SUPERSEDED 2026-08-10
+
+**The third EEPROM exists.** `U23` is in the schematic (commit `9dc7217`) and
+the word is 24 bits. This section described the 16-bit constraint; it is kept
+because the reasoning downstream of it still holds, but the constraint itself
+is gone.
 
     SA    bits 9-11   (3)      END     bit 12
     MISC  bits 6-8    (3)      PC_UP   bit 13
     SRC   bits 3-5    (3)      MUX_PC  bit 14
     DST   bits 0-2    (3)      HALT    bit 15
                               ------------------
-                              16 of 16 bits allocated
+                              16 of 16 -- U9 + U15
 
-Widening `SRC` or `DST` means a THIRD EEPROM. Any instruction that needs a new
-source or destination is a hardware change, not a microcode change.
+    CW16 ~{CIN_SEL}    CW20 ~{ADDR_SEL1}     <- U23, the third ROM
+    CW17 ~{SRC_BANK}   CW21 FLAG_SEL0
+    CW18 ~{DST_BANK}   CW22 FLAG_SEL1
+    CW19 ~{MISC_BANK}  CW23 FLAG_POL
 
-`MISC` has two unused codes (5 and 7) and `U29` already brings them out on
-physical pins — `O5` (pin 10) and `O7` (pin 7) are NC today. Those two codes
-are the last free space in the entire microcode word.
+`~{SRC_BANK}` and `~{DST_BANK}` are **wired**: they lift `U28.E3` and `U30.E3`
+off `+5V` and enable a second '138 each, giving 16 sources and 16 destinations.
+The old codes 0-7 keep identical behaviour, so no burned row re-encodes. The
+other six bits are burned into all 4096 rows and unwired.
+
+Bank-1 codes as built: `SRC` 8-11 = `SP_LO_OUT`, `SP_HI_OUT`, `PC_LO_OUT`,
+`PC_HI_OUT`; `DST` 8-9 = `SP_LO_LOAD`, `SP_HI_LOAD`.
+
+**`MISC` is now FULL.** It had two unused codes (5 and 7) brought out on `U29`
+`O5`/`O7`; both are spent on `~{SP_UP}` and `~{SP_DOWN}`. `O0` is the `NONE`
+slot and can never be reclaimed. The next MISC code needs `~{MISC_BANK}` wired
+plus a second MISC '138, or step 1's I/O decode retiring `REG_OUT_LOAD`.
 
 ### 1.2 Carry-in is wired to the opcode, not to the microcode
 
@@ -209,10 +225,16 @@ figure out how to add 16-bit numbers later" is actually asking for.
 wide word gives every flag, including the `FLAG_N`/`FLAG_V` that are captured
 in U49 today and routed nowhere. Tier 1 becomes unnecessary — see §3.
 
-**3. `CALL`/`RET` need `SRC=PC_LO` / `SRC=PC_HI`, so SRC widens to 4 bits.**
-That is exactly what the third ROM buys. It also needs a PC→W path in copper:
-the PC drives `M` today and `M` is address-only, so this is a new '245 pair on
-the pc board, not a rewire.
+**3. `CALL`/`RET` need `SRC=PC_LO` / `SRC=PC_HI`, so SRC gains a bank bit.**
+That is exactly what the third ROM buys. **BUILT 2026-08-10**, with two
+corrections to this paragraph:
+
+- It is a bank **enable** (`~{SRC_BANK}` selecting between two '138s), not a
+  fourth address input. A '138 has three.
+- The new path lands on **`MDR0-7`, not `W`**, and taps **`PC0-15`, not `M`**.
+  `U72`/`U73` are '245s from the '193 `Q` outputs into MDR, on the mdr sheet.
+  Tapping `M` would make `CALL` impossible: the push row writes to RAM, so the
+  address bus must carry MAR (the stack slot) and `M` is not carrying the PC.
 
 **4. The SP needs a 1-of-3 address decode, and that is a BOARD CHANGE.**
 Netlist-verified: `M` is sourced by a complementary-enable pair —

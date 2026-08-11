@@ -11,11 +11,15 @@ entity mdr is
     src_active : in std_logic;
     n_ir_load : in std_logic;
     n_mdr_out : in std_logic;
+    n_pc_hi_out : in std_logic;
+    n_pc_lo_out : in std_logic;
     n_ram_load : in std_logic;
     n_ram_out : in std_logic;
     n_rom_out : in std_logic;
     n_sw_out : in std_logic;
     irb : out std_logic_vector(7 downto 0);
+    pc_i : in std_logic_vector(15 downto 0);
+    pc_o : out std_logic_vector(15 downto 0);
     write_dir : out std_logic;
     w_i : in std_logic_vector(7 downto 0);
     w_o : out std_logic_vector(7 downto 0);
@@ -159,5 +163,79 @@ begin
       y4 => open,
       a4 => '0',
       b4 => '0');
+
+  U72 : entity work.ttl_74ls245
+    port map (
+      dir => '1',
+      a0_i => pc_i(0),
+      a0_o => pc_o(0),
+      a1_i => pc_i(1),
+      a1_o => pc_o(1),
+      a2_i => pc_i(2),
+      a2_o => pc_o(2),
+      a3_i => pc_i(3),
+      a3_o => pc_o(3),
+      a4_i => pc_i(4),
+      a4_o => pc_o(4),
+      a5_i => pc_i(5),
+      a5_o => pc_o(5),
+      a6_i => pc_i(6),
+      a6_o => pc_o(6),
+      a7_i => pc_i(7),
+      a7_o => pc_o(7),
+      b7_i => mdr_i(7),
+      b7_o => mdr_o(7),
+      b6_i => mdr_i(6),
+      b6_o => mdr_o(6),
+      b5_i => mdr_i(5),
+      b5_o => mdr_o(5),
+      b4_i => mdr_i(4),
+      b4_o => mdr_o(4),
+      b3_i => mdr_i(3),
+      b3_o => mdr_o(3),
+      b2_i => mdr_i(2),
+      b2_o => mdr_o(2),
+      b1_i => mdr_i(1),
+      b1_o => mdr_o(1),
+      b0_i => mdr_i(0),
+      b0_o => mdr_o(0),
+      ce_n => n_pc_lo_out);
+
+  U73 : entity work.ttl_74ls245
+    port map (
+      dir => '1',
+      a0_i => pc_i(8),
+      a0_o => pc_o(8),
+      a1_i => pc_i(9),
+      a1_o => pc_o(9),
+      a2_i => pc_i(10),
+      a2_o => pc_o(10),
+      a3_i => pc_i(11),
+      a3_o => pc_o(11),
+      a4_i => pc_i(12),
+      a4_o => pc_o(12),
+      a5_i => pc_i(13),
+      a5_o => pc_o(13),
+      a6_i => pc_i(14),
+      a6_o => pc_o(14),
+      a7_i => pc_i(15),
+      a7_o => pc_o(15),
+      b7_i => mdr_i(7),
+      b7_o => mdr_o(7),
+      b6_i => mdr_i(6),
+      b6_o => mdr_o(6),
+      b5_i => mdr_i(5),
+      b5_o => mdr_o(5),
+      b4_i => mdr_i(4),
+      b4_o => mdr_o(4),
+      b3_i => mdr_i(3),
+      b3_o => mdr_o(3),
+      b2_i => mdr_i(2),
+      b2_o => mdr_o(2),
+      b1_i => mdr_i(1),
+      b1_o => mdr_o(1),
+      b0_i => mdr_i(0),
+      b0_o => mdr_o(0),
+      ce_n => n_pc_hi_out);
 
 end architecture;

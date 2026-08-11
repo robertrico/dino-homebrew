@@ -91,8 +91,13 @@ from microcode_gen import INSTRUCTIONS  # noqa: E402
 # (verified: mardisc uses LDA/LDAI/OUT/STA/HALT, pads uses
 # HALT/JMP/LDAI/OUT, all sim_supports()-clean) so they belong in
 # _TARGET_TAGS rather than being silently excluded like probe/real/in.
+# stack added 2026-08-10 -- the ONLY image that reaches LXISP, PUSH, POP,
+# CALL, RET, either SRC/DST bank-1 code, or the third EEPROM's two wired
+# bits. Unlike every tag above it, this one has never run on the bench:
+# the rig is detached and the hardware is schematic-only, so this test is
+# the first and currently the only execution of the stack anywhere.
 _TARGET_TAGS = ("alu", "mem", "flow", "loop", "adda", "addb",
-                "mardisc", "pads")
+                "mardisc", "pads", "stack")
 
 
 def _tag_supported(tag):
@@ -418,3 +423,41 @@ async def pads_lands_the_jmp_at_the_named_pad(dut):
     assert ob == exp, (
         f"OB=0x{ob:02X} at HALT, want 0x{exp:02X} "
         f"(oracle_final_ob('pads'), never hand-typed)")
+
+
+@cocotb.test()
+async def stack_round_trips_through_lifo_and_returns(dut):
+    """docs/notes/progrom_gen.py's STACK_PROGRAM -- the witness for the whole
+    2026-08-10 addition: LXISP, PUSHA/PUSHB, POPA/POPB, CALL, RET, both
+    SRC/DST bank-1 code groups, and the third EEPROM's ~{SRC_BANK} /
+    ~{DST_BANK} bits. Nothing else in the coverage set touches any of them.
+
+    ONE observable, and it is load-bearing. The image's single OUT sits
+    AFTER the RET and reports a value computed INSIDE the subroutine, so
+    reaching it proves the return address was pushed as two bytes, stored
+    to RAM through MAR, popped back, reassembled, and loaded into the PC.
+    An earlier OUT would have let a broken CALL/RET leave a correct-looking
+    number in OB.
+
+    The value proves ORDER, not merely survival: two DIFFERENT bytes go in
+    and come back into SWAPPED registers, and the subroutine SUBTRACTS.
+        correct LIFO   0x53 - 0x2C = 0x27
+        wrong order    0x2C - 0x53 = 0xD9
+    A sum would be order-independent and would pass with the bytes reversed.
+    That distinction matters because a crossed ~TC cascade, a stuck U/~D
+    direction pin, and a nibble-reversed '245 readback are all live failure
+    modes here, and all three survive a one-value round trip unchanged.
+
+    SP starts POISONED in both the oracle (progrom_gen.SP_POISON) and the
+    '169 model (ttl_74ls169.vhd's por_value): the real part has no clear and
+    comes up random, so a model or oracle starting at zero would be kinder
+    than the hardware and would hide a missing LXISP.
+
+    Oracle: progrom_gen.simulate(), never hand-typed.
+    """
+    ob, exp = await _run_tag(dut, "stack")
+    assert ob == exp, (
+        f"OB=0x{ob:02X} at HALT, want 0x{exp:02X} "
+        f"(oracle_final_ob('stack'), never hand-typed). 0xD9 would mean the "
+        f"pops came back in the wrong order; no OUT at all means CALL/RET "
+        f"never returned")

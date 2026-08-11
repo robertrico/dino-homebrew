@@ -98,6 +98,13 @@ COCOTB_TEST_FILTER := \\.ff74_edge_and_async$$
 else ifeq ($(MODEL),ttl_74ls163)
 MODULE := test_stateful
 COCOTB_TEST_FILTER := \\.counter163_sync$$
+else ifeq ($(MODEL),ttl_74ls169)
+MODULE := test_stateful
+# Matches BOTH '169 tests (the up/down/hold + load-priority truth check and
+# the direction-dependent ~TC check) via their shared "counter169_" prefix
+# -- same idiom as the '273/'373 branches, and for the same reason: an
+# unescaped alternation reaches bash unquoted and is a syntax error.
+COCOTB_TEST_FILTER := \\.counter169_
 else ifeq ($(MODEL),ttl_74ls193)
 MODULE := test_stateful
 COCOTB_TEST_FILTER := \\.counter193_async$$
