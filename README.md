@@ -4,7 +4,7 @@
 74-series logic on breadboards. That's the machine itself: no
 microcontroller, no FPGA. Every register, every bus, every gate is a chip
 you can put a probe on. (The repo does carry a generated FPGA twin for
-design-ahead — see [`fpga/BRINGUP_FPGA.md`](fpga/BRINGUP_FPGA.md).)
+design-ahead — see `fpga/`.)
 
 Schematics in KiCad, microcode in EEPROM, and a bare-metal ATmega2560 test
 rig that brings the machine up one board at a time.
@@ -231,8 +231,8 @@ seated throughout — so the rig never owns the clock and every block runs
 free at 1.024MHz, captured in bursts rather than single-stepped.
 
 Bench procedure, per-stage wiring, failure meanings, and the full
-integration plan are in
-[`tests/dino_bringup/BRINGUP.md`](tests/dino_bringup/BRINGUP.md).
+integration plan live out of tree with the rest of the process
+documents (maintainer's `.git/sdd/`).
 
 ---
 

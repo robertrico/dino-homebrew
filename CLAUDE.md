@@ -323,14 +323,20 @@ claimed invariant to the artifact that would fail if it were wrong, with 5
 GAPs named as such. Green means every wired check passed, not that everything
 is checked.
 
-`fpga/BRINGUP_FPGA.md` covers the fabric. The breadboard machine is the
+`.git/sdd/BRINGUP_FPGA.md` covers the fabric. The breadboard machine is the
 machine; the port is design-ahead.
 
 ## Where to read next
 
-    docs/notes/dino_stack_bringup_handoff.md   START HERE for stack bring-up
-    tests/dino_bringup/BRINGUP.md          bench procedure, per stage
-    tests/dino_bringup/README.md           progress checkboxes
-    docs/notes/dino_test_bringup_design.md the bring-up spec
-    docs/notes/dino_hardware_growth_plan.md what is planned and priced
-    docs/notes/dino_isa_for_basic.md       the instruction set roadmap
+**Process documents live out of tree in `.git/sdd/`** — bring-up procedures,
+plans, investigations, session handoffs, progress checkboxes. Any stale
+in-tree reference to one of them (BRINGUP.md, dino_mar_lo_investigation.md,
+dino_hardware_growth_plan.md, …) resolves to `.git/sdd/<name>`. The repo
+keeps design and reference docs plus everything generated.
+
+    .git/sdd/dino_stack_bringup_handoff.md   START HERE for stack bring-up
+    .git/sdd/BRINGUP.md                      bench procedure, per stage
+    .git/sdd/README.md                       progress checkboxes
+    .git/sdd/dino_test_bringup_design.md     the bring-up spec
+    .git/sdd/dino_hardware_growth_plan.md    what is planned and priced
+    docs/notes/dino_isa_for_basic.md         the instruction set roadmap
