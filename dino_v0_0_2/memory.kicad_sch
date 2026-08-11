@@ -3247,14 +3247,6 @@
 		(at 93.98 27.94)
 		(uuid "a399c99a-6cb8-451a-a498-d446bfb8ae5c")
 	)
-	(no_connect
-		(at 245.11 115.57)
-		(uuid "a820bc1b-ed5b-4439-8eda-fa834e5e2084")
-	)
-	(no_connect
-		(at 57.15 115.57)
-		(uuid "be40c3be-14f3-42ef-9c1e-aa58bc07d81a")
-	)
 	(bus_entry
 		(at 148.59 76.2)
 		(size 2.54 2.54)
@@ -3756,6 +3748,16 @@
 			(type default)
 		)
 		(uuid "0ba1695e-3003-4667-8d36-d3bc62d0a1be")
+	)
+	(wire
+		(pts
+			(xy 245.11 115.57) (xy 245.11 118.11)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0bfd887a-755b-472a-bb25-bb132c2cb9ce")
 	)
 	(wire
 		(pts
@@ -4636,6 +4638,16 @@
 			(type default)
 		)
 		(uuid "7d949085-9531-48ea-9b14-1f0b11e0c6d5")
+	)
+	(wire
+		(pts
+			(xy 57.15 115.57) (xy 57.15 118.11)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "7e55322b-b598-4571-a29b-a77752431e13")
 	)
 	(wire
 		(pts
@@ -5937,6 +5949,16 @@
 		)
 		(uuid "93fa07fa-8f5d-4567-93df-b02b8b3345fa")
 	)
+	(label "ROM_EN"
+		(at 245.11 118.11 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "942f11ee-4c3f-44f4-8033-19c87d1051e0")
+	)
 	(label "MDR7"
 		(at 148.59 76.2 180)
 		(effects
@@ -6246,6 +6268,16 @@
 			(justify right bottom)
 		)
 		(uuid "f6f00943-e889-456f-b3de-fbd697fcf60e")
+	)
+	(label "ROM_EN"
+		(at 57.15 118.11 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "faf99c14-eb6a-4033-8ef8-f6cc66d539fc")
 	)
 	(symbol
 		(lib_id "74xx:7400")

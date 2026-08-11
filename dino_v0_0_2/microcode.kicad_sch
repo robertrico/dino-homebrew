@@ -3745,7 +3745,7 @@
 	)
 	(wire
 		(pts
-			(xy 143.51 151.13) (xy 144.78 151.13)
+			(xy 143.51 151.13) (xy 152.4 151.13)
 		)
 		(stroke
 			(width 0)
@@ -4085,7 +4085,7 @@
 	)
 	(wire
 		(pts
-			(xy 143.51 153.67) (xy 144.78 153.67)
+			(xy 143.51 153.67) (xy 153.67 153.67)
 		)
 		(stroke
 			(width 0)
@@ -4823,6 +4823,16 @@
 		)
 		(uuid "ad24677b-d70d-4b9c-b5aa-f5deab2cc51a")
 	)
+	(label "~{DST_BANK}"
+		(at 153.67 153.67 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "b2c34639-7ae4-4604-b339-223af3ffbccb")
+	)
 	(label "IRB0"
 		(at 44.45 69.85 270)
 		(effects
@@ -4992,6 +5002,16 @@
 			(justify left bottom)
 		)
 		(uuid "e50cca35-baf0-4df9-9985-204b570ea8ab")
+	)
+	(label "~{SRC_BANK}"
+		(at 152.4 151.13 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "eec4919b-826e-45cb-b7d9-21fcd829a6c0")
 	)
 	(label "IRB2"
 		(at 39.37 69.85 270)
