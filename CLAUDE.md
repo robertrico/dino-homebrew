@@ -101,10 +101,33 @@ Earlier versions of this file listed `W 2.26V`, `PC_MAR_MUX 1.0V avg` and
 session log anywhere in the repo.** They were removed rather than kept as
 unsourced law. Characterising a healthy bus is its own initiative.
 
-**OPEN — 35 new board-to-board crossings** arrive with the stack, the
-largest single addition since the machine was built. `kicad_contracts.py`
-emits the exact per-sheet crossing list; that list is the continuity
-checklist.
+**FACT — the stack lands 73 nets / 154 pins**, netlist-extracted 2026-08-11,
+the largest single addition since the machine was built. Plus 6 no-connects
+(`CW16`, `CW19-23`) and, on chips that already exist, 6 copper changes and 2
+new wires. `kicad_contracts.py --continuity <refs>` emits the landing list;
+`--since <rev>` emits the change list. The second is not optional: the
+continuity walk filters to nets touching the NEW chips, so a lifted strap on
+an existing pin — `U28.6`/`U30.6`, both decoder enables — is invisible to it.
+
+**The count was 39/94 until the tooling was fixed on 2026-08-11**, and the
+gap was invisible work, not new work. Two blind spots, both now
+regression-tested in `docs/notes/test_continuity_completeness.py`:
+
+- **A net's key is its full label set.** Cross-sheet connectivity here is a
+  naming convention — every label is sheet-local and KiCad joins nothing
+  between sheets. So a net labelled `ROM_EN` on one sheet and `M15/ROM_EN` on
+  another got two keys, both looked sheet-local, and the cross-sheet filter
+  dropped the wire. `M15/ROM_EN` is the ROM chip-enable and it was missing
+  from every checklist this tool ever produced; it survived only because a
+  dead `~CE` means nothing boots. `alias_splits()` now fails a test on any
+  recurrence, and this is a *second* naming hazard distinct from the
+  alphabetical-first rule below — that one is fixed by naming, this one by
+  making every sheet declare the same label set.
+- **Sheet-internal nets were filtered out.** Right for the default
+  board-to-board report, wrong when you name chips: a new chip's own on-board
+  wiring is most of the job. `~{TC1}` is the cost of getting it wrong —
+  `U63.15 -> U64.10` unlanded and the SP counts correctly for 256 pushes
+  before the low byte wraps, so `PROG_stack` passes clean.
 
 ## The machine invariant
 
@@ -210,6 +233,8 @@ buy.
 ## Everything is generated, nothing is retyped
 
     docs/notes/kicad_contracts.py   contracts + pinmap + crossing lists
+                                    --continuity <refs>  what to land
+                                    --since <rev>        what changed, classified
     docs/notes/microcode_gen.py     microcode ROM images + CRCs + header
     docs/notes/progrom_gen.py       program ROMs, and the Python oracle
     docs/notes/layout_gen.py        breadboard placement, slot maps,
@@ -256,6 +281,17 @@ not because they are principles.
   count is meaningless, only the delta is readable.
 - **An alias binds only when its consumer pin exists.** Unwired bits emit as
   plain `cw16`/`cw19`-`cw23`. That is correct, not a failed label.
+- **Every sheet touching an aliased net must declare the SAME label set.**
+  A net's key is its full label set joined; sheets connect by name and nothing
+  else. Label it `ROM_EN` on one sheet and `M15/ROM_EN` on another and it
+  becomes two keys, both sheet-local, and the continuity checklist drops the
+  wire without a word. Cost `M15/ROM_EN` — the ROM chip-enable — every
+  checklist ever generated. Guarded by `alias_splits()`.
+- **A tool's silence is not coverage.** The continuity list is the only check
+  the netlist→copper step has, so a hole in it is a hole in that step's entire
+  coverage. Both holes found on 2026-08-11 were in the report, not the
+  schematic — the machine was right and the paperwork was wrong, which is the
+  harder direction to notice.
 - **A 3-bit field decode is bank-blind.** Bank-1 `PC_LO` (code 10) shares its
   low three bits with bank-0 `RAM` (code 2). Both `check_word` and the Python
   oracle read a PC push as a RAM read until the decode folded in the bank

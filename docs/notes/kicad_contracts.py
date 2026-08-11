@@ -15,6 +15,10 @@ Usage:
   python3 kicad_contracts.py            # print contracts + write markdown
   python3 kicad_contracts.py --continuity U23 U63 U64 U65 U66 U67 U68 U69 U70 U71 U72 U73
                                         # continuity walk for the named chips
+  python3 kicad_contracts.py --since 2fe4d7c
+                                        # which pins changed net since a rev,
+                                        # classified: copper to move vs label
+                                        # added to an already-landed wire
   python3 kicad_contracts.py --stamp    # also place/refresh a text block on
                                         # each .kicad_sch (idempotent: any
                                         # previous MODULE CONTRACT block is
@@ -1013,6 +1017,202 @@ def expand(label):
 
 
 
+_PIN_LINE = re.compile(
+    r"(\S+)\s+pin\s+(\d+)\s+(\S*)\s*net=(\S+)\s*(?:\[NC\])?\s*(?:->\s*(.*))?$")
+
+
+def _sheet_files(root):
+    """[(sheet_token, path)] for every sub-sheet, root and _-prefixed excluded."""
+    import glob as _glob
+    out = []
+    base = os.path.dirname(root)
+    for f in sorted(_glob.glob(os.path.join(base, "*.kicad_sch"))):
+        b = os.path.basename(f)
+        if b.startswith("_") or f == root:
+            continue
+        out.append((b[:-len(".kicad_sch")], f))
+    return out
+
+
+def net_pins(root):
+    """{netname: [(ref, pin, sheet_token), ...]}, power and anonymous nets
+    dropped.
+
+    Extracted so continuity_checklist and alias_splits share ONE collection
+    path. Two paths would mean a net could be visible to the guard and
+    invisible to the checklist, which is the failure the guard exists to catch.
+    """
+    from kicad_netlist import build_report
+    pins = defaultdict(list)
+    for token, f in _sheet_files(root):
+        for line in build_report(f)[0]:
+            m = _PIN_LINE.match(line)
+            if not m:
+                continue
+            ref, pin, _fn, net = m.group(1), m.group(2), m.group(3), m.group(4)
+            if net.startswith("N$anon") or net in ("GND", "+5V"):
+                continue
+            pins[net].append((ref, int(pin), token))
+    return dict(pins)
+
+
+def alias_splits(net_pins_map):
+    """{base_label: [conflicting net keys]} — one physical net carried under
+    two different label sets.
+
+    kicad_netlist keys a net on its FULL label set, joined with "/". Cross-sheet
+    connectivity in this design is a naming convention (every label is
+    sheet-local; KiCad joins nothing between sheets), so a net whose label set
+    differs per sheet gets a different key per sheet, every key looks
+    single-sheet, and continuity_checklist's cross-sheet filter drops the whole
+    wire. Silently: a copper wire is driven by no test and sampled by no test.
+
+    That is how M15/ROM_EN — the ROM chip-enable — stayed off every checklist
+    this tool ever generated while the machine booted from ROM daily. Empty is
+    the only acceptable result.
+    """
+    bases = defaultdict(set)
+    for net in net_pins_map:
+        for part in net.split("/"):
+            bases[part].add(net)
+    return {base: sorted(keys) for base, keys in bases.items() if len(keys) > 1}
+
+
+def unlanded_stubs(root, refs=None):
+    """{net: (ref, pin)} for nets with a single pin and nothing to beep against.
+
+    CW16 and CW19-23 are U23 outputs wired to nothing — burned reserve bits with
+    no consumer. They must not appear as wires to land (CLAUDE.md: "unwired bits
+    emit as plain cw16/cw19-cw23. That is correct, not a failed label"), but
+    dropping them without a word makes them indistinguishable from a wire the
+    tool forgot. So: reported, in their own bucket.
+    """
+    refs = set(refs or [])
+    out = {}
+    for net, ps in sorted(net_pins(root).items()):
+        if refs and not any(p[0] in refs for p in ps):
+            continue
+        if len(ps) == 1:
+            out[net] = (ps[0][0], ps[0][1])
+    return out
+
+
+def _pin_state(sheet_paths):
+    """{(ref, pin): (net, has_peers)} across the given sheets.
+
+    Unlike net_pins() this keeps GND/+5V/N$anon, because the classifier needs
+    them: a pin leaving "+5V" is a lifted strap, and whether an anonymous net
+    already had other pins on it is the ONLY thing separating a wire that was
+    always there from one that must now be landed.
+    """
+    from kicad_netlist import build_report
+    state = {}
+    for _token, path in sheet_paths:
+        for line in build_report(path)[0]:
+            m = _PIN_LINE.match(line)
+            if not m:
+                continue
+            ref, pin, net, peers = m.group(1), m.group(2), m.group(4), m.group(5)
+            peers = (peers or "").strip()
+            state[(ref, int(pin))] = (net, bool(peers) and peers != "(nothing)")
+    return state
+
+
+def _sheets_at_rev(root, rev, tmpdir):
+    """Materialise every sub-sheet as of `rev` into tmpdir; [(token, path)].
+
+    NOTHING IS STORED. `git show <rev>:<path>` is the baseline and build_report
+    takes a path, so the diff is old-parse vs new-parse. A checked-in baseline
+    would be one more generated artifact that drifts out of date.
+    """
+    import subprocess
+    d = os.path.dirname(root)
+    repo = subprocess.run(["git", "-C", d, "rev-parse", "--show-toplevel"],
+                          capture_output=True, text=True, check=True).stdout.strip()
+    reldir = os.path.relpath(d, repo)
+    listing = subprocess.run(
+        ["git", "-C", repo, "ls-tree", "--name-only", rev, f"{reldir}/"],
+        capture_output=True, text=True, check=True).stdout.split()
+    root_base = os.path.basename(root)
+    out = []
+    for rel in sorted(listing):
+        b = os.path.basename(rel)
+        if not b.endswith(".kicad_sch") or b.startswith("_") or b == root_base:
+            continue
+        blob = subprocess.run(["git", "-C", repo, "show", f"{rev}:{rel}"],
+                              capture_output=True, text=True, check=True).stdout
+        p = os.path.join(tmpdir, b)
+        with open(p, "w") as fh:
+            fh.write(blob)
+        out.append((b[:-len(".kicad_sch")], p))
+    return out
+
+
+def pin_net_diff(root, rev):
+    """Which pins changed net since `rev`, classified.
+
+    `--continuity <new refs>` filters to nets touching the NEW designators, so
+    it structurally cannot show an EXISTING pin whose net moved underneath it.
+    In the stack commit that blind spot hid U28.6 and U30.6 going +5V -> the
+    bank-select bits: two decoder ENABLES to lift on a working board, the worst
+    class under the block law, found only by diffing HEAD by hand.
+
+    Classification is the point. That commit produced 48 pin->net changes and
+    44 were annotation — U9/U15/U16/U17 gaining MCA0-11 labels on wires landed
+    long before. Unclassified, that is a 48-line scare sheet. Classified, it is
+    a 4-line work list.
+
+        new_pin    the pin did not exist at `rev`                U23.12
+        new_wire   was anonymous with NOTHING else on the net    U29.7 (was NC)
+        annotate   was anonymous but the net already had peers   U9.3
+        annotate   old label set is a subset of the new one      U24.20
+        copper     anything else — the pin genuinely moved       U28.6
+
+    The two anonymous rules cannot be one rule: U9.3 and U29.7 both read
+    "N$anon -> LABEL", and only the peer count tells ink from work.
+    """
+    import tempfile
+    new = _pin_state(_sheet_files(root))
+    with tempfile.TemporaryDirectory() as tmp:
+        old = _pin_state(_sheets_at_rev(root, rev, tmp))
+
+    buckets = {"copper": [], "new_wire": [], "new_pin": [], "annotate": []}
+    for key in sorted(set(old) | set(new)):
+        if key not in new:
+            continue                      # pin removed; not a landing question
+        new_net, _ = new[key]
+        if key not in old:
+            buckets["new_pin"].append((key[0], key[1], None, new_net))
+            continue
+        old_net, old_peers = old[key]
+        if old_net == new_net:
+            continue
+        if old_net.startswith("N$anon"):
+            which = "annotate" if old_peers else "new_wire"
+        elif set(old_net.split("/")) <= set(new_net.split("/")):
+            which = "annotate"
+        else:
+            which = "copper"
+        buckets[which].append((key[0], key[1], old_net, new_net))
+    return buckets
+
+
+def print_pin_net_diff(root, rev):
+    d = pin_net_diff(root, rev)
+    order = [("copper", "COPPER    existing pin moved -- WIRE TO CHANGE"),
+             ("new_wire", "NEW_WIRE  was unconnected -- WIRE TO LAND"),
+             ("new_pin", "NEW_PIN   chip is new since the rev"),
+             ("annotate", "ANNOTATE  label only, wire already there -- no copper")]
+    print(f"# pin->net diff vs {rev} -- "
+          + ", ".join(f"{k}={len(d[k])}" for k, _ in order))
+    for key, title in order:
+        if not d[key]:
+            continue
+        print(f"\n## {title}")
+        for ref, pin, old, new in d[key]:
+            print(f"  {ref}.{pin:<3d} {str(old):24s} -> {new}")
+
+
 def continuity_checklist(root, refs=None):
     """Per-net continuity walk: every net that leaves a sheet, with its pin
     endpoints, optionally narrowed to the nets touching `refs`.
@@ -1027,30 +1227,30 @@ def continuity_checklist(root, refs=None):
     `refs` narrows to newly-added chips: pass the new designators and you get
     exactly the stubs to land and beep, with the existing pins on each net
     shown as the other end to beep against.
+
+    THE CROSS-SHEET FILTER APPLIES ONLY TO THE DEFAULT REPORT. Without `refs`
+    the question is "which nets cross a board boundary" — that is what
+    dino_sheet_contracts.md consumes, and a sheet-internal net is noise in it.
+    With `refs` the question is different: "what do I land for these chips",
+    and a new chip's own on-board wiring is most of that work. Measured for the
+    twelve stack chips: 41 nets cross a sheet and 38 do not — 62 pins, over
+    half the job, invisible.
+
+    ~{TC1} is the case that forces it. Leave U63.15 -> U64.10 unlanded and the
+    SP counts correctly for 256 pushes before the low byte wraps; PROG_stack
+    passes clean and the bench learns nothing.
+
+    Single-pin nets are excluded either way — see unlanded_stubs().
     """
-    import collections
-    from kicad_netlist import build_report
-    import glob as _glob
     refs = set(refs or [])
-    pins = collections.defaultdict(list)
-    base = os.path.dirname(root)
-    for f in sorted(_glob.glob(os.path.join(base, "*.kicad_sch"))):
-        b = os.path.basename(f)
-        if b.startswith("_") or f == root:
-            continue
-        for line in build_report(f)[0]:
-            m = re.match(r"(\S+)\s+pin\s+(\d+)\s+(\S*)\s*net=(\S+)", line)
-            if not m:
-                continue
-            ref, pin, fn, net = m.groups()
-            if net.startswith("N$anon") or net in ("GND", "+5V"):
-                continue
-            pins[net].append((ref, int(pin), b[:-len(".kicad_sch")]))
+    pins = net_pins(root)
     out = []
     for net, ps in sorted(pins.items()):
-        if len({p[2] for p in ps}) < 2:
-            continue
         if refs and not any(p[0] in refs for p in ps):
+            continue
+        if len(ps) < 2:
+            continue
+        if not refs and len({p[2] for p in ps}) < 2:
             continue
         new = sorted((r, p) for r, p, _ in ps if r in refs)
         old = sorted((r, p) for r, p, _ in ps if r not in refs)
@@ -1070,6 +1270,14 @@ def print_continuity(root, refs=None):
         tag = "  ".join(f"{r}.{p}" for r, p in new) or "-"
         others = "  ".join(f"{r}.{p}" for r, p in old) or "-"
         print(f"{net:22s} NEW: {tag:28s} against: {others}")
+    stubs = unlanded_stubs(root, refs)
+    if stubs:
+        print()
+        print(f"# NO-CONNECT -- {len(stubs)} net(s) with a single pin. Nothing to")
+        print("# land and nothing to beep against. Listed so they are accounted")
+        print("# for: an unwired output is correct here, not a missing wire.")
+        for net, (ref, pin) in sorted(stubs.items()):
+            print(f"{net:22s} NC:  {ref}.{pin}")
 
 
 if __name__ == "__main__":
@@ -1088,6 +1296,10 @@ if __name__ == "__main__":
         i = sys.argv.index("--continuity")
         refs = [a for a in sys.argv[i + 1:] if not a.startswith("--")]
         print_continuity(root, refs)
+    if "--since" in sys.argv:
+        i = sys.argv.index("--since")
+        rest = [a for a in sys.argv[i + 1:] if not a.startswith("--")]
+        print_pin_net_diff(root, rest[0] if rest else "HEAD")
     if "--pinmap" in sys.argv:
         out = os.path.normpath(os.path.join(here, "..", "..", "tests",
                                             "dino_bringup", "src", "pinmap_gen.h"))

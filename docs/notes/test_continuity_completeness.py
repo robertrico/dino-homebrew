@@ -16,6 +16,7 @@ import os, sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import kicad_contracts
 from kicad_contracts import continuity_checklist
 
 ROOT = os.path.normpath(os.path.join(HERE, "..", "..",
@@ -105,7 +106,115 @@ def test_cw18_dst_bank_is_one_complete_checklist_row():
     _one_complete_row("CW18", BANK_SELECTS["CW18"])
 
 
+# --- the guard: no wire may go missing THIS WAY again --------------------
+#
+# M15/ROM_EN and CW17/CW18 were all one failure: a net whose label set differs
+# between sheets gets a different key per sheet, every key looks single-sheet,
+# and the cross-sheet filter drops the whole wire. Silent — a copper wire is
+# driven by no test and sampled by no test, which is why M15 sat that way while
+# the machine booted from ROM every day.
+#
+# Those three are fixed in the schematic. Nothing stops the fourth. This guard
+# is the thing that stops the fourth.
+#
+# alias_splits() is deliberately PURE (it takes the net->pins map, not a path)
+# so it can be tested against a synthetic split. A guard written only against
+# the live design would have passed on its first run and proved nothing.
+#
+# kicad_contracts is imported as a MODULE and the attribute is looked up inside
+# each test, so a missing function is one test failure — not an ImportError at
+# collection time, which would take the whole host suite down with it.
+
+
+def test_alias_splits_flags_one_label_carried_under_two_net_keys():
+    net_pins = {
+        # the real CW17 shape: bare on microcode, aliased on control_word
+        "CW17":             [("U23", 12, "microcode")],
+        "CW17/~{SRC_BANK}": [("U28", 6, "control_word"), ("U70", 4, "control_word")],
+        # a healthy cross-sheet net, must NOT be flagged
+        "MDR0":             [("U19", 18, "memory"), ("U25", 18, "mdr")],
+    }
+    splits = kicad_contracts.alias_splits(net_pins)
+    assert splits == {"CW17": ["CW17", "CW17/~{SRC_BANK}"]}, (
+        f"expected CW17 flagged as split across two keys, got {splits!r}")
+
+
+def test_alias_splits_is_quiet_when_every_sheet_agrees():
+    net_pins = {
+        "M15/ROM_EN": [("U59", 11, "mar"), ("U24", 20, "memory")],
+        "MDR0":       [("U19", 18, "memory"), ("U25", 18, "mdr")],
+    }
+    assert kicad_contracts.alias_splits(net_pins) == {}
+
+
+def test_no_alias_split_survives_anywhere_in_the_design():
+    splits = kicad_contracts.alias_splits(kicad_contracts.net_pins(ROOT))
+    assert not splits, (
+        "a net is carried under two different label sets, so its ends key "
+        "differently and the continuity checklist drops the wire:\n  " +
+        "\n  ".join(f"{base}: {keys}" for base, keys in sorted(splits.items())))
+
+
+# --- B: a new chip's OWN on-board wiring must be on the list -------------
+#
+# continuity_checklist drops any net confined to one sheet file. That is right
+# for the DEFAULT report -- "which nets cross a board boundary" is what
+# dino_sheet_contracts.md consumes. It is wrong once you pass `refs`, because
+# then the question is "what do I land for these chips", and a new chip's own
+# on-board wiring is most of that work.
+#
+# Measured 2026-08-11 for the twelve stack chips: 41 nets are on the list and
+# 38 are invisible -- 62 pins, barely half the job. ~{TC1} is the one that
+# justifies the change: drop U63.15 -> U64.10 and the SP counts correctly for
+# 256 pushes before the low byte wraps, which PROG_stack passes clean.
+#
+# Single-pin nets are NOT work. CW16 and CW19-23 are U23 outputs to nothing;
+# listing them as "land this" would be wrong, and CLAUDE.md warns specifically
+# against reading unwired CW bits as a failure. They belong in a separate
+# no-connect bucket -- accounted for, not silently absent.
+
+def test_refs_list_includes_a_new_chips_own_on_board_wiring():
+    rows = continuity_checklist(ROOT, ["U63", "U64"])
+    hits = [(net, new, old) for net, new, old in rows if net == "~{TC1}"]
+    assert hits, (
+        "~{TC1} is absent: U63.15 -> U64.10 is the '169 ripple-carry chain and "
+        "it lives entirely inside stack_pointer.kicad_sch, so the cross-sheet "
+        "filter hides it. Unlanded, SP counts fine for 256 pushes before the "
+        "low byte wraps — PROG_stack passes and the bench learns nothing.")
+    net, new, old = hits[0]
+    assert set(new) | set(old) == {("U63", 15), ("U64", 10)}, \
+        f"{net}: expected U63.15 + U64.10, got new={new} old={old}"
+
+
+def test_single_pin_stubs_are_bucketed_not_listed_as_work():
+    rows = continuity_checklist(ROOT, ["U23"])
+    listed = {net for net, _, _ in rows}
+    assert "CW16" not in listed, (
+        "CW16 is a U23 output wired to nothing — it must not appear as a wire "
+        "to land. Unwired CW bits are correct, not a failed label.")
+
+    stubs = kicad_contracts.unlanded_stubs(ROOT, ["U23"])
+    assert set(stubs) >= {"CW16", "CW19", "CW20", "CW21", "CW22", "CW23"}, (
+        f"the six unwired U23 outputs must be reported as no-connects so they "
+        f"are accounted for rather than silently missing; got {sorted(stubs)}")
+
+
+def test_default_report_is_unchanged_by_the_refs_relaxation():
+    # dino_sheet_contracts.md and every downstream consumer read this one.
+    # Relaxing the filter must not touch it.
+    rows = continuity_checklist(ROOT)
+    nets = {net for net, _, _ in rows}
+    assert "~{TC1}" not in nets, (
+        "the no-refs report must stay board-to-board only — ~{TC1} is "
+        "intra-sheet and must not leak into the default checklist")
+    assert "M15/ROM_EN" in nets, "the default report lost a real crossing"
+
+
 if __name__ == "__main__":
+    test_alias_splits_flags_one_label_carried_under_two_net_keys()
+    test_alias_splits_is_quiet_when_every_sheet_agrees()
+    test_no_alias_split_survives_anywhere_in_the_design()
+    print("ok  alias_splits: none in the design")
     test_m15_rom_en_is_one_complete_checklist_row()
     print(f"ok  M15/ROM_EN: all {len(M15_PINS)} pins on one checklist row")
     for _bit, _pins in BANK_SELECTS.items():

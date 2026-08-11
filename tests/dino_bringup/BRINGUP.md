@@ -83,9 +83,29 @@ a meter and a list that cannot be incomplete.
     python3 docs/notes/kicad_contracts.py --continuity \
         U23 U63 U64 U65 U66 U67 U68 U69 U70 U71 U72 U73
 
-39 nets. Each line names the NEW pins to land and the existing pins to beep
-them against. Beep each new pin against its own NEIGHBOURS too — a one-hole
-slip on an adjacent gate pin is this board's most common fault.
+**73 nets, 154 pins**, plus a NO-CONNECT footer of 6 (`CW16`, `CW19-23` — U23
+outputs with no consumer; correct, not missing wires). Each line names the NEW
+pins to land and the existing pins to beep them against. Beep each new pin
+against its own NEIGHBOURS too — a one-hole slip on an adjacent gate pin is
+this board's most common fault.
+
+That was 39/94 until 2026-08-11. The extra 34 nets are not new work; they are
+work the tool could not see — nets whose label set differed between sheets
+(`M15/ROM_EN`, `CW17`, `CW18`) and sheet-internal nets like `~{TC1}`,
+`~{SP_CE}` and `SP0-15`. Both blind spots are closed and regression-tested.
+
+Then run the change list, which the continuity walk cannot show — it filters
+to nets touching the NEW chips, so a pin on an EXISTING chip that moved
+underneath you never appears:
+
+    python3 docs/notes/kicad_contracts.py --since 2fe4d7c^
+
+    COPPER     U28.6  +5V -> CW17/~{SRC_BANK}    lift the strap
+               U30.6  +5V -> CW18/~{DST_BANK}    lift the strap
+    NEW_WIRE   U29.7  -> ~{SP_DOWN}    U29.10 -> ~{SP_UP}
+
+`U28.6` and `U30.6` are decoder ENABLES on a working board — the worst class
+under the block law, and the whole reason that flag exists.
 
 Two traps specific to these parts, both invisible to a round-trip test:
 

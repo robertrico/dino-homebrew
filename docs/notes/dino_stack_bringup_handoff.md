@@ -54,10 +54,43 @@ Test after each wiring step rather than at the end.
     python3 docs/notes/kicad_contracts.py --continuity \
         U23 U63 U64 U65 U66 U67 U68 U69 U70 U71 U72 U73
 
-39 nets. Each line names the NEW pins to land and the existing pins to beep
-against. Generated from the netlist so it cannot be incomplete — that is the
-MAR-lo lesson (two runs, nine wires, never landed, because the hand-written
-list could not contain a wire nobody knew about).
+**73 nets, 154 pins**, plus a NO-CONNECT footer of 6 (`CW16`, `CW19-23` — U23
+outputs with no consumer; correct, not missing wires). Each line names the NEW
+pins to land and the existing pins to beep against.
+
+That count was 39/94 until 2026-08-11 and the difference was not new work, it
+was work the tool could not see. Two separate blind spots, both now closed and
+both regression-tested in `docs/notes/test_continuity_completeness.py`:
+
+- A net whose label set differed between sheets got a different key per sheet,
+  so both ends looked sheet-local and the whole wire dropped. That is how
+  `M15/ROM_EN` — the ROM chip-enable — stayed off every checklist ever
+  generated, and it would have taken `CW17`/`CW18`, the bank-select bits the
+  entire expansion rides on, with it. Fixed in the schematic (`8127bbb`);
+  `alias_splits()` now fails a test if it recurs.
+- Sheet-internal nets were filtered out, which is right for the default
+  board-to-board report and wrong when you name specific chips. `~{TC1}` was
+  the cost: leave `U63.15 -> U64.10` unlanded and the SP counts correctly for
+  256 pushes before the low byte wraps — `PROG_stack` passes clean.
+
+**Also run the change list**, which the continuity walk structurally cannot
+show — it filters to nets touching the NEW chips, so a pin on an EXISTING chip
+that moved underneath you is invisible to it:
+
+    python3 docs/notes/kicad_contracts.py --since 2fe4d7c^
+
+    COPPER     U28.6  +5V -> CW17/~{SRC_BANK}    lift the strap
+               U30.6  +5V -> CW18/~{DST_BANK}    lift the strap
+    NEW_WIRE   U29.7  -> ~{SP_DOWN}    U29.10 -> ~{SP_UP}
+
+Six copper rows in total; the other four are `C22`/`C23` pin-1/2 swaps on
+0.1µF ceramic decoupling — non-polarized, nothing to do. The 39 `annotate`
+rows are `MCA0-11` labels added to wires landed long ago, which is why the
+classification matters: unclassified this is a 48-line scare sheet.
+
+Generated from the netlist so it cannot be incomplete — that is the MAR-lo
+lesson (two runs, nine wires, never landed, because the hand-written list
+could not contain a wire nobody knew about).
 
 Beep each new pin against its NEIGHBOURS too. Board OFF: in-circuit
 leg-to-leg on a live board reads clamp diodes.
