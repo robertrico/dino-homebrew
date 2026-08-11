@@ -143,7 +143,7 @@ def test_coverage_is_progressive():
     }
     seen = set()
     order = ["probe", "adda", "addb", "real", "in", "alu", "mem", "flow", "loop",
-             "mardisc", "pads", "stack"]
+             "mardisc", "pads", "sp", "stack"]
     check_eq(list(pg.COVERAGE), order, "images in ladder order")
     for tag in order:
         used = {s[0] for s in pg.COVERAGE[tag] if not isinstance(s, str)}
@@ -161,6 +161,29 @@ def test_coverage_is_progressive():
     # than decorative.
     check_eq(unreached, {"LDCI", "NOP"},
              "only LDCI (C is RET's scratch) and NOP go unexercised")
+
+
+def test_sp_image_gates_phase_b_without_call_ret():
+    """PROG_sp is the phase-B bench gate: the SP + RAM round trip proven by
+    the push/pop family ALONE. It must land the same answer signature as
+    PROG_stack -- 0x27 correct LIFO, 0xD9 names a wrong order -- while never
+    executing CALL or RET, because the PC-pushback '245s (U72/U73) are
+    phase-C hardware that does not exist yet when this image gates the bench.
+    PROG_sp passing while PROG_stack fails localises the fault to phase C."""
+    print("the sp image proves the SP without phase-C hardware")
+    if "sp" not in pg.COVERAGE:
+        check(False, "sp image exists in COVERAGE")
+        return
+    prog = pg.COVERAGE["sp"]
+    used = {s[0] for s in prog if not isinstance(s, str)}
+    check_eq(used & {"CALL", "RET"}, set(),
+             "no CALL/RET -- phase C hardware stays out of the gate")
+    check({"LXISP", "PUSHA", "PUSHB", "POPA", "POPB"} <= used,
+          "LXISP and all four push/pop variants present")
+    res = pg.simulate(prog)
+    check(res["halted"], "sp halts")
+    check_eq(res["out"], pg.STACK_EXPECT,
+             "OB matches PROG_stack's 0x27/0xD9 signature")
 
 
 def test_in_image_takes_its_operand_from_the_switches():
@@ -322,6 +345,7 @@ if __name__ == "__main__":
                test_coverage_is_progressive, test_alu_image_hits_every_sa_code,
                test_mem_image_round_trips_ram, test_flow_image_never_reaches_poison,
                test_loop_image_iterates_exactly,
+               test_sp_image_gates_phase_b_without_call_ret,
                test_milestone_is_a_real_carry_chain,
                test_in_image_takes_its_operand_from_the_switches,
                test_diag_triple_ambiguity_is_generated,

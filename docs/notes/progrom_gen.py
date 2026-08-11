@@ -540,6 +540,27 @@ STACK_PROGRAM = [
     ("RET",),
 ]
 
+# PROG_sp -- the PHASE-B bench gate: the SP + RAM round trip proven by the
+# push/pop family ALONE. Same bytes, same swapped-register pops, same answer
+# signature as PROG_stack (0x27 correct LIFO, 0xD9 names a wrong order) --
+# but no CALL/RET, because the PC-pushback '245s (U72/U73) are phase-C
+# hardware that does not exist yet when this image gates the bench. SUB runs
+# in the main line rather than inside a subroutine: reaching OUT here proves
+# nothing about the PC, and that is the point. PROG_sp passing while
+# PROG_stack fails localises the fault to the phase-C copper.
+SP_PROGRAM = [
+    ("LXISP", STACK_TOP & 0xFF, STACK_TOP >> 8),
+    ("LDAI", STACK_PUSH_A),
+    ("LDBI", STACK_PUSH_B),
+    ("PUSHA",),
+    ("PUSHB",),
+    ("POPA",),                          # LIFO: A <- what B pushed = 0x53
+    ("POPB",),                          #       B <- what A pushed = 0x2C
+    ("SUB",),                           # A = A - B = 0x27, main line
+    ("OUT",),
+    ("HALT",),
+]
+
 # ---- DIAGNOSTIC images for the 2026-08-03 PROG_flow failure -------------
 # PROG_flow ran as a 2-instruction loop forever: 4-state, 2-state, 66 ENDs, no
 # HALT, OB never written. Working backwards from that trace, the cycle can ONLY
@@ -740,6 +761,7 @@ COVERAGE = {
     "loop": LOOP_PROGRAM,
     "mardisc": MARDISC_PROGRAM,
     "pads": PADS_PROGRAM,
+    "sp": SP_PROGRAM,
     "stack": STACK_PROGRAM,
 }
 
