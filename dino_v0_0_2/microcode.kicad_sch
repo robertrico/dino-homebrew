@@ -6,10 +6,10 @@
 	(paper "USLetter")
 	(title_block
 		(title "Dino v0.0.3")
-		(date "2026-07-12")
-		(rev "v1.2.0")
+		(date "2026-08-23")
+		(rev "v1.3.0")
 		(comment 1 "The Microcode Decoder Module")
-		(comment 3 "An 8-bit computer with 16-bit addressing and 16-bit control words")
+		(comment 3 "An 8-bit computer with 16-bit addressing and 24-bit control words")
 		(comment 4 "A Turing-Complete 8-bit \"Computer\"")
 	)
 	(lib_symbols
@@ -7533,5 +7533,55 @@
 				)
 			)
 		)
+	)
+	(label "SA2"
+		(at 165.1 57.15 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "dd25bc7e-567a-5f08-8f92-bef59b26ea62")
+	)
+	(label "SA1"
+		(at 165.1 59.69 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "0a8922f6-7308-51d8-b7e6-08aa6678dc33")
+	)
+	(label "SA0"
+		(at 165.1 62.23 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "081c94a4-2ff2-5963-ad77-9c0e96dc6e98")
+	)
+	(label "PC_UP"
+		(at 165.1 67.31 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "f696579c-e38a-531a-8880-afc6e267e9d0")
+	)
+	(label "PC_MAR_MUX"
+		(at 165.1 69.85 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "f2d8024c-f142-505b-b355-676b7a22294a")
 	)
 )

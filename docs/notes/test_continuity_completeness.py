@@ -210,6 +210,77 @@ def test_default_report_is_unchanged_by_the_refs_relaxation():
     assert "M15/ROM_EN" in nets, "the default report lost a real crossing"
 
 
+
+# --- C: the stub bucket is a LEDGER, not a dumping ground ---------------
+#
+# Found 2026-08-23. unlanded_stubs() reports single-pin nets so they are
+# accounted for rather than silently absent -- but nothing asserted WHICH ones
+# are allowed to be there. Twenty were, and only six were legitimate.
+#
+# Five were real alias splits of the CW9/SA2 shape: microcode labelled the net
+# CWnn, the consumer sheet labelled it SA2/PC_UP/PC_MAR_MUX, the two names
+# share no substring, and alias_splits() -- which keys on a shared BASE label
+# -- is structurally unable to see it. Those five are now joined in the
+# schematic (sheet_ops/2026-08-23_alias_*.json).
+#
+# The remaining eight are a DIFFERENT and larger gap, recorded here rather
+# than fixed: net_pins() walks the ten child sheets and NOT the root sheet.
+# Root carries U6 (T-counter), U7/U8 (T decoders), U20 (divider), U27
+# (clock/reset), U56, U61, Y1, SW2 -- real parts on no child sheet. Their pins
+# can never reach a continuity checklist, and any child-sheet net terminating
+# on root is misreported as a no-connect. Whether net_pins() should scan root
+# is a design decision: it would add real parts to every checklist, which is
+# probably right, but it changes what --continuity prints for every module.
+#
+# Until then this test pins the exact set. A NEW stub fails immediately, which
+# is the whole point -- a tool's silence is not coverage.
+
+RESERVE_BITS = {"CW16", "CW19", "CW20", "CW21", "CW22", "CW23"}
+
+ROOT_CROSSING = {           # counterpart lives on the root sheet
+    "CW12":     "END      -> root U61.3",
+    "CW15":     "HALT     -> root U61.5/6",
+    "T0":       "root T-counter U6/U7/U8",
+    "T1":       "root T-counter U6/U7/U8",
+    "T2":       "root T-counter U6/U7/U8",
+    "T3":       "root T-counter U6/U7/U8",
+    "RESET":    "root U27.9",
+    "~{RESET}": "root U27.8",
+}
+
+
+def test_stub_bucket_contains_only_known_entries():
+    stubs = set(kicad_contracts.unlanded_stubs(ROOT))
+    allowed = RESERVE_BITS | set(ROOT_CROSSING)
+    unexpected = stubs - allowed
+    assert not unexpected, (
+        "new single-pin net(s) -- either a real alias split (the CW9/SA2 "
+        "shape, which alias_splits cannot see because the two labels share no "
+        "substring) or a wire that was never landed:\n  " +
+        "\n  ".join(sorted(unexpected)))
+    vanished = allowed - stubs
+    assert not vanished, (
+        "expected stub(s) are gone -- if that is a real fix, delete them from "
+        "RESERVE_BITS/ROOT_CROSSING so the ledger stays honest:\n  " +
+        "\n  ".join(sorted(vanished)))
+
+
+def test_the_five_repaired_aliases_stay_joined():
+    """Regression for 2026-08-23. Each of these was in the no-connect bucket
+    while being a live wire on a working machine."""
+    np = kicad_contracts.net_pins(ROOT)
+    for key, sheets in (("CW9/SA2", {"microcode", "alu"}),
+                        ("CW10/SA1", {"microcode", "alu"}),
+                        ("CW11/SA0", {"microcode", "alu"}),
+                        ("CW13/PC_UP", {"microcode", "program_counter"}),
+                        ("CW14/PC_MAR_MUX", {"microcode", "mar"})):
+        assert key in np, (
+            f"{key} is split again -- both sheets must declare the SAME label "
+            f"set or the checklist drops the wire")
+        got = {s for _, _, s in np[key]}
+        assert got == sheets, f"{key}: expected {sheets}, got {got}"
+
+
 if __name__ == "__main__":
     test_alias_splits_flags_one_label_carried_under_two_net_keys()
     test_alias_splits_is_quiet_when_every_sheet_agrees()
@@ -220,3 +291,8 @@ if __name__ == "__main__":
     for _bit, _pins in BANK_SELECTS.items():
         _one_complete_row(_bit, _pins)
         print(f"ok  {_bit}: all {len(_pins)} pins on one checklist row")
+    test_stub_bucket_contains_only_known_entries()
+    print(f"ok  stub bucket: {len(RESERVE_BITS)} reserve + "
+          f"{len(ROOT_CROSSING)} root-crossing, nothing else")
+    test_the_five_repaired_aliases_stay_joined()
+    print("ok  the five 2026-08-23 alias repairs are still joined")

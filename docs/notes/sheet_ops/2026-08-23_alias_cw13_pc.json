@@ -1,0 +1,8 @@
+{
+ "_comment": "ALIAS JOIN, program_counter half. Adds CW13 to the PC_UP net. PC_UP's label at (86.36, 24.13) has no horizontal run at that y, so the new label is placed at the SAME point -- guaranteed to attach to the same node. They will overlap visually; drag apart in KiCad when convenient.",
+ "sheet": "dino_v0_0_2/program_counter.kicad_sch",
+ "applied_marker": "CW13",
+ "labels": [
+  {"at": [86.36, 24.13], "text": "CW13", "dir": "left"}
+ ]
+}

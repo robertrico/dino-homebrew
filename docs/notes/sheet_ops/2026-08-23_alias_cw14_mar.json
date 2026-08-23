@@ -1,0 +1,8 @@
+{
+ "_comment": "ALIAS JOIN, mar half. Adds CW14 to the PC_MAR_MUX net. x=53.34 lies on the existing run 50.8-55.88 at y=99.06.",
+ "sheet": "dino_v0_0_2/mar.kicad_sch",
+ "applied_marker": "CW14",
+ "labels": [
+  {"at": [53.34, 99.06], "text": "CW14", "dir": "right"}
+ ]
+}

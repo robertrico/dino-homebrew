@@ -7803,4 +7803,14 @@
 			)
 		)
 	)
+	(label "CW14"
+		(at 53.34 99.06 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "1e087f5e-1f87-522b-8ff4-564e68785859")
+	)
 )

@@ -1,0 +1,9 @@
+{
+ "_comment": "ALIAS JOIN, microcode half, second pass. CW13 is the program counter's PC_UP and CW14 is the MAR sheet's PC_MAR_MUX; each was labelled only as CWnn here. x=165.1 lies on both existing runs (CW13 160.02-168.91, CW14 161.29-168.91). Companions: 2026-08-23_alias_cw13_pc.json, 2026-08-23_alias_cw14_mar.json. CW12/CW15/T0-3/RESET are NOT split -- their counterparts are on the ROOT sheet, which net_pins() does not scan; see the root-sheet gap note.",
+ "sheet": "dino_v0_0_2/microcode.kicad_sch",
+ "applied_marker": "PC_MAR_MUX",
+ "labels": [
+  {"at": [165.1, 67.31], "text": "PC_UP", "dir": "left"},
+  {"at": [165.1, 69.85], "text": "PC_MAR_MUX", "dir": "left"}
+ ]
+}

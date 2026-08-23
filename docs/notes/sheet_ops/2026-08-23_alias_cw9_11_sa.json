@@ -1,0 +1,10 @@
+{
+ "_comment": "ALIAS JOIN, microcode half. CW9/CW10/CW11 carry the ALU's function-select and were labelled ONLY as CWnn here and ONLY as SA2/SA1/SA0 on the alu sheet. Two label sets = two net keys = both look sheet-local = continuity_checklist drops the wire (the M15/ROM_EN failure). CLAUDE.md: 'Every sheet touching an aliased net must declare the SAME label set.' Labels land at x=165.1, which lies on all three existing horizontal runs (CW9 154.94-168.91, CW10 156.21-168.91, CW11 157.48-168.91). Companion: 2026-08-23_alias_cw9_11_sa_alu.json. NOTE the CWnn alias must sort AFTER CWnn so the bus keeps its name -- S sorts after C.",
+ "sheet": "dino_v0_0_2/microcode.kicad_sch",
+ "applied_marker": "SA2",
+ "labels": [
+  {"at": [165.1, 57.15], "text": "SA2", "dir": "left"},
+  {"at": [165.1, 59.69], "text": "SA1", "dir": "left"},
+  {"at": [165.1, 62.23], "text": "SA0", "dir": "left"}
+ ]
+}

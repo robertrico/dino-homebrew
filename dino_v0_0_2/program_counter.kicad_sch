@@ -10576,4 +10576,14 @@
 			)
 		)
 	)
+	(label "CW13"
+		(at 86.36 24.13 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "6371b158-7f5d-5c41-980b-04188f8a709b")
+	)
 )

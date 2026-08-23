@@ -1,0 +1,10 @@
+{
+ "_comment": "ALIAS JOIN, alu half. Adds CW9/CW10/CW11 to the SA2/SA1/SA0 nets so both sheets declare the same label set. x=142.24 lies on all three existing runs (140.97-144.78). Companion: 2026-08-23_alias_cw9_11_sa.json.",
+ "sheet": "dino_v0_0_2/alu.kicad_sch",
+ "applied_marker": "CW9",
+ "labels": [
+  {"at": [142.24, 119.38], "text": "CW9", "dir": "left"},
+  {"at": [142.24, 116.84], "text": "CW10", "dir": "left"},
+  {"at": [142.24, 114.3], "text": "CW11", "dir": "left"}
+ ]
+}
