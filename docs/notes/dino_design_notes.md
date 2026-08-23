@@ -1,7 +1,9 @@
 # DINO design notes: deferred decisions and settled philosophy
 
-Running notes for decisions that are settled in principle but not yet (or not ever)
-implemented in hardware. Companion to the constitution and the three build docs.
+Running notes for decisions that are settled in principle but not yet (or not
+ever) implemented in hardware — kept so the rejected alternatives never get
+re-litigated from scratch. Some entries here HAVE since been built; each says
+so. Companion to `dino_alu_74f382_design.md` and, out of tree, `.git/sdd/`.
 
 ---
 

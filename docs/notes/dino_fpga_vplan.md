@@ -5,11 +5,11 @@
 (`~/Development/intel-8008-vhdl/docs/VPLAN.md`). Every row below maps a
 specification-derived claim (`CLAUDE.md`'s "machine invariant" table, the
 FPGA-port paragraph, and the 2026-08-04 full-ISA state section;
-`tests/dino_bringup/BRINGUP.md`'s "Machine invariant: EVERYTHING COMMITS
+`.git/sdd/BRINGUP.md`'s "Machine invariant: EVERYTHING COMMITS
 ON CLK LOW"; `docs/notes/microcode_gen.py`'s `check_word`/`check_table`
 rules) onto the real artifact inventory (`fpga/ttl/`, `fpga/sim/`,
 `fpga/postsynth/`, `fpga/synth/`, `fpga/Makefile`, `docs/notes/test_*.py`,
-`fpga/BRINGUP_FPGA.md`) — a row is COVERED only if some existing artifact
+`.git/sdd/BRINGUP_FPGA.md`) — a row is COVERED only if some existing artifact
 would **FAIL** were the behavior wrong. Where a citation names a specific
 function (`path::name`), `test_vplan.py` mechanically verifies that
 function exists in that file — a citation is no longer just a

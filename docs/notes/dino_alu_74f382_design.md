@@ -1,10 +1,16 @@
 # DINO ALU hardware: 2x 74F382 design notes
 
-Machine: DINO v0.0.3, new sheet (alu.kicad_sch placeholder exists on the root sheet)
-Status: architecture CONVERGED 2026-07-13 — shadow-register operands (Rico's
-design). Not yet drawn. Companions: dino_121_elimination_plan.md (clock
-discipline), dino_register_conversion.md (register boards + shadow
-invariant), dino_design_notes.md (operand architecture decision record).
+Machine: DINO v0.0.3, `dino_v0_0_2/alu.kicad_sch`
+Status: **BUILT AND BENCH-PROVEN.** Architecture converged 2026-07-13
+(shadow-register operands, Rico's design); drawn, wired, and all eight SA
+codes executed on hardware 2026-08-04 via `PROG_alu` (OB 0x39). This document
+is the DESIGN RECORD for how it got that way, kept so the rejected
+alternatives never get re-litigated from scratch.
+
+Companion still in tree: `dino_design_notes.md` (the operand-architecture
+decision record). `dino_121_elimination_plan.md` and
+`dino_register_conversion.md` are process documents and live out of tree in
+`.git/sdd/`.
 
 ---
 
