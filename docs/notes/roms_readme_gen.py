@@ -47,6 +47,21 @@ NOTES = {
                "the SECOND value. The question mem cannot ask.",
     "pads": "the PC's LANDING ADDRESS as the observable. Every 4-byte slot "
             "is LDAI <own address>; OUT; HALT.",
+    "sp1": "ONE push, ONE pop -- the fewest moving parts that reach the "
+           "stack at all. BLIND TO A FROZEN SP by construction: push and pop "
+           "use the same cell, so 0x2C comes back whether or not SP ever "
+           "moved. It reported a green machine for most of 2026-08-24. Read "
+           "it only alongside sp2.",
+    "sp2": "the ADDRESS as the observable, not the data. Plants a sentinel "
+           "in the cell push #2 must reach, then reads that cell by ABSOLUTE "
+           "address so the readback cannot inherit the fault under test. "
+           "0x53 = SP moved. 0xA5 = SP never moved and the sentinel "
+           "survived. The first image that is not blind to a frozen SP.",
+    "sp3": "WHICH cell did the pop read. A different sentinel in each "
+           "neighbour: 0x2C correct, 0x11 read one BELOW (increment never "
+           "took before the MAR copy), 0x22 read one ABOVE (increment landed "
+           "twice). 0x22 is what a ringing CLK edge at U63.2 produced before "
+           "the 100R series termination went in.",
     "sp": "SP alone -- LXISP and the counter, without CALL/RET. The phase-B "
           "bench gate.",
     "stack": "LXISP, PUSH, POP. Pushes two DIFFERENT bytes and pops them "
@@ -200,7 +215,9 @@ def build():
             L.append(f"        {line}")
 
     cyl = pr.build_image(pr.CYLON_PROGRAM)
-    L += ["", "### Soak image — not a coverage image", "",
+    spc = pr.build_image(pr.SPCYLON_PROGRAM)
+    swd = pr.build_image(pr.SWDEMO_PROGRAM)
+    L += ["", "### Soak images — not coverage images", "",
           f"    PROG_cylon.bin   0x{pr.crc16(cyl):04X}  "
           f"{len(pr.assemble(pr.CYLON_PROGRAM))} bytes, NEVER HALTS",
           f"    {len(pr.CYLON_FRAMES)} frames, ~"
@@ -209,6 +226,49 @@ def build():
           "    never halts. Exercises LDAI/LDA/STA/SUB/JNZ both arms/OUT/JMP",
           "    and two RAM cells continuously — the best transport check the",
           "    machine has, and it needs no rig, no reset and no ROM swap.",
+          "",
+          f"    PROG_spcylon.bin 0x{pr.crc16(spc):04X}  "
+          f"{len(pr.assemble(pr.SPCYLON_PROGRAM))} bytes, NEVER HALTS",
+          "    The same sweep, but the frame table IS the stack: the",
+          "    outbound half PUSHes each frame as it shows it and the",
+          "    return half POPs them back, so LIFO order is the visible",
+          "    sweep direction. Ahead of it, every sweep, three boundary",
+          "    probes cross one ripple-carry link each:",
+          ""] + [
+          f"        LXISP 0x{base:04X}  ->  frozen OB 0x{fault:02X}  "
+          f"= {name} is dead"
+          for (base, fault), name in zip(
+              pr.SPCY_PROBES,
+              ("U63.15 -> U64.10", "U64.15 -> U65.10", "U65.15 -> U66.10"))
+          ] + [
+          "",
+          "    Dot sweeping = healthy. Dot frozen on 0xE1/0xE2/0xE3 = that",
+          "    carry link. Dot scrambled or walking backwards = pop order",
+          "    or a stuck direction pin. PHASE B hardware only (U63-U69);",
+          "    no CALL/RET, so it does not wait on U72/U73.",
+          "",
+          f"    PROG_swdemo.bin  0x{pr.crc16(swd):04X}  "
+          f"{len(pr.assemble(pr.SWDEMO_PROGRAM))} bytes, NEVER HALTS",
+          "    THE FIRST IMAGE THAT ANSWERS TO YOU WHILE IT RUNS. SW1 bit 0",
+          "    is read every pass, INSIDE the loop, so flipping the switch",
+          "    changes the display at the end of the current pass -- no",
+          "    reset, no reburn. Both arms are stack-driven and both balance",
+          "    their pushes and pops, so SP returns to where LXISP put it",
+          "    every time round.",
+          "",
+          "        switch 0 OPEN    bit reads 1  ->  cylon sweep",
+          f"        switch 0 CLOSED  bit reads 0  ->  0x{pr.SWDEMO_BLINK_B:02X}"
+          f" / 0x{pr.SWDEMO_BLINK_A:02X} interleaved blink",
+          "",
+          "    SW1 IS ACTIVE LOW -- R17-R24 pull IS0-7 up and the switch",
+          "    pulls DOWN, so a CLOSED switch reads 0. Bits 1-7 are masked",
+          f"    off (LDAI 0x{pr.SWDEMO_MASK:02X}; IN; AND), so the other seven",
+          "    switches stay free.",
+          "",
+          f"    Blink shows 0x{pr.SWDEMO_BLINK_B:02X} FIRST even though"
+          f" 0x{pr.SWDEMO_BLINK_A:02X} is pushed first --",
+          "    that is LIFO, visible with two frames. Reversed order names a",
+          "    stack returning pushes in the order they went in.",
           PROSE_SW1.rstrip(), PROSE_TAIL.rstrip()]
     return "\n".join(L).rstrip() + "\n"
 

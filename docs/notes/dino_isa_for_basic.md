@@ -156,6 +156,31 @@ relational operators are all `CMP` + a conditional branch.
 Right shift has no hardware path — the '382 does not shift and there is no
 shifter. Divide-by-two must be a software loop or a table.
 
+### 2.6 PUSHC / POPC — giving C back to the programmer
+
+    PUSHC    _PUSH("REG_C")     0x65
+    POPC     _POP("REG_C")      0x66
+
+`RET` parks the return address's LO byte in `REG_C`, so **every return
+clobbers C**. Combined with C being write-only (2.2), that makes C unusable
+rather than merely reserved: a program cannot save it because no instruction
+can read it.
+
+Two rows fix it. `SRC["REG_C"] = 0b101` on `U28` and `DST["REG_C"] = 0b011`
+on `U30` have both decoded since the machine was first burned; the stack's
+`SP_UP`/`SP_DOWN` MISC codes already exist, which matters because MISC is now
+FULL. So this needs no bank-1 code, no MISC code, and no schematic change —
+it is phase-B hardware only and works the day the SP counters land, before
+`U72`/`U73`.
+
+Then the ordinary caller-save convention works:
+
+    PUSHC ; CALL sub ; POPC
+
+**Cost is a three-ROM burn**, since a new opcode writes rows in every byte of
+the 24-bit word. Sequence it AFTER phase C so `CALL`/`RET` are proven and the
+reburn happens once rather than twice.
+
 ---
 
 ## 3. TIER 1 — CANCELLED if the third EEPROM is on the roadmap
@@ -345,6 +370,9 @@ hardware on the critical path.
 6. In the wide word, in priority order: a microcode CIN bit (`ADC`/`SBB`), a
    real condition-code field (every flag, not two crammed codes), then
    `SRC=PC_LO/PC_HI` for `CALL`/`RET`.
+7. `PUSHC`/`POPC` (§2.6) once phase C is proven — two rows, no schematic
+   change, and it returns C to general use instead of leaving it as `RET`'s
+   scratch.
 
 Note for step 5: each new board gets a MODULE test first, then rejoins the
 block ladder — the same law applies. A stack pointer is a new member of

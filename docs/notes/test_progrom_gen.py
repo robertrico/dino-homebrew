@@ -206,5 +206,93 @@ class TestExpectedRows(unittest.TestCase):
         self.assertIn("0x40", r.stdout)   # pads
 
 
+class TestSpCylonProbes(unittest.TestCase):
+    """PROG_spcylon — the stack soak. Assertions come from the DESIGN
+    CONTRACT, not from the generator: each probe must cross exactly the
+    carry boundary it claims to test, and a healthy machine must never
+    reach a HALT."""
+
+    def _crossings(self, base):
+        """(tc1, tc2, tc3) — which ripple links the probe's burst forces.
+
+        SP is `base` at LXISP, `base-2` after the two sentinels, and
+        `base-BURST-2` at the bottom of the burst. A link carries when the
+        descent crosses a multiple of 16 / 256 / 4096."""
+        hi, lo = base - 2, base - 2 - pg.SPCY_BURST
+        return tuple(hi // m != lo // m for m in (16, 256, 4096))
+
+    def test_probe_bases_isolate_one_more_link_each(self):
+        """P1 needs ~TC1 only, P2 adds ~TC2, P3 adds ~TC3 — so the FIRST
+        fault code that appears names the deepest link still working. A
+        base that crosses more than it claims destroys that property."""
+        want = [(True, False, False),
+                (True, True, False),
+                (True, True, True)]
+        self.assertEqual(len(pg.SPCY_PROBES), 3)
+        for (base, _fault), expect in zip(pg.SPCY_PROBES, want):
+            self.assertEqual(self._crossings(base), expect,
+                             f"probe at 0x{base:04X} crosses the wrong set")
+
+    def test_probe_fault_codes_are_distinct(self):
+        codes = [f for _b, f in pg.SPCY_PROBES]
+        self.assertEqual(len(set(codes)), len(codes))
+        for c in codes:
+            self.assertNotIn(c, pg.CYLON_FRAMES,
+                             "a fault code that is also a frame is invisible")
+
+    def test_probe_regions_do_not_overlap(self):
+        """Each probe writes base .. base-BURST-1; the sweep writes its own
+        8 frames. An overlap would let one probe corrupt another's sentinel
+        and report a carry fault that is really an address collision."""
+        spans = [range(b - pg.SPCY_BURST - 1, b + 1)
+                 for b, _f in pg.SPCY_PROBES]
+        spans.append(range(pg.SPCY_STACK - len(pg.CYLON_FRAMES),
+                           pg.SPCY_STACK + 1))
+        for i, a in enumerate(spans):
+            for b in spans[i + 1:]:
+                self.assertFalse(set(a) & set(b), "probe/sweep regions overlap")
+
+    def test_never_halts_on_a_healthy_machine(self):
+        """The ONLY HALT in the image is the fault path. So `halted` is the
+        whole assertion: a correct stack model runs forever."""
+        prog = pg._build_spcylon(outer_n=1, inner_n=2)
+        r = pg.simulate(prog, max_steps=40000)
+        self.assertFalse(r["halted"],
+                         f"reached a fault HALT, OB=0x{r['out']:02X}")
+        self.assertGreater(r["ends"], 0)
+
+    def test_sweep_emits_the_cylon_pattern(self):
+        """The return half is DATA off the stack, not immediates. If LIFO
+        order is modelled wrong the back half comes out scrambled, and this
+        is the assertion that names it."""
+        prog = pg._build_spcylon(outer_n=1, inner_n=2)
+        r = pg.simulate(prog, max_steps=40000)
+        outs = r["outs"]
+        self.assertGreaterEqual(len(outs), len(pg.CYLON_FRAMES))
+        self.assertEqual(outs[:len(pg.CYLON_FRAMES)], list(pg.CYLON_FRAMES))
+
+    def test_stack_traffic_actually_happened(self):
+        """A build that silently dropped the pushes would still sweep."""
+        prog = pg._build_spcylon(outer_n=1, inner_n=2)
+        r = pg.simulate(prog, max_steps=40000)
+        self.assertGreaterEqual(r["ram_writes"],
+                                len(pg.CYLON_FRAMES) + pg.SPCY_BURST)
+
+    def test_lxisp_runs_before_any_stack_access(self):
+        """A '169 has no clear, so SP is random at power-up. The oracle
+        starts at SP_POISON, which is OUTSIDE RAM — an access before LXISP
+        writes nowhere and reads program bytes."""
+        prog = pg._build_spcylon(outer_n=1, inner_n=2)
+        first = next(s for s in prog if not isinstance(s, str))
+        self.assertEqual(first[0], "LXISP")
+
+    def test_image_is_built_and_never_registered_as_coverage(self):
+        """It never halts, so it has no (OB, END) fingerprint for the
+        ladder to match — same reason cylon is excluded."""
+        img = pg.build_image(pg.SPCYLON_PROGRAM)
+        self.assertEqual(len(img), SIZE)
+        self.assertNotIn("spcylon", pg.COVERAGE)
+
+
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)

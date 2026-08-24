@@ -44,8 +44,14 @@ on hardware 2026-08-04; every coverage ROM produced its expected `OB`:
     mardisc 0x6B   pads 0x40   mem 0xC5   flow 0x39
     alu     0x39   loop 0x15   PROG 0x4D  cylon (never halts, soak image)
 
+The stack images joined them 2026-08-24:
+
+    sp1 0x2C   sp2 0x53   sp3 0x2C   sp 0x27   spcylon (sweeps, soak image)
+    swdemo (never halts, SW1 bit 0 picks the arm)
+
 `LDCI` and `NOP` have not executed and are unreachable by design — C is
-`RET`'s scratch register.
+`RET`'s scratch register. `CALL` and `RET` have not executed either, but for
+a different reason: U72/U73 are not built. Say which kind of unrun it is.
 
 The milestone image is `LDAI 0xFF; OUT; LDAI 0x2F; LDBI 0x1E; ADD; OUT;
 HALT` → `OB = 0x4D`. The leading `LDAI 0xFF; OUT` poisons OB deliberately:
@@ -57,18 +63,39 @@ confirmed at SW1=0x01 → 0x30 and SW1=0x1E → 0x4D.
 Y1 seated. "Works single-stepped, fails free-run" was watched for and never
 appeared.
 
-**FACT — the stack and third EEPROM exist in schematic and simulation only,
-as of 2026-08-11.** Twelve chips, seven instructions, nothing on silicon:
+**FACT — PHASE B IS ON SILICON as of 2026-08-24.** The stack pointer, both
+bank-1 decoders and the third EEPROM are bench-proven. `PROG_sp` returns
+`0x27` and `PROG_spcylon` sweeps continuously, which means all three `~TC`
+ripple links carry:
 
-    U23         AT28C64B   third microcode EEPROM, CW16-23     microcode
-    U70 / U71   '138       SRC / DST bank-1 decoders           control_word
-    U63-U66     '169       16-bit stack pointer                stack_pointer
-    U67 / U68   '245       SP hi/lo readback -> MDR            stack_pointer
-    U69         '08        ~{SP_CE} = AND(~SP_UP, ~SP_DOWN)    stack_pointer
+    U23         AT28C64B   third microcode EEPROM, CW16-23     BENCH-PROVEN
+    U70 / U71   '138       SRC / DST bank-1 decoders           BENCH-PROVEN
+    U63-U66     '169       16-bit stack pointer                BENCH-PROVEN
+    U67 / U68   '245       SP hi/lo readback -> MDR            BENCH-PROVEN
+    U69         '08        ~{SP_CE} = AND(~SP_UP, ~SP_DOWN)    BENCH-PROVEN
+
+    LXISP 0x14   PUSHA 0x61   POPA 0x62   PUSHB 0x63   POPB 0x64
+
+**FACT — phase C is still schematic and simulation only.** Two chips, two
+instructions, nothing on silicon:
+
     U72 / U73   '245       PC0-7 / PC8-15 -> MDR               mdr
 
-    LXISP 0x14   CALL 0x33   RET 0x34
-    PUSHA 0x61   POPA 0x62   PUSHB 0x63   POPB 0x64
+    CALL 0x33   RET 0x34
+
+`PROG_stack` is the phase-C gate: same `0x27`/`0xD9` signature as `PROG_sp`,
+but it executes `CALL`/`RET`. `PROG_sp` passing while `PROG_stack` fails
+localises the fault to U72/U73.
+
+**FACT — a 100Ω series resistor sits in the SP board's CLK branch**, fitted
+2026-08-24, source end, that branch only. It is NOT in `dino_v0_0_2/` yet.
+Without it the '169s double-clock: `PROG_sp3` returns `0x22` instead of
+`0x2C`, deterministically. Full measurement and the PCB consequences are in
+`.git/sdd/CLOCK_DISTRIBUTION.md`. **Inference:** the SP is the first thing in
+this machine to put raw `CLK` on a clock pin at the end of a stub on another
+board — every other state element takes CLK through a NOR or NAND first, and
+a gate is a de-facto regenerator. Nothing before the stack could have exposed
+this.
 
 `make -C fpga verify` is green in ~148s: host suite 147/147, 20-seed
 differential fuzz, cocotb ladder 40/40 (19 TTL models + 10 sheet models + 2
@@ -259,6 +286,27 @@ not because they are principles.
 - **Mirror-witness.** A write-then-read through the same bus bank is
   permutation-blind. Every module needs one asymmetric path. Caught the
   flipped PORTF→MDR bank, which every round-trip test passed.
+- **A round trip through ONE address is blind in the ADDRESS.** Mirror-witness
+  again, pointed at the pointer rather than the data. `PROG_sp1` pushes to
+  `[SP]` and pops from `[SP]`; if SP never counts, both use the same cell and
+  `0x2C` round-trips perfectly through a stack pointer wired to nothing. It
+  reported a green machine for most of 2026-08-24 while every bank-1 decoder
+  output was dead. `PROG_sp`'s `0x00` is no better — a dead REG_B, a dead SUB
+  and a dead POP all produce it, so it names nothing. `PROG_sp2` plants a
+  sentinel in the cell push #2 must reach and reads it back by ABSOLUTE
+  address; `PROG_sp3` puts a different sentinel in each neighbour so an
+  off-by-one names its direction. **Any new pointer needs an image that reads
+  a cell only a MOVED pointer reaches, and reads it by a path that cannot
+  inherit the fault under test.**
+- **The instrument can BE the cure.** Probing `CLK` at `U63.2` added ~10-15pF,
+  damped a ringing edge, and made the fault vanish — so every attempt to
+  observe it suppressed it, and at 20MS/s the runt was under one sample
+  anyway. Found only by A/B-ing the probe itself: on `0x2C` every run, off
+  `0x22` every run. **When probing changes the answer, that is the
+  measurement, not an annoyance.** Stop reading the trace and start
+  characterising the probe's own effect. Corollary: prefer an OB-only ROM
+  witness over a probe on this machine, because a ROM cannot perturb the
+  circuit it is testing.
 - **Phantom power.** Rig lines feed DUT VCC through input clamp diodes, so an
   unpowered CMOS board reads fine — memory once scored 7/10 with the supply
   off. This also means any level measured with the rig attached is suspect.
@@ -334,6 +382,12 @@ in-tree reference to one of them (BRINGUP.md, dino_mar_lo_investigation.md,
 dino_hardware_growth_plan.md, …) resolves to `.git/sdd/<name>`. The repo
 keeps design and reference docs plus everything generated.
 
+    .git/sdd/CLOCK_DISTRIBUTION.md           the 100R fix, and the PCB
+                                             consequence — read before any
+                                             board gets its own clock branch
+    .git/sdd/SP_BEEP.md                      the phase-B landing record
+    .git/sdd/SP_DEBUG.md                     the LA capture plan (phase B,
+                                             now historical)
     .git/sdd/dino_stack_bringup_handoff.md   START HERE for stack bring-up
     .git/sdd/BRINGUP.md                      bench procedure, per stage
     .git/sdd/README.md                       progress checkboxes

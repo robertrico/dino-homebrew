@@ -239,9 +239,13 @@ def simulate(program, max_steps=100000, switches=0x00):
     mdr = 0
     out = None
     flag_z = 0
+    # `outs` is the ORDERED history of what OB showed, not just the last
+    # value. A never-halting image has no final answer, so the only way to
+    # assert one is to compare the SEQUENCE -- which is exactly what a
+    # stack-driven display makes meaningful.
     st = {"ram_writes": 0, "ram_reads": 0, "branches_taken": 0,
           "branches_not_taken": 0, "hit_poison": False, "stored": None,
-          "steps": 0, "ends": 0}
+          "steps": 0, "ends": 0, "outs": []}
 
     def rd(a):
         if a < SIZE:
@@ -367,6 +371,7 @@ def simulate(program, max_steps=100000, switches=0x00):
                     st["branches_not_taken"] += 1
             elif misc == "REG_OUT_LOAD":
                 out = A
+                st["outs"].append(A)
             elif misc == "SP_UP":
                 sp = (sp + 1) & 0xFFFF
             elif misc == "SP_DOWN":
@@ -548,6 +553,28 @@ STACK_PROGRAM = [
 # in the main line rather than inside a subroutine: reaching OUT here proves
 # nothing about the PC, and that is the point. PROG_sp passing while
 # PROG_stack fails localises the fault to the phase-C copper.
+# PROG_sp1 -- ONE push, ONE pop, and nothing else. The rung between
+# PROG_probe (no stack at all) and PROG_sp (two pushes, swapped pops, a
+# subtract and the ~TC chain). When PROG_sp fails there is no way to tell
+# which of those parts broke; this image removes all of them.
+#
+# It proves exactly four things and deliberately nothing more: SP -> MAR
+# through U67/U68, the RAM write at [SP], one SP_DOWN, one SP_UP, and the
+# read back. No LIFO ordering -- a single value cannot be out of order --
+# and no carry boundary, since SP moves by one from 0x80FF.
+#
+# 0x2C bit-reverses to 0x34, so a flipped OB ribbon still names itself.
+# 0xFF means the read found a bus nobody drove; 0x00 means the pop read a
+# cell the push never wrote.
+SP1_PROGRAM = [
+    ("LXISP", STACK_TOP & 0xFF, STACK_TOP >> 8),
+    ("LDAI", STACK_PUSH_A),             # 0x2C
+    ("PUSHA",),                         # [0x80FF] = 0x2C, SP -> 0x80FE
+    ("POPA",),                          # SP -> 0x80FF, A <- 0x2C
+    ("OUT",),
+    ("HALT",),
+]
+
 SP_PROGRAM = [
     ("LXISP", STACK_TOP & 0xFF, STACK_TOP >> 8),
     ("LDAI", STACK_PUSH_A),
@@ -559,6 +586,61 @@ SP_PROGRAM = [
     ("SUB",),                           # A = A - B = 0x27, main line
     ("OUT",),
     ("HALT",),
+]
+
+# ---- sp2 / sp3 — THE IMAGES THAT ARE NOT BLIND TO A FROZEN SP ----------
+# Both earned their place on 2026-08-24, when PROG_sp1 PASSED on a machine
+# whose stack pointer had never moved at all.
+#
+# THE BLINDNESS. PROG_sp1 pushes to [SP] and pops from [SP]. If SP never
+# counts, the push and the pop use the SAME cell and the byte round-trips
+# perfectly. 0x2C comes back either way. PROG_sp1 cannot tell a working
+# stack from a stack pointer wired to nothing, and for most of that session
+# it reported a green machine while every bank-1 decoder output was dead.
+#
+# That is the mirror-witness rule pointed at the SP: a round trip through
+# one address is permutation-blind in the address, not just in the data.
+#
+# Neither image is redundant with PROG_sp. PROG_sp answers 0x00 when SP is
+# frozen -- correct, but 0x00 is also what a dead REG_B, a dead SUB or a
+# dead POP produces, so it names nothing. These two name the address.
+
+SP_SENTINEL_BELOW = 0xA5        # planted where push #2 must land
+SP_SENTINEL_ABOVE = 0x22        # planted one cell ABOVE the stack top
+SP_SENTINEL_AT = 0x11           # planted where a pre-increment pop would read
+
+# sp2 — DOES SP MOVE AT ALL? Plant a sentinel in the cell the SECOND push
+# must hit, push twice, then read that cell by ABSOLUTE address so the
+# readback cannot inherit the fault under test.
+#
+#     0x53  push #2 reached 0x80FE -- SP decremented
+#     0xA5  push #2 hit 0x80FF too -- SP never moved, sentinel survived
+SP2_PROGRAM = [
+    ("LXISP", STACK_TOP & 0xFF, STACK_TOP >> 8),        # SP = 0x80FF
+    ("LDAI", SP_SENTINEL_BELOW), ("STA", *_addr(STACK_TOP - 1)),
+    ("LDAI", STACK_PUSH_A), ("PUSHA",),                 # [0x80FF]=0x2C, SP--
+    ("LDAI", STACK_PUSH_B), ("PUSHA",),                 # [0x80FE]=0x53 IF SP moved
+    ("LDA", *_addr(STACK_TOP - 1)),                     # absolute — SP not involved
+    ("OUT",), ("HALT",),
+]
+
+# sp3 — WHICH CELL DID THE POP READ? One push, one pop, with a DIFFERENT
+# sentinel in each cell the pop could wrongly reach, so the answer names the
+# address instead of returning uninitialised RAM that varies by power cycle.
+#
+#     0x2C  correct
+#     0x11  read 0x80FE -- SP_UP never took effect before the MAR copy
+#     0x22  read 0x8100 -- the increment landed twice
+#
+# 0x22 is what a ringing CLK edge at U63.2 produced on 2026-08-24 before the
+# 100R source series termination went in; see .git/sdd/CLOCK_DISTRIBUTION.md.
+SP3_PROGRAM = [
+    ("LXISP", STACK_TOP & 0xFF, STACK_TOP >> 8),        # SP = 0x80FF
+    ("LDAI", SP_SENTINEL_AT), ("STA", *_addr(STACK_TOP - 1)),
+    ("LDAI", SP_SENTINEL_ABOVE), ("STA", *_addr(STACK_TOP + 1)),
+    ("LDAI", STACK_PUSH_A), ("PUSHA",),                 # [0x80FF]=0x2C, SP--
+    ("POPA",),                                          # SP++, read 0x80FF
+    ("OUT",), ("HALT",),
 ]
 
 # ---- DIAGNOSTIC images for the 2026-08-03 PROG_flow failure -------------
@@ -718,13 +800,18 @@ CYLON_FRAMES = [0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80,
                 0x40, 0x20, 0x10, 0x08, 0x04, 0x02]
 
 
-def _cylon_delay(tag):
+def _cylon_delay(tag, outer_n=None, inner_n=0xFF):
     """Nested count-down delay, inlined. Labels are per-frame because there
-    is no CALL/RET to share one copy with."""
+    is no CALL/RET to share one copy with.
+
+    The counts are parameters ONLY so a host test can build a fast variant
+    of the same program; the defaults reproduce the burned image byte for
+    byte, and PROG_cylon's pinned CRC is what enforces that."""
+    outer_n = CYLON_OUTER_N if outer_n is None else outer_n
     return [
-        ("LDAI", CYLON_OUTER_N), ("STA", *_addr(CYLON_OUTER)),
+        ("LDAI", outer_n), ("STA", *_addr(CYLON_OUTER)),
         f"{tag}_outer",
-        ("LDAI", 0xFF), ("STA", *_addr(CYLON_INNER)),
+        ("LDAI", inner_n), ("STA", *_addr(CYLON_INNER)),
         f"{tag}_inner",
         ("LDA", *_addr(CYLON_INNER)), ("LDBI", 0x01), ("SUB",),
         ("STA", *_addr(CYLON_INNER)),
@@ -745,6 +832,212 @@ def _build_cylon():
 
 CYLON_PROGRAM = _build_cylon()
 
+# ---- spcylon — cylon, but the stack is load-bearing --------------------
+# Cylon proves the machine EXECUTES. This proves the STACK executes, every
+# second and a half, forever, and it names the failing wire when it does not.
+#
+# Two parts, answering two different questions.
+#
+# PART 1, THE BOUNDARY PROBES. The SP is four '169s in a RIPPLE chain --
+# U63 ~{TC1} -> U64.10, U64 ~{TC2} -> U65.10, U65 ~{TC3} -> U66.10 -- and a
+# dead link is INVISIBLE until SP crosses the boundary that link carries.
+# PROG_stack pushes twice and cannot see any of them. Rather than push 4096
+# deep and hope, each probe seeds LXISP just ABOVE one boundary and steps
+# across it with a burst of 8:
+#
+#     probe  base     descends            crosses  needs      fault
+#     P1     0xFF16   0xFF14 -> 0xFF0C    0xFF10   ~TC1       0xE1
+#     P2     0xFF06   0xFF04 -> 0xFEFC    0xFF00   ~TC1+2     0xE2
+#     P3     0xF006   0xF004 -> 0xEFFC    0xF000   ~TC1+2+3   0xE3
+#
+# Each probe crosses EXACTLY the boundaries it claims (test_probe_bases_
+# isolate_one_more_link_each), so the FIRST fault code to appear names the
+# deepest link that still works. That is the no-blind-counters rule: a
+# failing assertion has to name the lying signal, and "the dot froze" does
+# not. The burst descends on the pushes and climbs back on the pops, so
+# ~{SP_UP} and ~{SP_DOWN} both ripple the chain.
+#
+# The sentinels are the mirror-witness rule applied to the stack: two
+# DIFFERENT bytes pushed from A and B, popped back into SWAPPED registers,
+# and SUBTRACTED. 0x53-0x2C = 0x27 for a correct LIFO, 0xD9 for a crossed
+# one. A single push/pop round trip is self-consistent under a crossed ~TC
+# cascade, a stuck direction pin AND a nibble-reversed readback -- all three
+# live failure modes here. The burst pushes the COUNTER's value rather than a
+# constant, so a stuck MDR bit corrupts a sentinel instead of hiding under
+# eight identical bytes.
+#
+# PART 2, THE SWEEP. The frame table IS the stack: the outbound half pushes
+# each frame as it displays it, the return half POPS them back. LIFO order is
+# therefore the VISIBLE SWEEP DIRECTION -- a stuck ~{SP_DOWN} or a crossed
+# pop makes the dot scramble or walk backwards, readable across the room with
+# no instruments. Every stack access also copies SP into MAR (Route B), so
+# U67/U68 are exercised by all of it; a dead or hi/lo-swapped readback '245
+# lands the byte at the wrong address and a sentinel catches it.
+#
+# COST: the probes are 3 x (8 pushes + 8 pops) ~= 1010T ~= 1.0ms against a
+# ~1.4s sweep. They re-run EVERY sweep rather than once at boot, which is
+# what makes this a soak: an intermittent link, a marginal ~{SP_CE} level or
+# a wire that only fails warm gets retested every second and a half.
+#
+# PHASE B ONLY. No CALL/RET, so it runs the day U63-U69 land and does not
+# wait on U72/U73.
+SPCY_SENTINEL_A = 0x2C          # pushed from A, popped back into B
+SPCY_SENTINEL_B = 0x53          # pushed from B, popped back into A
+SPCY_EXPECT = (SPCY_SENTINEL_B - SPCY_SENTINEL_A) & 0xFF        # 0x27
+SPCY_BURST = 8                  # enough to cross one boundary, no more --
+                                # a deeper burst blurs WHICH link failed
+SPCY_CNT = RAM_BASE + 0x12      # clear of CYLON_INNER/OUTER at 0x10/0x11
+SPCY_STACK = 0xFFFF             # the sweep's own stack, clear of every probe
+SPCY_PROBES = ((0xFF16, 0xE1),  # ~TC1        U63.15 -> U64.10
+               (0xFF06, 0xE2),  # ~TC2        U64.15 -> U65.10
+               (0xF006, 0xE3))  # ~TC3        U65.15 -> U66.10
+
+
+def _sp_probe(base, tag):
+    """One boundary probe. Falls through on success, jumps to `<tag>_fault`
+    on a sentinel mismatch."""
+    return [
+        ("LXISP", *_addr(base)),
+        ("LDAI", SPCY_SENTINEL_A), ("PUSHA",),      # [base]   = 0x2C
+        ("LDBI", SPCY_SENTINEL_B), ("PUSHB",),      # [base-1] = 0x53
+        ("LDAI", SPCY_BURST), ("STA", *_addr(SPCY_CNT)),
+        f"{tag}_push",                              # descend across the line
+        ("LDA", *_addr(SPCY_CNT)), ("PUSHA",),
+        ("LDBI", 0x01), ("SUB",), ("STA", *_addr(SPCY_CNT)),
+        ("JNZ", Ref(f"{tag}_push")),
+        ("LDAI", SPCY_BURST), ("STA", *_addr(SPCY_CNT)),
+        f"{tag}_pop",                               # climb back across it
+        ("POPA",),
+        ("LDA", *_addr(SPCY_CNT)), ("LDBI", 0x01), ("SUB",),
+        ("STA", *_addr(SPCY_CNT)),
+        ("JNZ", Ref(f"{tag}_pop")),
+        ("POPA",),                                  # A <- 0x53, B's byte
+        ("POPB",),                                  # B <- 0x2C, A's byte
+        ("SUB",),                                   # 0x27 ok, 0xD9 crossed
+        ("LDBI", SPCY_EXPECT), ("SUB",),            # zero iff correct
+        ("JNZ", Ref(f"{tag}_fault")),
+    ]
+
+
+def _build_spcylon(outer_n=None, inner_n=0xFF):
+    """Probes, then the stack-driven sweep, forever. The delay counts are
+    parameters so the host test can run a full sweep in a few thousand
+    interpreted steps; the burned image uses the defaults."""
+    out_half = CYLON_FRAMES[:8]                     # 0x01 .. 0x80, pushed
+    back_half = CYLON_FRAMES[8:]                    # 0x40 .. 0x02, popped
+    prog = ["top"]
+    for i, (base, _fault) in enumerate(SPCY_PROBES):
+        prog += _sp_probe(base, f"p{i}")
+
+    prog += [("LXISP", *_addr(SPCY_STACK))]
+    for i, frame in enumerate(out_half):
+        prog += [("LDAI", frame), ("OUT",), ("PUSHA",)]
+        prog += _cylon_delay(f"o{i}", outer_n, inner_n)
+    # the top of the stack is 0x80, which the outbound half just showed --
+    # drop it so the return sweep starts on 0x40 and the eye never stalls
+    prog += [("POPA",)]
+    for i in range(len(back_half)):
+        prog += [("POPA",), ("OUT",)] + _cylon_delay(f"b{i}", outer_n, inner_n)
+    prog += [("POPA",)]                 # drop 0x01: pushes and pops balance
+    prog += [("JMP", Ref("top"))]
+
+    # Fault stubs live PAST the JMP so success never falls into them. HALT
+    # does not hold on this machine, but past HALT is 0xFF fill which
+    # re-halts, and U35 has no reset -- so OB keeps showing the code.
+    for i, (_base, fault) in enumerate(SPCY_PROBES):
+        prog += [f"p{i}_fault", ("LDAI", fault), ("OUT",), ("HALT",)]
+    return prog
+
+
+SPCYLON_PROGRAM = _build_spcylon()
+
+
+# ---- swdemo — the machine READS THE BENCH AND BRANCHES ON IT -----------
+# Not a coverage image and deliberately NOT in COVERAGE: both arms are
+# infinite displays, so there is no (OB, END) fingerprint for the ladder to
+# match. Same reason cylon and spcylon are excluded.
+#
+# What it is FOR: every other image is a fixed film strip. This one makes a
+# DECISION from outside the machine, every pass, and both outcomes are
+# stack-driven. It is the first image where the operator is inside the loop.
+#
+#     SW1 bit 0 = 1   ->  cylon sweep, the frame table IS the stack
+#     SW1 bit 0 = 0   ->  interleaved blink, 0x55 <-> 0xAA
+#
+# SW1 IS ACTIVE LOW. R17-R24 pull IS0-7 to +5V and the switch pulls DOWN, so
+# the '244 presents a 0 wherever a switch is CLOSED:
+#
+#     switch 0 OPEN    -> bit 0 reads 1 -> SWEEP
+#     switch 0 CLOSED  -> bit 0 reads 0 -> BLINK
+#
+# The test sits at `top`, INSIDE the loop, not before it — so flipping the
+# switch changes the display at the end of the current pass rather than
+# needing a reset. That is the whole point of the image: it is the first
+# thing this machine does that responds to you while it runs.
+#
+# BIT 0 ALONE, not the whole byte. `LDAI 0x01; IN; AND` leaves A = SW1 & 1,
+# so bits 1-7 are ignored and the other seven switches stay free for
+# whatever the next image wants. A JNZ on the masked value is the branch.
+#
+# BOTH ARMS BALANCE THE STACK. Blink pushes 2 and pops 2; sweep pushes 8 and
+# pops 8 (six shown, two dropped at the ends so the eye never stalls). SP is
+# therefore back where LXISP put it every time control reaches `top`, and an
+# unbalanced arm would walk SP down through RAM and name itself within a few
+# seconds by scribbling over CYLON_INNER/OUTER and freezing the delay.
+SWDEMO_STACK = 0xFFFF               # top of RAM, clear of every scratch cell
+SWDEMO_BLINK_A = 0xAA               # 0b10101010, pushed FIRST
+SWDEMO_BLINK_B = 0x55               # 0b01010101, pushed SECOND -> shown first
+SWDEMO_MASK = 0x01                  # bit 0 only
+
+
+def _build_swdemo(outer_n=None, inner_n=0xFF):
+    """Read SW1 bit 0 every pass and run one of two stack-driven displays.
+
+    The delay counts are parameters so a host test can run both arms in a
+    few thousand interpreted steps; the burned image uses the defaults and
+    the pinned CRC is what enforces that."""
+    out_half = CYLON_FRAMES[:8]                     # 0x01 .. 0x80, pushed
+    back_half = CYLON_FRAMES[8:]                    # 0x40 .. 0x02, popped
+
+    prog = [
+        ("LXISP", *_addr(SWDEMO_STACK)),
+        "top",
+        ("LDAI", SWDEMO_MASK),      # A = 0x01
+        ("IN",),                    # B <- SW1, and TMP_B with it
+        ("AND",),                   # A = SW1 & 0x01 -- bit 0 alone
+        ("JNZ", Ref("sweep")),      # non-zero = switch OPEN = sweep
+    ]
+
+    # ---- blink arm: bit 0 = 0. Two frames through the stack, so even the
+    # simplest display proves LIFO order: 0xAA goes in first and comes back
+    # SECOND. A broken stack shows 0xAA then 0x55 and names itself.
+    prog += [
+        ("LDAI", SWDEMO_BLINK_A), ("PUSHA",),
+        ("LDAI", SWDEMO_BLINK_B), ("PUSHA",),
+        ("POPA",), ("OUT",),
+    ] + _cylon_delay("k0", outer_n, inner_n) + [
+        ("POPA",), ("OUT",),
+    ] + _cylon_delay("k1", outer_n, inner_n) + [
+        ("JMP", Ref("top")),
+    ]
+
+    # ---- sweep arm: bit 0 = 1. The outbound half PUSHes each frame as it
+    # shows it and the return half POPs them back, so LIFO order IS the
+    # visible sweep direction.
+    prog += ["sweep"]
+    for i, frame in enumerate(out_half):
+        prog += [("LDAI", frame), ("OUT",), ("PUSHA",)]
+        prog += _cylon_delay(f"s{i}", outer_n, inner_n)
+    prog += [("POPA",)]                 # drop 0x80, just shown
+    for i in range(len(back_half)):
+        prog += [("POPA",), ("OUT",)] + _cylon_delay(f"r{i}", outer_n, inner_n)
+    prog += [("POPA",)]                 # drop 0x01: pushes and pops balance
+    prog += [("JMP", Ref("top"))]
+    return prog
+
+
+SWDEMO_PROGRAM = _build_swdemo()
+
 # images whose answer depends on the switches. Everything else is read with
 # the default, and the rig is told the setting rather than left to guess.
 COVERAGE_SW = {"in": IN_SW}
@@ -761,6 +1054,9 @@ COVERAGE = {
     "loop": LOOP_PROGRAM,
     "mardisc": MARDISC_PROGRAM,
     "pads": PADS_PROGRAM,
+    "sp1": SP1_PROGRAM,
+    "sp2": SP2_PROGRAM,
+    "sp3": SP3_PROGRAM,
     "sp": SP_PROGRAM,
     "stack": STACK_PROGRAM,
 }
@@ -963,6 +1259,20 @@ def main():
         f.write(cyl)
     cyl_crc = crc16(cyl)
     cyl_len = len(assemble(CYLON_PROGRAM))
+    # spcylon, same exclusion for the same reason: it never halts either.
+    spc = build_image(SPCYLON_PROGRAM)
+    with open(os.path.join(ROMS, "PROG_spcylon.bin"), "wb") as f:
+        f.write(spc)
+    spc_crc = crc16(spc)
+    spc_len = len(assemble(SPCYLON_PROGRAM))
+    # swdemo, same exclusion again: BOTH its arms are infinite displays, so
+    # there is no single answer to fingerprint. It is also the only image
+    # whose behaviour changes without a reburn — SW1 bit 0 picks the arm.
+    swd = build_image(SWDEMO_PROGRAM)
+    with open(os.path.join(ROMS, "PROG_swdemo.bin"), "wb") as f:
+        f.write(swd)
+    swd_crc = crc16(swd)
+    swd_len = len(assemble(SWDEMO_PROGRAM))
     emit_header(real, crcs, HDR, cov)
     print(f"wrote {3 + len(cov)}x {SIZE}B bins -> {ROMS}")
     print(f"wrote expect header -> {HDR}")
@@ -977,6 +1287,15 @@ def main():
           f"NEVER HALTS — {len(CYLON_FRAMES)} frames, ~"
           f"{CYLON_OUTER_N * 4.006:.0f}ms each, ~"
           f"{len(CYLON_FRAMES) * CYLON_OUTER_N * 4.006 / 1000:.1f}s per sweep")
+    print(f"    PROG_spcylon.bin  crc=0x{spc_crc:04X}  {spc_len} bytes  "
+          f"NEVER HALTS — 3 SP boundary probes then the stack-driven sweep; "
+          f"frozen OB 0x{SPCY_PROBES[0][1]:02X}/0x{SPCY_PROBES[1][1]:02X}/"
+          f"0x{SPCY_PROBES[2][1]:02X} names the dead ripple link")
+    print(f"    PROG_swdemo.bin  crc=0x{swd_crc:04X}  {swd_len} bytes  "
+          f"NEVER HALTS — SW1 bit 0 picks the arm every pass. "
+          f"switch 0 OPEN (bit reads 1) = cylon sweep; "
+          f"CLOSED (bit reads 0) = 0x{SWDEMO_BLINK_B:02X}/"
+          f"0x{SWDEMO_BLINK_A:02X} interleaved blink")
     print(f"  program: {' '.join(s[0] for s in PROGRAM)}"
           f"  -> OUT should show 0x{EXPECT_SUM:02X}")
     for name, val in crcs.items():

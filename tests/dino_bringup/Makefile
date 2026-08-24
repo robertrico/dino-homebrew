@@ -54,6 +54,11 @@ burn-real-u9:
 	$(MINIPRO) -p $(ROM_CHIP) -w $(ROMS)/U9.bin
 burn-real-u15:
 	$(MINIPRO) -p $(ROM_CHIP) -w $(ROMS)/U15.bin
+# U23 = word[23:16] = CW16-23, the third EEPROM (2026-08-10). Same part as
+# U9/U15. A12 is grounded on all three, so the 8KB file is the 4096-row
+# table mirrored twice and a read-back compare is over the whole 8KB.
+burn-real-u23:
+	$(MINIPRO) -p $(ROM_CHIP) -w $(ROMS)/U23.bin
 
 # ---- program ROM (AT28C256, the memory board's U24) ----
 # Bins from: python3 ../../docs/notes/progrom_gen.py
@@ -91,6 +96,20 @@ burn-prog-pads:
 	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_pads.bin
 burn-prog-cylon:
 	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_cylon.bin
+burn-prog-spcylon:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_spcylon.bin
+burn-prog-sp1:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_sp1.bin
+burn-prog-sp2:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_sp2.bin
+burn-prog-sp3:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_sp3.bin
+burn-prog-swdemo:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_swdemo.bin
+burn-prog-sp:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_sp.bin
+burn-prog-stack:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_stack.bin
 read-prog: | $(BUILD)
 	$(MINIPRO) -p $(PROG_CHIP) -r $(BUILD)/prog_read.bin
 verify-prog-diag: read-prog
@@ -102,7 +121,7 @@ read-rom: | $(BUILD)
 	$(MINIPRO) -p $(ROM_CHIP) -r $(BUILD)/rom_read.bin
 
 id-rom: read-rom
-	@for f in U9_diag U15_diag U9 U15; do \
+	@for f in U9_diag U15_diag U9 U15 U23; do \
 	  if cmp -s $(BUILD)/rom_read.bin $(ROMS)/$$f.bin; then \
 	    echo "chip in socket == $$f.bin"; exit 0; fi; \
 	done; \
@@ -116,14 +135,18 @@ verify-real-u9: read-rom
 	cmp $(BUILD)/rom_read.bin $(ROMS)/U9.bin && echo "U9 REAL verified"
 verify-real-u15: read-rom
 	cmp $(BUILD)/rom_read.bin $(ROMS)/U15.bin && echo "U15 REAL verified"
+verify-real-u23: read-rom
+	cmp $(BUILD)/rom_read.bin $(ROMS)/U23.bin && echo "U23 REAL verified"
 
 # header deps (pinmap_gen.h regeneration must rebuild dependents)
 -include $(OBJ:.o=.d)
 
 .PHONY: all size flash clean \
-        burn-diag-u9 burn-diag-u15 burn-real-u9 burn-real-u15 \
+        burn-diag-u9 burn-diag-u15 burn-real-u9 burn-real-u15 burn-real-u23 \
         burn-prog-diag burn-prog read-prog verify-prog-diag verify-prog \
         burn-prog-probe burn-prog-in burn-prog-adda burn-prog-addb burn-prog-alu burn-prog-mem burn-prog-flow \
         burn-prog-loop burn-prog-mardisc burn-prog-pads burn-prog-cylon \
+        burn-prog-sp burn-prog-sp1 burn-prog-sp2 burn-prog-sp3 \
+        burn-prog-swdemo burn-prog-stack burn-prog-spcylon \
         read-rom id-rom \
-        verify-diag-u9 verify-diag-u15 verify-real-u9 verify-real-u15
+        verify-diag-u9 verify-diag-u15 verify-real-u9 verify-real-u15 verify-real-u23

@@ -81,6 +81,24 @@ construction — no eleventh table.
     PROG_pads.bin    0x749A  0x40  5
         the PC's LANDING ADDRESS as the observable. Every 4-byte slot is
         LDAI <own address>; OUT; HALT.
+    PROG_sp1.bin     0x5F58  0x2C  5
+        ONE push, ONE pop -- the fewest moving parts that reach the stack
+        at all. BLIND TO A FROZEN SP by construction: push and pop use the
+        same cell, so 0x2C comes back whether or not SP ever moved. It
+        reported a green machine for most of 2026-08-24. Read it only
+        alongside sp2.
+    PROG_sp2.bin     0xFBA3  0x53  9
+        the ADDRESS as the observable, not the data. Plants a sentinel in
+        the cell push #2 must reach, then reads that cell by ABSOLUTE
+        address so the readback cannot inherit the fault under test. 0x53
+        = SP moved. 0xA5 = SP never moved and the sentinel survived. The
+        first image that is not blind to a frozen SP.
+    PROG_sp3.bin     0x76FF  0x2C  9
+        WHICH cell did the pop read. A different sentinel in each
+        neighbour: 0x2C correct, 0x11 read one BELOW (increment never took
+        before the MAR copy), 0x22 read one ABOVE (increment landed
+        twice). 0x22 is what a ringing CLK edge at U63.2 produced before
+        the 100R series termination went in.
     PROG_sp.bin      0xC047  0x27  9
         SP alone -- LXISP and the counter, without CALL/RET. The phase-B
         bench gate.
@@ -89,7 +107,7 @@ construction — no eleventh table.
         SWAPPED registers, so LIFO order is observable rather than
         decorative.
 
-### Soak image — not a coverage image
+### Soak images — not coverage images
 
     PROG_cylon.bin   0x0980  521 bytes, NEVER HALTS
     14 frames, ~100ms each. Deliberately NOT in
@@ -97,6 +115,42 @@ construction — no eleventh table.
     never halts. Exercises LDAI/LDA/STA/SUB/JNZ both arms/OUT/JMP
     and two RAM cells continuously — the best transport check the
     machine has, and it needs no rig, no reset and no ROM swap.
+
+    PROG_spcylon.bin 0x3DE3  702 bytes, NEVER HALTS
+    The same sweep, but the frame table IS the stack: the
+    outbound half PUSHes each frame as it shows it and the
+    return half POPs them back, so LIFO order is the visible
+    sweep direction. Ahead of it, every sweep, three boundary
+    probes cross one ripple-carry link each:
+
+        LXISP 0xFF16  ->  frozen OB 0xE1  = U63.15 -> U64.10 is dead
+        LXISP 0xFF06  ->  frozen OB 0xE2  = U64.15 -> U65.10 is dead
+        LXISP 0xF006  ->  frozen OB 0xE3  = U65.15 -> U66.10 is dead
+
+    Dot sweeping = healthy. Dot frozen on 0xE1/0xE2/0xE3 = that
+    carry link. Dot scrambled or walking backwards = pop order
+    or a stuck direction pin. PHASE B hardware only (U63-U69);
+    no CALL/RET, so it does not wait on U72/U73.
+
+    PROG_swdemo.bin  0x3D83  616 bytes, NEVER HALTS
+    THE FIRST IMAGE THAT ANSWERS TO YOU WHILE IT RUNS. SW1 bit 0
+    is read every pass, INSIDE the loop, so flipping the switch
+    changes the display at the end of the current pass -- no
+    reset, no reburn. Both arms are stack-driven and both balance
+    their pushes and pops, so SP returns to where LXISP put it
+    every time round.
+
+        switch 0 OPEN    bit reads 1  ->  cylon sweep
+        switch 0 CLOSED  bit reads 0  ->  0x55 / 0xAA interleaved blink
+
+    SW1 IS ACTIVE LOW -- R17-R24 pull IS0-7 up and the switch
+    pulls DOWN, so a CLOSED switch reads 0. Bits 1-7 are masked
+    off (LDAI 0x01; IN; AND), so the other seven
+    switches stay free.
+
+    Blink shows 0x55 FIRST even though 0xAA is pushed first --
+    that is LIFO, visible with two frames. Reversed order names a
+    stack returning pushes in the order they went in.
 
 ### SW1 is active low, and the DIP label reads backwards from the bus
 

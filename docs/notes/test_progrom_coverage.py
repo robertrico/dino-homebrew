@@ -140,10 +140,20 @@ def test_coverage_is_progressive():
         "pads": "the PC's LANDING ADDRESS as the observable. Every 4-byte slot "
                 "is LDAI <own address>; OUT; HALT, so OB names where PC_LOAD "
                 "actually went rather than merely whether it went somewhere",
+        "sp1": "ONE push and ONE pop — the fewest moving parts that reach the "
+               "stack at all. Blind to a frozen SP by construction (push and "
+               "pop use the same cell), which is exactly why sp2 exists",
+        "sp2": "the ADDRESS as the observable, not the data. A sentinel in the "
+               "cell push #2 must reach, read back ABSOLUTELY so the readback "
+               "cannot inherit the fault. The first image that is NOT blind to "
+               "a stack pointer that never moves",
+        "sp3": "WHICH cell the pop read. A different sentinel in each "
+               "neighbour, so an off-by-one names its direction instead of "
+               "returning uninitialised RAM that varies by power cycle",
     }
     seen = set()
     order = ["probe", "adda", "addb", "real", "in", "alu", "mem", "flow", "loop",
-             "mardisc", "pads", "sp", "stack"]
+             "mardisc", "pads", "sp1", "sp2", "sp3", "sp", "stack"]
     check_eq(list(pg.COVERAGE), order, "images in ladder order")
     for tag in order:
         used = {s[0] for s in pg.COVERAGE[tag] if not isinstance(s, str)}
@@ -287,6 +297,102 @@ def test_images_fit_and_safe_fill():
         check_eq(len(img), pg.SIZE, f"{tag}: image is a full {pg.SIZE}B ROM")
         check_eq(img[-1], pg.SAFE_FILL, f"{tag}: tail is the safe HALT fill")
         check(img[0] != pg.DIAG_ZERO, f"{tag}: byte 0 does not collide with DIAG")
+
+
+def test_sp2_sp3_are_not_blind_to_a_frozen_sp():
+    """THE REGRESSION THAT COST 2026-08-24. PROG_sp1 reported 0x2C on a
+    machine whose SP had never moved -- push and pop used the same cell, so
+    the byte round-tripped perfectly through a stack pointer wired to
+    nothing. These two images must FAIL under that fault, and the way to
+    prove it is to simulate the fault, not to argue about it."""
+    print("sp2/sp3 detect a stack pointer that never moves")
+
+    check_eq(pg.simulate(pg.COVERAGE["sp2"])["out"], pg.STACK_PUSH_B,
+             "sp2 healthy answer is 0x53")
+    check_eq(pg.simulate(pg.COVERAGE["sp3"])["out"], pg.STACK_PUSH_A,
+             "sp3 healthy answer is 0x2C")
+
+    # The blindness is STRUCTURAL, so prove it from the program text rather
+    # than by arguing: sp1 pushes and pops at ONE SP value, so its answer
+    # cannot depend on SP having moved. sp2 reads a cell only a moved SP
+    # reaches, which is the whole difference.
+    check_eq(len(_push_cells(pg.COVERAGE["sp1"])), 1,
+             "sp1 pushes to ONE stack cell -- that IS its blindness")
+    check(len(_push_cells(pg.COVERAGE["sp2"])) > 1,
+          "sp2 pushes to more than one cell, so a frozen SP collapses them "
+          "and the planted sentinel survives to name the fault")
+
+    # sp3's outcomes must be three DISTINCT bytes or the answer names nothing
+    check_eq(len({pg.SP_SENTINEL_AT, pg.SP_SENTINEL_ABOVE, pg.STACK_PUSH_A}), 3,
+             "sp3's three outcomes are three distinct bytes")
+
+
+def _push_cells(prog):
+    """The distinct addresses a healthy run's PUSHes land on, walked with
+    the empty-descending rule: store at [SP], then decrement."""
+    sp, cells = None, set()
+    for step in prog:
+        if isinstance(step, str):
+            continue
+        if step[0] == "LXISP":
+            sp = step[1] | (step[2] << 8)
+        elif step[0] in ("PUSHA", "PUSHB") and sp is not None:
+            cells.add(sp)
+            sp = (sp - 1) & 0xFFFF
+        elif step[0] in ("POPA", "POPB") and sp is not None:
+            sp = (sp + 1) & 0xFFFF
+    return cells
+
+
+def test_swdemo_branches_on_the_bench_and_balances_the_stack():
+    """swdemo is the first image whose behaviour changes without a reburn.
+    Both arms must be reachable from SW1 bit 0 ALONE, both must be
+    stack-driven, and both must leave SP where LXISP put it -- an
+    unbalanced arm walks SP down through RAM and scribbles over the delay
+    counters within seconds."""
+    print("swdemo picks its arm from SW1 bit 0 and balances both stacks")
+    fast = pg._build_swdemo(outer_n=1, inner_n=2)
+
+    blink = pg.simulate(fast, max_steps=60000, switches=0x00)["outs"]
+    sweep = pg.simulate(fast, max_steps=60000, switches=0x01)["outs"]
+
+    check_eq(blink[:4], [pg.SWDEMO_BLINK_B, pg.SWDEMO_BLINK_A] * 2,
+             "bit 0 clear -> 0x55/0xAA interleaved blink")
+    check_eq(sweep[:len(pg.CYLON_FRAMES)], list(pg.CYLON_FRAMES),
+             "bit 0 set -> the cylon frame sweep")
+
+    # LIFO order is VISIBLE in the blink arm: 0xAA is pushed FIRST and must
+    # come back SECOND. A stack that returns pushes in order shows AA then 55.
+    check(blink[0] == pg.SWDEMO_BLINK_B,
+          "blink shows the LAST byte pushed first -- LIFO, not FIFO")
+
+    # bits 1-7 must be ignored, so the other seven switches stay free
+    for sw in (0x02, 0xFE):
+        check_eq(pg.simulate(fast, max_steps=20000, switches=sw)["outs"][0],
+                 pg.SWDEMO_BLINK_B, f"switches=0x{sw:02X}: bit 0 clear -> blink")
+    for sw in (0x03, 0xFF):
+        check_eq(pg.simulate(fast, max_steps=20000, switches=sw)["outs"][0],
+                 pg.CYLON_FRAMES[0], f"switches=0x{sw:02X}: bit 0 set -> sweep")
+
+    # stack balance, counted from the program text so it holds for the
+    # BURNED image and not merely for the fast host variant
+    for arm, lo, hi in _swdemo_arms(pg.SWDEMO_PROGRAM):
+        pushes = sum(1 for s in pg.SWDEMO_PROGRAM[lo:hi]
+                     if not isinstance(s, str) and s[0] in ("PUSHA", "PUSHB"))
+        pops = sum(1 for s in pg.SWDEMO_PROGRAM[lo:hi]
+                   if not isinstance(s, str) and s[0] in ("POPA", "POPB"))
+        check_eq(pushes, pops, f"{arm} arm balances: {pushes} push / {pops} pop")
+        check(pushes > 0, f"{arm} arm actually uses the stack")
+
+    check("swdemo" not in pg.COVERAGE,
+          "swdemo is NOT a coverage image -- neither arm halts, so it has "
+          "no (OB, END) fingerprint for the ladder to match")
+
+
+def _swdemo_arms(prog):
+    """(name, start, end) for each arm, split at the `sweep` label."""
+    cut = prog.index("sweep")
+    return [("blink", prog.index("top"), cut), ("sweep", cut, len(prog))]
 
 
 # ---- pytest bridge (Task 8 VPLAN audit, fix round 2) ---------------------
