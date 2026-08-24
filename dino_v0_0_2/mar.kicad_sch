@@ -3693,6 +3693,16 @@
 		)
 		(uuid "0acc8893-d0a4-41c3-93ef-6e56b2338aab")
 	)
+	(label "CW14"
+		(at 53.34 99.06 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "1e087f5e-1f87-522b-8ff4-564e68785859")
+	)
 	(label "M7"
 		(at 213.36 58.42 0)
 		(effects
@@ -7802,15 +7812,5 @@
 				)
 			)
 		)
-	)
-	(label "CW14"
-		(at 53.34 99.06 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "1e087f5e-1f87-522b-8ff4-564e68785859")
 	)
 )

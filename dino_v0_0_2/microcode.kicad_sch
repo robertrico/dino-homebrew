@@ -4133,6 +4133,26 @@
 		)
 		(uuid "07f24419-c979-4b09-88a8-3edf50726c45")
 	)
+	(label "SA0"
+		(at 165.1 62.23 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "081c94a4-2ff2-5963-ad77-9c0e96dc6e98")
+	)
+	(label "SA1"
+		(at 165.1 59.69 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "0a8922f6-7308-51d8-b7e6-08aa6678dc33")
+	)
 	(label "CW14"
 		(at 168.91 69.85 180)
 		(effects
@@ -4953,6 +4973,16 @@
 		)
 		(uuid "dcbb5514-9a10-421b-b68a-dbc2078c3bde")
 	)
+	(label "SA2"
+		(at 165.1 57.15 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "dd25bc7e-567a-5f08-8f92-bef59b26ea62")
+	)
 	(label "MCA6"
 		(at 113.03 49.53 180)
 		(effects
@@ -5023,6 +5053,16 @@
 		)
 		(uuid "ef199779-971f-4717-bb79-327a4f52f977")
 	)
+	(label "PC_MAR_MUX"
+		(at 165.1 69.85 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "f2d8024c-f142-505b-b355-676b7a22294a")
+	)
 	(label "CW3"
 		(at 168.91 41.91 180)
 		(effects
@@ -5062,6 +5102,16 @@
 			(justify right bottom)
 		)
 		(uuid "f4dbd77f-9d9a-48ec-b0d2-bf00cb6f877e")
+	)
+	(label "PC_UP"
+		(at 165.1 67.31 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "f696579c-e38a-531a-8880-afc6e267e9d0")
 	)
 	(label "MCA4"
 		(at 86.36 86.36 0)
@@ -7533,55 +7583,5 @@
 				)
 			)
 		)
-	)
-	(label "SA2"
-		(at 165.1 57.15 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "dd25bc7e-567a-5f08-8f92-bef59b26ea62")
-	)
-	(label "SA1"
-		(at 165.1 59.69 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "0a8922f6-7308-51d8-b7e6-08aa6678dc33")
-	)
-	(label "SA0"
-		(at 165.1 62.23 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "081c94a4-2ff2-5963-ad77-9c0e96dc6e98")
-	)
-	(label "PC_UP"
-		(at 165.1 67.31 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "f696579c-e38a-531a-8880-afc6e267e9d0")
-	)
-	(label "PC_MAR_MUX"
-		(at 165.1 69.85 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "f2d8024c-f142-505b-b355-676b7a22294a")
 	)
 )

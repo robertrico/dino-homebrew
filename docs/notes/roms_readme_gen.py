@@ -64,9 +64,31 @@ NOTES = {
            "the 100R series termination went in.",
     "sp": "SP alone -- LXISP and the counter, without CALL/RET. The phase-B "
           "bench gate.",
-    "stack": "LXISP, PUSH, POP. Pushes two DIFFERENT bytes and pops them "
-             "into SWAPPED registers, so LIFO order is observable rather "
-             "than decorative.",
+    "calladdr": "CALL WITHOUT RET. Reads the pushed return address back out "
+                "of RAM by absolute address. 0x5C = both bytes right, 0xC1 = "
+                "the LO byte is wrong (U72 / ~PC_LO_OUT), 0xC2 = the HI byte "
+                "(U73 / ~PC_HI_OUT). Exercises the CALL-side pins ONLY, so "
+                "calladdr passing and call failing puts the fault on the RET "
+                "side. NOTE: CALL pushes PC+1, not PC+3 -- RET steps over the "
+                "two operand bytes with PC_UP on T12/T13. PHASE C.",
+    "callraw": "REPORTS the pushed PC_LO byte raw -- no comparison, no fault "
+               "codes. Found phase C's fault when calladdr had misattributed "
+               "it: 0x26 was the previous JMP's target, naming U72/U73 as "
+               "landed on the PC LOAD path (U11/U12) instead of the Q outputs. "
+               "Expect 0x2A. PHASE C.",
+    "call": "the RETURN ADDRESS as the observable -- pads, for RET. The "
+            "landing site is the ONLY thing that can produce the answer: "
+            "0x4B = RET landed on the right byte, 0xFF = it did not (OB is "
+            "poisoned first and everything else in the image is HALT). The "
+            "0x120 HALTs of padding are LOAD-BEARING: they push the CALL "
+            "above 0x00FF so the pushed PC_HI is 0x01, and a U73 that is "
+            "dead or stuck low cannot pass by delivering 0x00. PHASE C -- "
+            "needs U72/U73.",
+    "stack": "LXISP, PUSH, POP, CALL, RET. Pushes two DIFFERENT bytes and "
+             "pops them into SWAPPED registers, so LIFO order is observable "
+             "rather than decorative -- and the SUB runs INSIDE the callee "
+             "with the only OUT after the return, so the answer exists only "
+             "if registers, flags and stack all survived the call. PHASE C.",
 }
 
 PROSE_HEAD = """# roms/ — what is physically in the sockets

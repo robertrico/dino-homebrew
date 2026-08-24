@@ -102,10 +102,34 @@ construction — no eleventh table.
     PROG_sp.bin      0xC047  0x27  9
         SP alone -- LXISP and the counter, without CALL/RET. The phase-B
         bench gate.
-    PROG_stack.bin   0x9C53  0x27  11
-        LXISP, PUSH, POP. Pushes two DIFFERENT bytes and pops them into
-        SWAPPED registers, so LIFO order is observable rather than
-        decorative.
+    PROG_calladdr.bin 0x7D79  0x5C  15
+        CALL WITHOUT RET. Reads the pushed return address back out of RAM
+        by absolute address. 0x5C = both bytes right, 0xC1 = the LO byte
+        is wrong (U72 / ~PC_LO_OUT), 0xC2 = the HI byte (U73 /
+        ~PC_HI_OUT). Exercises the CALL-side pins ONLY, so calladdr
+        passing and call failing puts the fault on the RET side. NOTE:
+        CALL pushes PC+1, not PC+3 -- RET steps over the two operand bytes
+        with PC_UP on T12/T13. PHASE C.
+    PROG_callraw.bin 0xD709  0x2A  7
+        REPORTS the pushed PC_LO byte raw -- no comparison, no fault
+        codes. Found phase C's fault when calladdr had misattributed it:
+        0x26 was the previous JMP's target, naming U72/U73 as landed on
+        the PC LOAD path (U11/U12) instead of the Q outputs. Expect 0x2A.
+        PHASE C.
+    PROG_call.bin    0x14C9  0x4B  8
+        the RETURN ADDRESS as the observable -- pads, for RET. The landing
+        site is the ONLY thing that can produce the answer: 0x4B = RET
+        landed on the right byte, 0xFF = it did not (OB is poisoned first
+        and everything else in the image is HALT). The 0x120 HALTs of
+        padding are LOAD-BEARING: they push the CALL above 0x00FF so the
+        pushed PC_HI is 0x01, and a U73 that is dead or stuck low cannot
+        pass by delivering 0x00. PHASE C -- needs U72/U73.
+    PROG_stack.bin   0x1A77  0x27  13
+        LXISP, PUSH, POP, CALL, RET. Pushes two DIFFERENT bytes and pops
+        them into SWAPPED registers, so LIFO order is observable rather
+        than decorative -- and the SUB runs INSIDE the callee with the
+        only OUT after the return, so the answer exists only if registers,
+        flags and stack all survived the call. PHASE C.
 
 ### Soak images — not coverage images
 

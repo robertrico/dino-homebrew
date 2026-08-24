@@ -150,10 +150,37 @@ def test_coverage_is_progressive():
         "sp3": "WHICH cell the pop read. A different sentinel in each "
                "neighbour, so an off-by-one names its direction instead of "
                "returning uninitialised RAM that varies by power cycle",
+        "calladdr": "CALL WITHOUT RET. Reads the pushed return address back "
+                    "out of RAM by absolute address, so it exercises the "
+                    "CALL-side pins (U70.12/.13, U72, U73) while touching "
+                    "none of the RET-side ones (U28.10, U29.11, U30.12). "
+                    "calladdr passing and call failing puts the fault on the "
+                    "RET side; without the split, PROG_call lights up five "
+                    "never-asserted pins at once and names none of them",
+        "callraw": "REPORTS the pushed byte instead of judging it. The image "
+                   "that found phase C's fault after calladdr misattributed "
+                   "it: calladdr said 0xC1 (LO byte wrong -> U72), but the raw "
+                   "byte was 0x26 -- the previous JMP's target, which named "
+                   "the real fault (U72/U73 landed on U11/U12, the PC LOAD "
+                   "path, reading stale PCD). An assertion collapses a number "
+                   "into a verdict, and the number was the clue",
+        "call": "the RETURN ADDRESS as the observable — pads, for RET. "
+                "stack proves a return HAPPENED; this proves it landed on "
+                "the right BYTE, from above 0x00FF so the pushed PC_HI is "
+                "non-zero and U73 cannot pass by delivering 0x00",
+        "stack": "WORK DONE INSIDE the subroutine and surviving the return. "
+                 "call proves RET lands on the right byte but its subroutine "
+                 "is a bare RET, so it says nothing about the machine's state "
+                 "across a call. Here the SUB runs inside the callee and the "
+                 "only OUT is after the return, so the answer exists only if "
+                 "the registers, the flags and the stack all came back intact "
+                 "-- and two DIFFERENT bytes popped into SWAPPED registers "
+                 "make LIFO order observable rather than decorative",
     }
     seen = set()
     order = ["probe", "adda", "addb", "real", "in", "alu", "mem", "flow", "loop",
-             "mardisc", "pads", "sp1", "sp2", "sp3", "sp", "stack"]
+             "mardisc", "pads", "sp1", "sp2", "sp3", "sp", "calladdr",
+             "callraw", "call", "stack"]
     check_eq(list(pg.COVERAGE), order, "images in ladder order")
     for tag in order:
         used = {s[0] for s in pg.COVERAGE[tag] if not isinstance(s, str)}
@@ -342,6 +369,103 @@ def _push_cells(prog):
         elif step[0] in ("POPA", "POPB") and sp is not None:
             sp = (sp + 1) & 0xFFFF
     return cells
+
+
+def test_call_image_makes_the_return_address_the_observable():
+    """PROG_stack proves a return HAPPENED. PROG_call proves it landed on
+    the RIGHT BYTE, and does it from an address where PC_HI is non-zero so
+    a U73 that delivers 0x00 for any reason cannot pass by accident."""
+    print("the call image names where RET landed")
+    prog = pg.COVERAGE["call"]
+
+    labels = _labels(prog)
+    ret_addr = labels["landed"]
+    check(ret_addr > 0xFF,
+          f"return address 0x{ret_addr:04X} is above 0x00FF, so the pushed "
+          f"PC_HI = 0x{ret_addr >> 8:02X} is NON-ZERO and U73 is load-bearing")
+
+    res = pg.simulate(prog)
+    check(res["halted"], "call halts")
+    check_eq(res["out"], pg.CALL_LANDED, "healthy answer is the landing marker")
+
+    # the poison must run BEFORE the call, or a wrong landing inherits the
+    # previous image's OB instead of reporting 0xFF
+    first = next(s for s in prog if not isinstance(s, str))
+    check_eq(first, ("LDAI", pg.POISON), "OB is poisoned before anything else")
+    check(prog.index("landed") > prog.index("high"),
+          "the landing marker sits after the CALL, not before it")
+
+    # every byte that is NOT the landing site must be HALT or unreachable,
+    # so a wrong landing cannot stumble into the OUT
+    body = prog[prog.index("high"):]
+    outs = [s for s in body if not isinstance(s, str) and s[0] == "OUT"]
+    check_eq(len(outs), 1, "exactly one OUT past the padding")
+
+    check({"CALL", "RET"} <= {s[0] for s in prog if not isinstance(s, str)},
+          "the image actually executes CALL and RET")
+
+
+def test_calladdr_splits_call_from_ret():
+    """PROG_call runs CALL and RET together, so a failure lights up five
+    pins that have never been asserted and names none. calladdr must run
+    CALL and NEVER RET, and must check BOTH pushed bytes separately so a
+    wrong one names which half of the address broke."""
+    print("calladdr exercises CALL without ever executing RET")
+    prog = pg.COVERAGE["calladdr"]
+    used = {s[0] for s in prog if not isinstance(s, str)}
+    check("CALL" in used, "calladdr executes CALL")
+    check_eq(used & {"RET"}, set(), "calladdr NEVER executes RET")
+
+    res = pg.simulate(prog)
+    check(res["halted"], "calladdr halts")
+    check_eq(res["out"], pg.CALLADDR_OK, "healthy answer is the OK marker")
+
+    # CALL pushes PC+1, NOT PC+3 -- the pushes at T3/T7 precede the operand
+    # fetch at T9/T10. RET compensates with PC_UP on T12 and T13. If that
+    # convention ever changes, this assertion is what catches it.
+    labels = _labels(prog)
+    pushed = labels["call_at"] + 1
+    check(pushed >> 8 != 0,
+          f"pushed address 0x{pushed:04X} has non-zero PC_HI, so U73 is "
+          f"load-bearing")
+    check_eq(labels["after_call"], labels["call_at"] + 3,
+             "a real RET would resume 3 bytes on, not at the pushed address")
+
+    # the three answers must be three distinct, non-rail bytes
+    vals = [pg.CALLADDR_OK, pg.CALLADDR_BAD_LO, pg.CALLADDR_BAD_HI]
+    check_eq(len(set(vals)), 3, "OK / bad-LO / bad-HI are three distinct bytes")
+    for v in vals:
+        check(v not in (0x00, 0xFF), f"0x{v:02X} is not a rail")
+
+
+def test_stack_image_poisons_ob_before_the_call():
+    """A RET that lands ONE BYTE LATE hits the HALT after the OUT, so OUT
+    never runs and OB keeps whatever the previous image left. PROG_sp --
+    the image burned immediately before -- answers 0x27, the same byte
+    PROG_stack expects. Without a poison prefix that reads as a pass."""
+    print("stack destroys the previous answer before it calls")
+    prog = pg.COVERAGE["stack"]
+    first = next(s for s in prog if not isinstance(s, str))
+    check_eq(first, ("LDAI", pg.POISON),
+             "stack poisons OB first -- PROG_sp's 0x27 cannot be inherited")
+    idx = [i for i, s in enumerate(prog)
+           if not isinstance(s, str) and s[0] == "OUT"]
+    call_at = next(i for i, s in enumerate(prog)
+                   if not isinstance(s, str) and s[0] == "CALL")
+    check(idx[0] < call_at, "the poison OUT runs BEFORE the CALL")
+    check_eq(pg.simulate(prog)["out"], pg.STACK_EXPECT,
+             "the healthy answer is unchanged at 0x27")
+
+
+def _labels(prog):
+    """Label -> address, using the microcode table's declared lengths."""
+    addr, out = 0, {}
+    for step in prog:
+        if isinstance(step, str):
+            out[step] = addr
+            continue
+        addr += INSTRUCTIONS[step[0]][0]
+    return out
 
 
 def test_swdemo_branches_on_the_bench_and_balances_the_stack():

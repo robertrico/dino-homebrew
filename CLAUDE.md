@@ -49,9 +49,15 @@ The stack images joined them 2026-08-24:
     sp1 0x2C   sp2 0x53   sp3 0x2C   sp 0x27   spcylon (sweeps, soak image)
     swdemo (never halts, SW1 bit 0 picks the arm)
 
-`LDCI` and `NOP` have not executed and are unreachable by design — C is
-`RET`'s scratch register. `CALL` and `RET` have not executed either, but for
-a different reason: U72/U73 are not built. Say which kind of unrun it is.
+The phase-C images joined them the same day:
+
+    calladdr 0x5C   callraw 0x2A   call 0x4B   stack 0x27
+
+`LDCI` and `NOP` are the only instructions that have never executed, and they
+are unreachable by design — C is `RET`'s scratch register and nothing can read
+it back. That is a MICROCODE-SOFT gap, not a hardware one: `MOV A,C` or
+`PUSHC`/`POPC` would retire it for the cost of one three-ROM burn. Say which
+kind of unrun it is.
 
 The milestone image is `LDAI 0xFF; OUT; LDAI 0x2F; LDBI 0x1E; ADD; OUT;
 HALT` → `OB = 0x4D`. The leading `LDAI 0xFF; OUT` poisons OB deliberately:
@@ -76,16 +82,69 @@ ripple links carry:
 
     LXISP 0x14   PUSHA 0x61   POPA 0x62   PUSHB 0x63   POPB 0x64
 
-**FACT — phase C is still schematic and simulation only.** Two chips, two
-instructions, nothing on silicon:
+**FACT — PHASE C IS ON SILICON as of 2026-08-24.** `CALL` and `RET` execute
+on hardware. The whole ISA now runs except `LDCI` and `NOP`.
 
-    U72 / U73   '245       PC0-7 / PC8-15 -> MDR               mdr
+    U72 / U73   '245       PC0-7 / PC8-15 -> MDR               BENCH-PROVEN
 
     CALL 0x33   RET 0x34
 
-`PROG_stack` is the phase-C gate: same `0x27`/`0xD9` signature as `PROG_sp`,
-but it executes `CALL`/`RET`. `PROG_sp` passing while `PROG_stack` fails
-localises the fault to U72/U73.
+    PROG_calladdr 0x5C   CALL without RET; the pushed return address read
+                         back by ABSOLUTE address. Names which byte broke:
+                         0xC1 = LO (U72), 0xC2 = HI (U73).
+    PROG_call     0x4B   the RETURN ADDRESS as the observable -- pads, for
+                         RET. The landing site is the only thing that can
+                         produce the answer.
+    PROG_stack    0x27   work done INSIDE the callee, surviving the return.
+                         0xD9 names a wrong LIFO order.
+
+**It cost no ROM burn.** `CALL`/`RET` were already in the sockets — decoded
+out of `roms/U9.bin`+`U15.bin`+`U23.bin`, 12 and 14 rows, zero differing from
+the generator. Phase C was two '245s and wire.
+
+**FACT — the five never-asserted decoder outputs all work.** Before
+2026-08-24 none of these had ever been driven low, because nothing but
+`CALL`/`RET` selects them:
+
+    U30.12   ~REG_C_LOAD    RET T4     dst=REG_C
+    U29.11   ~MDR_OUT       RET T9     the ISA's ONLY MDR replay
+    U28.10   ~REG_C_OUT     RET T10    src=REG_C
+    U70.13   ~PC_LO_OUT     CALL T7
+    U70.12   ~PC_HI_OUT     CALL T3
+
+Three are on pre-existing chips (`U28`, `U29`, `U30`), so
+`--continuity U72 U73` never listed them — the walk filters to nets touching
+the NEW designators. Same structural blind spot that hid `U28.6`/`U30.6`.
+**Any future addition must hand-check the old-chip pins it wakes up.**
+
+**FACT — `CALL` pushes PC+1, not PC+3.** The pushes at T3/T7 precede the
+operand fetch at T9/T10, so PC has been incremented only once. `RET`
+compensates: T11 `PC_LOAD` restores CALL+1, then T12 and T13 both carry
+`PC_UP` and step over the two operand bytes. **Those trailing PC_UP states are
+load-bearing, not padding** — on an LA a correct `RET` loads a PC pointing
+into the middle of the `CALL`. Verified on hardware 2026-08-24. Read `RET` to
+T13 before judging it; misreading this produced a false "found a bug" call the
+same day.
+
+**The fault phase C actually had was a wrong tap, not a wrong wire.**
+`U72`/`U73` were first landed on `U11`/`U12` — the PC **load** path, whose B
+side is `PCD0-15` feeding the counters' DATA inputs. `CALL` needs to *read*
+the PC, so they belong on `PC0-15`, the counters' **Q** outputs, paralleling
+`U13`/`U14`. The symptom was `PROG_callraw` reporting `0x26` — the low byte of
+the previous `JMP`'s target, i.e. stale load data. **A raw-report image found
+it; an assert-only image had called it `0xC1` and pointed at the wrong pin.**
+
+**The SCHEMATIC was right and so was the tool.** `--continuity U72 U73` named
+`PC0 -> U72.2, against U1.3 and U13.18` — the Q outputs, correctly. Unlike
+phase B, where the checklist had real blind spots, here the generated list was
+complete and the wiring diverged from it. Follow the list literally.
+
+**FACT — MDR is 15 pins and almost all of them are tri-state.** Twelve '245
+or '373 outputs contributing leakage only, and exactly THREE permanent DC
+loads: `U18.3` (the MDR '373's own D input), `U63.3` and `U65.3` (the SP's
+parallel-load taps). Worst-case sink ~1.5mA against the weakest driver's
+2.1mA. Phase C adds two tri-state pins, about +2.7%. **Bus loading is not a
+phase-C risk** — this was checked rather than assumed.
 
 **FACT — a 100Ω series resistor sits in the SP board's CLK branch**, fitted
 2026-08-24, source end, that branch only. It is NOT in `dino_v0_0_2/` yet.
@@ -97,9 +156,30 @@ board — every other state element takes CLK through a NOR or NAND first, and
 a gate is a de-facto regenerator. Nothing before the stack could have exposed
 this.
 
-`make -C fpga verify` is green in ~148s: host suite 147/147, 20-seed
-differential fuzz, cocotb ladder 40/40 (19 TTL models + 10 sheet models + 2
-milestone + 9 coverage images).
+> ## !!! THE FPGA TWIN IS BROKEN — DO NOT TRUST IT !!!
+>
+> **`make -C fpga verify` DOES NOT PASS, as of 2026-08-24.** The old claim
+> here — "green in ~148s, host suite 147/147" — was stale and is deleted.
+> Measured, same box, same venv, `pytest docs/notes -q`:
+>
+>     working tree     16 failed, 164 passed
+>     HEAD, clean      4 failed, 173 passed     <- ALREADY RED before today
+>
+> **Four failures predate everything in this session:**
+> `test_microcode_gen::test_sa_field_reaches_the_382_uninverted`, and three in
+> `test_netlist_integrity` where the installed yosys rejects
+> `proc -latches warn` — a toolchain version drift, not code.
+>
+> **Twelve more come from one root cause: `KeyError: '100Ω'`.** `fpga_gen.py`
+> has no model for a resistor. R2 is the first passive IN A SIGNAL PATH, and
+> `EXCLUDED_TYPES` cannot simply swallow it — dropping it whole strands
+> `CLK_R` with no driver. It needs a net merge, `CLK_R ≡ CLK`, which is
+> correct at logic level and is also an admission that the twin cannot model
+> the damping R2 exists to provide.
+>
+> **DECISION 2026-08-24 (Rico): DEFER. Retire the twin after serial.** Not
+> repaired, deliberately. Do not read a green badge into this file, and do
+> not gate any bench work on the twin until it is either fixed or removed.
 
 **The rig (ATmega2560) is detached and unwired.** Bench verification is
 therefore continuity against the generated crossing list, TL866 read-back,
@@ -357,11 +437,22 @@ accepted them. All are now `check_word`/`check_table` rules.
 
 ## What the FPGA does and does not cover
 
+> **!!! BROKEN AND SCHEDULED FOR RETIREMENT — see the Status section !!!**
+> `make -C fpga verify` does not pass. Everything below describes what the
+> twin DID, not what it currently does.
+
 **FACT** — a generated VHDL twin (`fpga/gen/*.vhd`, emitted by `fpga_gen.py`,
-never hand-edited) reproduces the schematic gate-for-gate. The whole ISA runs
-green in cocotb, and every image tag synthesizes, places, routes and closes
+never hand-edited) reproduces the schematic gate-for-gate. The whole ISA ran
+green in cocotb, and every image tag synthesized, placed, routed and closed
 timing on a Lattice ECP5-5G Versa: `DP16KD 40/108`, `TRELLIS_COMB 910/43848`,
 17.22MHz against a 12MHz constraint.
+
+**FACT — it caught none of 2026-08-24's three faults, and could not have.**
+Six unlanded `CW` address wires, a ringing `CLK` edge, and U72/U73 landed on
+the wrong chips. In all three the SCHEMATIC WAS CORRECT and the twin generates
+FROM the schematic, so a wiring-diverges-from-design fault is invisible to it
+by construction. The twin catches DESIGN errors. Every fault that day was a
+build error or an analog one, and the bench caught all three.
 
 **It cannot see** analog levels, real propagation on breadboard wire, fan-out,
 or whether a wire was landed. Those are bench questions and always will be.

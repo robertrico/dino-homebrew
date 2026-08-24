@@ -530,6 +530,14 @@ STACK_PUSH_B = 0x53
 STACK_EXPECT = (STACK_PUSH_B - STACK_PUSH_A) & 0xFF   # 0x27
 
 STACK_PROGRAM = [
+    # POISON FIRST. U35 has no reset, so OB holds the PREVIOUS image's
+    # answer until something overwrites it -- and the image burned
+    # immediately before this one is PROG_sp, which answers 0x27. THE SAME
+    # BYTE THIS IMAGE EXPECTS. The return lands exactly on the OUT below, so
+    # a RET that lands ONE BYTE LATE hits the HALT instead, OUT never runs,
+    # and OB still reads PROG_sp's 0x27 -- a false pass that looks identical
+    # to success. Added 2026-08-24; the image ran without it until then.
+    ("LDAI", POISON), ("OUT",),
     ("LXISP", STACK_TOP & 0xFF, STACK_TOP >> 8),
     ("LDAI", STACK_PUSH_A),
     ("LDBI", STACK_PUSH_B),
@@ -586,6 +594,152 @@ SP_PROGRAM = [
     ("SUB",),                           # A = A - B = 0x27, main line
     ("OUT",),
     ("HALT",),
+]
+
+# ---- calladdr — DID *CALL* PUSH THE RIGHT ADDRESS? ---------------------
+# Splits phase C in half. PROG_call runs CALL *and* RET, so a failure there
+# lights up FIVE pins that have never been asserted in this machine's life
+# and names none of them. This image runs CALL and NEVER EXECUTES RET, then
+# reads the pushed bytes back out of RAM by ABSOLUTE address.
+#
+#     CALL side   U70.13 ~PC_LO_OUT, U70.12 ~PC_HI_OUT, U72, U73
+#     RET side    U30.12 ~REG_C_LOAD, U29.11 ~MDR_OUT, U28.10 ~REG_C_OUT
+#
+# calladdr passing and call failing puts the fault squarely on the RET side.
+#
+# WHAT ADDRESS DOES CALL PUSH? **CALL+1, NOT CALL+3.** The pushes happen at
+# T3/T7, BEFORE the operand fetch at T9/T10, so PC has been incremented only
+# once -- by the T0 fetch -- and points at the CALL's own first operand byte.
+# RET compensates on the way out: T11 PC_LOAD restores CALL+1, then T12 and
+# T13 both carry PC_UP and step over the two operand bytes to CALL+3.
+#
+# THOSE TWO TRAILING PC_UP STATES ARE LOAD-BEARING, NOT PADDING. On an LA a
+# correct RET looks WRONG -- it loads a PC pointing into the middle of the
+# CALL instruction. Do not "fix" it. Read RET to T13 before judging it.
+CALLADDR_OK = 0x5C          # 01011100, mirror 0x3A
+CALLADDR_BAD_LO = 0xC1      # the pushed LO byte is wrong -> U72 / ~PC_LO_OUT
+CALLADDR_BAD_HI = 0xC2      # the pushed HI byte is wrong -> U73 / ~PC_HI_OUT
+CALLADDR_PAD = 0x120        # push the CALL above 0x00FF so PC_HI is non-zero
+
+
+def _build_calladdr(pad=CALLADDR_PAD):
+    """CALL, then read the pushed return address back out of RAM.
+
+    Two passes: the expected bytes depend on where the CALL lands, and
+    LDBI is a fixed length regardless of operand, so the layout is
+    identical between passes."""
+    def body(exp_lo, exp_hi):
+        return [
+            ("LDAI", POISON), ("OUT",),
+            ("JMP", Ref("high")),
+        ] + [("HALT",)] * pad + [
+            "high",
+            ("LXISP", STACK_TOP & 0xFF, STACK_TOP >> 8),
+            "call_at",                      # CALL pushes call_at + 1
+            ("CALL", Ref("sub")),
+            "after_call",                   # execution resumes here AFTER a RET
+            # A trap, not filler: if CALL fails to JUMP it falls in here and
+            # reports the poison instead of quietly reaching the real body.
+            ("LDAI", POISON), ("OUT",), ("HALT",),
+            "sub",
+            ("LDA", *_addr(STACK_TOP - 1)),         # PC_LO, pushed second
+            ("LDBI", exp_lo), ("SUB",),
+            ("JNZ", Ref("bad_lo")),
+            ("LDA", *_addr(STACK_TOP)),             # PC_HI, pushed first
+            ("LDBI", exp_hi), ("SUB",),
+            ("JNZ", Ref("bad_hi")),
+            ("LDAI", CALLADDR_OK), ("OUT",), ("HALT",),
+            "bad_lo", ("LDAI", CALLADDR_BAD_LO), ("OUT",), ("HALT",),
+            "bad_hi", ("LDAI", CALLADDR_BAD_HI), ("OUT",), ("HALT",),
+        ]
+
+    addr, labels = 0, {}
+    for step in body(0x00, 0x00):
+        if isinstance(step, str):
+            labels[step] = addr
+            continue
+        addr += INSTRUCTIONS[step[0]][0]
+    # CALL+1, not CALL+3 -- the pushes at T3/T7 precede the operand fetch
+    pushed = labels["call_at"] + 1
+    return body(pushed & 0xFF, pushed >> 8)
+
+
+CALLADDR_PROGRAM = _build_calladdr()
+
+# ---- callraw — REPORT THE BYTE, DO NOT JUDGE IT ------------------------
+# THE IMAGE THAT FOUND PHASE C's FAULT, after calladdr had misattributed it.
+#
+# calladdr compares the pushed address against an expected value and answers
+# 0xC1 / 0xC2. On 2026-08-24 it answered 0xC1 -- "the LO byte is wrong" --
+# which pointed at U72 and ~PC_LO_OUT. Both were fine. This image OUTs the
+# pushed byte RAW, reported 0x26, and 0x26 was instantly recognisable as the
+# low byte of the previous JMP's target: U72/U73 had been landed on U11/U12,
+# the PC LOAD path, so they were reading stale PCD instead of live PC.
+#
+# AN ASSERTION COLLAPSES A NUMBER INTO A VERDICT, AND THE NUMBER WAS THE
+# CLUE. Pair every assert-style witness with a raw-report twin when the
+# observable is an address, a count or a pointer -- "wrong" is worth far less
+# than "wrong by how much, and equal to what".
+CALLRAW_PAD = 0x120
+
+
+def _build_callraw(pad=CALLRAW_PAD):
+    """CALL, then OUT the pushed PC_LO byte exactly as it landed in RAM."""
+    return [
+        ("LDAI", POISON), ("OUT",),
+        ("JMP", Ref("high")),
+    ] + [("HALT",)] * pad + [
+        "high",
+        ("LXISP", STACK_TOP & 0xFF, STACK_TOP >> 8),
+        "call_at",
+        ("CALL", Ref("sub")),
+        ("LDAI", POISON), ("OUT",), ("HALT",),      # trap: CALL never jumped
+        "sub",
+        ("LDA", *_addr(STACK_TOP - 1)),             # pushed PC_LO
+        ("OUT",), ("HALT",),                        # RAW -- no comparison
+    ]
+
+
+CALLRAW_PROGRAM = _build_callraw()
+
+# ---- call — THE RETURN ADDRESS IS THE OBSERVABLE -----------------------
+# The phase-C counterpart to `pads`, which made the PC's LANDING ADDRESS the
+# answer rather than merely whether PC_LOAD went somewhere. PROG_stack
+# proves a return HAPPENED -- its OUT sits after the call and its answer is
+# computed inside the subroutine, so reaching OUT at all means the address
+# was pushed, stored, popped and reloaded. It does NOT prove the return
+# landed on the RIGHT byte.
+#
+# Here the landing site IS the only thing that can produce the answer:
+#
+#     0x4B   RET landed exactly on `landed`
+#     0xFF   it did not. Everything else in the image is HALT, and OB was
+#            poisoned before the call, so any other landing reports 0xFF.
+#
+# THE PADDING IS LOAD-BEARING, NOT COSMETIC. 0x120 HALTs push the CALL past
+# 0x00FF so the pushed return address has a NON-ZERO HIGH BYTE (0x012C). A
+# short image would sit at 0x00xx, where PC_HI is 0x00 -- and a U73 that is
+# dead, unlanded or stuck low delivers 0x00 too, so the return would work by
+# accident and the image would pass while half the phase-C hardware was
+# missing. That is the frozen-SP blindness all over again: an answer that
+# does not depend on the thing under test. See sp1 vs sp2 below.
+#
+# HALT does not hold on this machine, so a wrong landing that hits the
+# padding halts, escapes, re-halts, and OB stays 0xFF throughout.
+CALL_LANDED = 0x4B          # 01001011, mirror 0xD2 — not a rail, not a palindrome
+CALL_PAD = 0x120            # enough HALTs to push the CALL above 0x00FF
+
+CALL_PROGRAM = [
+    ("LDAI", POISON), ("OUT",),         # OB = 0xFF: "RET never landed here"
+    ("JMP", Ref("high")),
+] + [("HALT",)] * CALL_PAD + [
+    "high",
+    ("LXISP", STACK_TOP & 0xFF, STACK_TOP >> 8),
+    ("CALL", Ref("sub")),
+    "landed",                           # return address 0x012C, PC_HI = 0x01
+    ("LDAI", CALL_LANDED), ("OUT",), ("HALT",),
+    "sub",
+    ("RET",),
 ]
 
 # ---- sp2 / sp3 — THE IMAGES THAT ARE NOT BLIND TO A FROZEN SP ----------
@@ -1058,6 +1212,9 @@ COVERAGE = {
     "sp2": SP2_PROGRAM,
     "sp3": SP3_PROGRAM,
     "sp": SP_PROGRAM,
+    "calladdr": CALLADDR_PROGRAM,
+    "callraw": CALLRAW_PROGRAM,
+    "call": CALL_PROGRAM,
     "stack": STACK_PROGRAM,
 }
 

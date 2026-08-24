@@ -2050,6 +2050,147 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "Device:R_Small"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 0.254)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "R"
+				(at 0 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.016 1.016)
+					)
+				)
+			)
+			(property "Value" "R_Small"
+				(at 1.778 0 90)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Resistor, small symbol"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "R resistor"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "R_*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "R_Small_0_1"
+				(rectangle
+					(start -0.762 1.778)
+					(end 0.762 -1.778)
+					(stroke
+						(width 0.2032)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "R_Small_1_1"
+				(pin passive line
+					(at 0 2.54 270)
+					(length 0.762)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 0 -2.54 90)
+					(length 0.762)
+					(name ""
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "power:+5V"
 			(power global)
 			(pin_numbers
@@ -2391,6 +2532,16 @@
 	)
 	(wire
 		(pts
+			(xy 31.75 90.17) (xy 34.29 90.17)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "0611db62-0990-40bb-8251-a5d809a78caf")
+	)
+	(wire
+		(pts
 			(xy 228.6 58.42) (xy 229.87 58.42)
 		)
 		(stroke
@@ -2648,6 +2799,16 @@
 			(type default)
 		)
 		(uuid "5ba49d85-77ab-40bc-a70f-5faf33ab4af1")
+	)
+	(wire
+		(pts
+			(xy 41.91 90.17) (xy 39.37 90.17)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "5dfabcf1-faa0-42b0-ada7-66d68caf793c")
 	)
 	(wire
 		(pts
@@ -3159,7 +3320,7 @@
 		)
 		(uuid "1a22f38e-21a7-4fe8-b6b8-7d173ff791bb")
 	)
-	(label "CLK"
+	(label "CLK_R"
 		(at 147.32 135.89 180)
 		(effects
 			(font
@@ -3189,7 +3350,7 @@
 		)
 		(uuid "1f9e63b4-8da4-4a23-887f-f2ffe602dc52")
 	)
-	(label "CLK"
+	(label "CLK_R"
 		(at 87.63 71.12 180)
 		(effects
 			(font
@@ -3359,7 +3520,7 @@
 		)
 		(uuid "4f975d5b-efce-44ad-a4b2-3d917f668539")
 	)
-	(label "CLK"
+	(label "CLK_R"
 		(at 146.05 71.12 180)
 		(effects
 			(font
@@ -3809,6 +3970,16 @@
 		)
 		(uuid "cfc40ced-650c-4699-912f-8023cf40ced9")
 	)
+	(label "CLK"
+		(at 31.75 90.17 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "d2158437-fcd3-489a-9d46-cdc6844b470e")
+	)
 	(label "~{SP_DOWN}"
 		(at 31.75 115.57 180)
 		(effects
@@ -3828,6 +3999,16 @@
 			(justify left bottom)
 		)
 		(uuid "d3f5476a-4437-422d-a9fd-c47c91600655")
+	)
+	(label "CLK_R"
+		(at 41.91 90.17 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "d6af09dc-3c7f-44c3-af88-07b96b2d74b6")
 	)
 	(label "~{SP_CE}"
 		(at 87.63 66.04 180)
@@ -3879,7 +4060,7 @@
 		)
 		(uuid "defa5bcd-839a-432d-ab68-7d912ead67fc")
 	)
-	(label "CLK"
+	(label "CLK_R"
 		(at 87.63 135.89 180)
 		(effects
 			(font
@@ -4533,6 +4714,86 @@
 			(project "dino_v0_0_2"
 				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541/24261abe-cc51-4721-a517-eb214e9b8f63"
 					(reference "#PWR0192")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:R_Small")
+		(at 36.83 90.17 90)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "27d356ad-705e-409f-a7c0-165ccb27e72d")
+		(property "Reference" "R2"
+			(at 36.83 85.09 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.016 1.016)
+				)
+			)
+		)
+		(property "Value" "100Ω"
+			(at 36.83 87.63 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 36.83 90.17 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 36.83 90.17 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Resistor, small symbol"
+			(at 36.83 90.17 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "7006645d-3c57-48c0-84c6-e3de8acee151")
+		)
+		(pin "2"
+			(uuid "61938e3d-adca-48bc-9022-a1ad43855731")
+		)
+		(instances
+			(project "dino_v0_0_2"
+				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541/24261abe-cc51-4721-a517-eb214e9b8f63"
+					(reference "R2")
 					(unit 1)
 				)
 			)

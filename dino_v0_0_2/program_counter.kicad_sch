@@ -6567,6 +6567,16 @@
 		)
 		(uuid "611e6e90-bdd3-4bee-b157-f9af9fbf8ef3")
 	)
+	(label "CW13"
+		(at 86.36 24.13 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "6371b158-7f5d-5c41-980b-04188f8a709b")
+	)
 	(label "M14"
 		(at 254.0147 92.71 0)
 		(effects
@@ -10575,15 +10585,5 @@
 				)
 			)
 		)
-	)
-	(label "CW13"
-		(at 86.36 24.13 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "6371b158-7f5d-5c41-980b-04188f8a709b")
 	)
 )
