@@ -33,9 +33,18 @@ justify design decisions.
 
    Two seconds, authoritative. Reasoning from memory has been wrong more
    than once.
-5. **Schematics first.** Draw it, verify on the FPGA, refine, then hardware.
+5. **Schematics first.** Draw it, then wire it, then prove it on the bench.
+   The FPGA step is gone — the twin is retired, see below.
 
 ## Status
+
+**FACT — the machine is COMPLETE and EXECUTES FROM RAM, 2026-08-24.**
+Phases B (stack), C (`CALL`/`RET`) and D (execute-from-RAM) are all on
+silicon and in copper. Every instruction in the ISA runs on hardware except
+`LDCI` and `NOP`, and those are microcode-soft.
+
+Everything below is in the schematic *and* on the breadboard. Nothing in
+this file describes work that exists only on one side.
 
 **FACT — the machine works.** All ten original modules and all five
 integration blocks were bench-proven by 2026-08-02. The whole ISA executed
@@ -200,11 +209,14 @@ or '373 outputs contributing leakage only, and exactly THREE permanent DC
 loads: `U18.3` (the MDR '373's own D input), `U63.3` and `U65.3` (the SP's
 parallel-load taps). Worst-case sink ~1.5mA against the weakest driver's
 2.1mA. Phase C adds two tri-state pins, about +2.7%. **Bus loading is not a
-phase-C risk** — this was checked rather than assumed.
+phase-C risk** — this was checked rather than assumed. **Phase D added
+none at all**: its six gates sit between the decoders and the existing
+buffers' enable pins, and touch no bus pin.
 
 **FACT — a 100Ω series resistor sits in the SP board's CLK branch**, fitted
-2026-08-24, source end, that branch only. It is NOT in `dino_v0_0_2/` yet.
-Without it the '169s double-clock: `PROG_sp3` returns `0x22` instead of
+2026-08-24, source end, that branch only. It is `R2`, drawn in
+`dino_v0_0_2/stack_pointer.kicad_sch`, and the segment below it is `CLK_R`.
+Schematic and copper agree. Without it the '169s double-clock: `PROG_sp3` returns `0x22` instead of
 `0x2C`, deterministically. Full measurement and the PCB consequences are in
 `.git/sdd/CLOCK_DISTRIBUTION.md`. **Inference:** the SP is the first thing in
 this machine to put raw `CLK` on a clock pin at the end of a stub on another
@@ -212,30 +224,34 @@ board — every other state element takes CLK through a NOR or NAND first, and
 a gate is a de-facto regenerator. Nothing before the stack could have exposed
 this.
 
-> ## !!! THE FPGA TWIN IS BROKEN — DO NOT TRUST IT !!!
+> ## !!! THE FPGA TWIN IS RETIRED — DO NOT TRUST IT, DO NOT REPAIR IT !!!
 >
-> **`make -C fpga verify` DOES NOT PASS, as of 2026-08-24.** The old claim
-> here — "green in ~148s, host suite 147/147" — was stale and is deleted.
-> Measured, same box, same venv, `pytest docs/notes -q`:
+> **DECISION 2026-08-24 (Rico): retired.** `make -C fpga verify` does not
+> pass and will not be fixed. Do not read a green badge into this file, do
+> not gate bench work on it, and do not spend a session repairing it.
 >
->     working tree     16 failed, 164 passed
->     HEAD, clean      4 failed, 173 passed     <- ALREADY RED before today
+> It was already red before the session that retired it. Same box, same
+> venv, `pytest docs/notes -q`:
 >
-> **Four failures predate everything in this session:**
-> `test_microcode_gen::test_sa_field_reaches_the_382_uninverted`, and three in
-> `test_netlist_integrity` where the installed yosys rejects
-> `proc -latches warn` — a toolchain version drift, not code.
+>     HEAD, clean, before any of this   4 failed, 173 passed
 >
-> **Twelve more come from one root cause: `KeyError: '100Ω'`.** `fpga_gen.py`
-> has no model for a resistor. R2 is the first passive IN A SIGNAL PATH, and
+> **11 more from one root cause: `KeyError: '100Ω'`.** `fpga_gen.py` has no
+> model for a resistor. `R2` is the first passive IN A SIGNAL PATH, and
 > `EXCLUDED_TYPES` cannot simply swallow it — dropping it whole strands
-> `CLK_R` with no driver. It needs a net merge, `CLK_R ≡ CLK`, which is
-> correct at logic level and is also an admission that the twin cannot model
-> the damping R2 exists to provide.
+> `CLK_R` with no driver. Fixing it would need a net merge, `CLK_R ≡ CLK`,
+> which is an admission that the twin cannot model the damping `R2` exists
+> to provide.
 >
-> **DECISION 2026-08-24 (Rico): DEFER. Retire the twin after serial.** Not
-> repaired, deliberately. Do not read a green badge into this file, and do
-> not gate any bench work on the twin until it is either fixed or removed.
+> **It caught none of the three faults in the session that killed it, and
+> could not have.** Six unlanded `CW` address wires, a ringing `CLK` edge,
+> and `U72`/`U73` landed on the wrong chips. In all three the SCHEMATIC WAS
+> CORRECT, and the twin generates FROM the schematic. It catches DESIGN
+> errors; every fault that day was a build error or an analog one, and the
+> bench caught all three.
+>
+> Dead with it: `fpga/`, `docs/notes/fpga_gen.py`,
+> `docs/notes/coverage_lint.py`, `docs/notes/dino_fpga_vplan.md`, and
+> `docs/notes/test_fpga_gen.py`.
 
 **The rig (ATmega2560) is RETIRED — Rico, 2026-08-24.** Not merely
 detached; retired. Bench verification is continuity against the generated
@@ -370,6 +386,18 @@ Driven hits zero at block 3, when the real IR fetches the machine's own
 instruction bytes. A datapath-first ladder was considered and rejected on
 2026-07-28 for wire count; don't re-propose it.
 
+**THE LADDER IS HISTORY, NOT PROCEDURE.** All five blocks were bench-proven
+2026-08-02, and the rig that drove them is retired — nothing drives `IRB0-7`
+now, so block 1 and block 2 cannot be run as acceptance blocks at all. What
+survives is the classification: COPPER, STRAP and SAMPLE are netlist-derived
+and still describe the machine. DRIVE is the rig-only part.
+
+**Phase D moved `block2`.** Its RAM enable used to come from control_word,
+in-block; it now comes from the MDR board, which does not join until block3.
+`block2` therefore straps `~{ROM_BUF_EN}` LOW and `~{RAM_OE_G}` HIGH — both
+forced, since `~{RAM_OE_G}` LOW would leave `U19` and `U21` both driving
+`MDR0-7`. Cost: block2 can no longer read RAM under microcode control.
+
 **Two clock modes.** `CLK` is `U27.5` and `RESET` is `U27.9`, both '74
 totem-pole outputs, so nothing can inject there. The one non-contending
 point is `CLKIN` at `U20.2`, reachable with Y1 disabled:
@@ -397,19 +425,30 @@ buy.
 
 ## Everything is generated, nothing is retyped
 
-    docs/notes/kicad_contracts.py   contracts + pinmap + crossing lists
+    docs/notes/kicad_contracts.py   contracts + crossing lists
                                     --continuity <refs>  what to land
                                     --since <rev>        what changed, classified
+                                    --stamp              MODULE CONTRACT blocks
+                                    --pinmap             DEAD, throws. Rig retired.
     docs/notes/microcode_gen.py     microcode ROM images + CRCs + header
     docs/notes/progrom_gen.py       program ROMs, and the Python oracle
     docs/notes/layout_gen.py        breadboard placement, slot maps,
                                     wiring guides, layout pages
     docs/notes/kicad_netlist.py     build_report() — the netlist oracle
-    docs/notes/fpga_gen.py          schematic -> VHDL, sim hex images
-    docs/notes/coverage_lint.py     contract signals vs FPGA testbenches
+    docs/notes/fpga_gen.py          DEAD with the twin
+    docs/notes/coverage_lint.py     DEAD with the twin
+
+**The oracle is NOT the twin.** `simulate()` in `progrom_gen.py` interprets
+the real microcode rows out of `microcode_gen.INSTRUCTIONS` and computes what
+`OB` should read. It produced `alu 0x39`, `mem 0xC5`, `stack 0x27`,
+`ramexec 0x6E` — the answer key you compare the machine against. Without it
+a coverage ROM is a program with no expected value. It stays.
+
+    python3 docs/notes/progrom_gen.py --expected
 
 Host tests sit next to each (`test_*.py`), plus C model tests in
-`tests/dino_bringup/hosttest/`.
+`tests/dino_bringup/hosttest/` — those compile against the retired rig's
+expectation headers, so they die with it unless the headers are kept.
 
 **Adding an instruction costs a three-ROM burn.** A new opcode writes rows in
 every byte of the 24-bit word. `U9`/`U15` stay untouched only for changes
@@ -531,21 +570,35 @@ in-tree reference to one of them (BRINGUP.md, dino_mar_lo_investigation.md,
 dino_hardware_growth_plan.md, …) resolves to `.git/sdd/<name>`. The repo
 keeps design and reference docs plus everything generated.
 
-    .git/sdd/PHASE_D.md                      execute-from-RAM: the build
+LIVE — read these:
+
+    .git/sdd/PHASE_E.md                      execute-from-ROM-space I/O:
+                                             broad strokes and gotchas.
+                                             NEXT UP, not yet specced
+    .git/sdd/PHASE_D.md                      execute-from-RAM: build
                                              procedure, both checkpoints,
-                                             and the ramexec result
-    .git/sdd/RIG_RETIREMENT.md               the ATmega is retired; what
-                                             is dead, and what must NOT be
+                                             the ramexec result
+    .git/sdd/RIG_RETIREMENT.md               the ATmega is retired; what is
+                                             dead, and what must NOT be
                                              deleted with it
-    .git/sdd/CLOCK_DISTRIBUTION.md           the 100R fix, and the PCB
+    .git/sdd/CLOCK_DISTRIBUTION.md           the 100R fix and the PCB
                                              consequence — read before any
                                              board gets its own clock branch
-    .git/sdd/SP_BEEP.md                      the phase-B landing record
-    .git/sdd/SP_DEBUG.md                     the LA capture plan (phase B,
-                                             now historical)
-    .git/sdd/dino_stack_bringup_handoff.md   START HERE for stack bring-up
-    .git/sdd/BRINGUP.md                      bench procedure, per stage
-    .git/sdd/README.md                       progress checkboxes
-    .git/sdd/dino_test_bringup_design.md     the bring-up spec
     .git/sdd/dino_hardware_growth_plan.md    what is planned and priced
     docs/notes/dino_isa_for_basic.md         the instruction set roadmap
+
+HISTORICAL — accurate for their moment, superseded since. Do not follow
+them as procedure:
+
+    .git/sdd/PHASE_C.md                      CALL/RET landing record
+    .git/sdd/dino_mar_lo_investigation.md    why the recorded bus readings
+                                             are not evidence
+    .git/sdd/SP_BEEP.md                      phase-B landing record
+    .git/sdd/SP_DEBUG.md                     phase-B LA capture plan
+    .git/sdd/dino_stack_bringup_handoff.md   stack bring-up; stack is DONE
+    .git/sdd/BRINGUP.md                      per-stage bench procedure;
+                                             rig-era, and the rig is retired
+    .git/sdd/README.md                       progress checkboxes, rig-era
+    .git/sdd/dino_test_bringup_design.md     the bring-up spec, rig-era
+    .git/sdd/BRINGUP_FPGA.md                 the fabric; twin is retired
+    docs/notes/dino_fpga_vplan.md            coverage map; twin is retired
