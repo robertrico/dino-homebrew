@@ -38,7 +38,9 @@ ROMS = os.path.normpath(os.path.join(HERE, "..", "..", "roms"))
 HDR = os.path.normpath(os.path.join(
     HERE, "..", "..", "tests", "dino_bringup", "src", "progrom_expect.h"))
 
-SIZE = 32768                    # AT28C256, ROM half of the memory map
+ROM_IMAGE  = 32768      # the AT28C256 itself: pad length, CRC domain, PR_SIZE
+ROM_WINDOW = 16384      # addresses that decode to U24 after phase E
+IO_BASE    = 0x4000     # ROM_WINDOW .. RAM_BASE is the I/O window
 SAFE_FILL = OPCODES["HALT"]     # erased/overrun ROM must HALT, never rave
 
 # ---- diag image ---------------------------------------------------------
@@ -49,7 +51,7 @@ WITNESS_ADDRS = [0] + [1 << k for k in range(15)]
 
 def diag_byte(addr):
     """Content-addressed diag value. Self-naming on the witness set."""
-    addr &= SIZE - 1
+    addr &= ROM_IMAGE - 1
     if addr == 0:
         return DIAG_ZERO
     if addr & (addr - 1) == 0:                  # exact power of two
@@ -58,7 +60,7 @@ def diag_byte(addr):
 
 
 def build_diag():
-    return bytes(diag_byte(a) for a in range(SIZE))
+    return bytes(diag_byte(a) for a in range(ROM_IMAGE))
 
 
 # ---- the milestone program ---------------------------------------------
@@ -174,7 +176,7 @@ _MISC = {v: k for k, v in MISC.items()}
 _SA = {v: k for k, v in SA.items()}
 from microcode_gen import SRC_BANK_N, DST_BANK_N, MISC_BANK_N  # noqa: E402
 
-RAM_BASE = 0x8000       # M15 selects: ROM 0x0000-0x7FFF, RAM 0x8000-0xFFFF
+RAM_BASE = 0x8000       # ROM 0x0000-0x3FFF, I/O 0x4000-0x7FFF, RAM 0x8000+
 
 # Deliberately not 0x0000: see simulate()'s own comment. Points into ROM
 # space, so a stack access before LXISP writes nowhere and reads program
@@ -248,7 +250,7 @@ def simulate(program, max_steps=100000, switches=0x00):
           "steps": 0, "ends": 0, "outs": []}
 
     def rd(a):
-        if a < SIZE:
+        if a < ROM_WINDOW:
             return code[a] if a < len(code) else SAFE_FILL
         return ram.get(a, 0)
 
@@ -1275,20 +1277,20 @@ COVERAGE = {
 
 def build_image(program):
     code = assemble(program)
-    if len(code) > SIZE:
-        raise BuildError("program larger than the ROM")
+    if len(code) > ROM_WINDOW:
+        raise BuildError("program larger than the ROM WINDOW (0x0000-0x3FFF)")
     if code[0] == DIAG_ZERO:
         raise BuildError("program byte 0 collides with the diag signature")
-    return code + bytes([SAFE_FILL]) * (SIZE - len(code))
+    return code + bytes([SAFE_FILL]) * (ROM_IMAGE - len(code))
 
 
 def build_real():
     code = assemble(PROGRAM)
-    if len(code) > SIZE:
-        raise BuildError("program larger than the ROM")
+    if len(code) > ROM_WINDOW:
+        raise BuildError("program larger than the ROM WINDOW (0x0000-0x3FFF)")
     if code[0] == DIAG_ZERO:
         raise BuildError("program byte 0 collides with the diag signature")
-    return code + bytes([SAFE_FILL]) * (SIZE - len(code))
+    return code + bytes([SAFE_FILL]) * (ROM_IMAGE - len(code))
 
 
 def diag_triple_max():
@@ -1300,7 +1302,7 @@ def diag_triple_max():
     leave a 4-fold ambiguity almost everywhere and 8-fold in places. A
     hand-picked threshold of 4 would have false-failed on 3% of positions."""
     seen = {}
-    for a in range(SIZE - 2):
+    for a in range(ROM_IMAGE - 2):
         k = (diag_byte(a), diag_byte(a + 1), diag_byte(a + 2))
         seen[k] = seen.get(k, 0) + 1
     return max(seen.values())
@@ -1332,7 +1334,7 @@ def emit_header(real, crcs, path, cov=None):
         "#endif",
         "#include <stdint.h>",
         "",
-        f"#define PR_SIZE {SIZE}u",
+        f"#define PR_SIZE {ROM_IMAGE}u",
         f"#define PR_SAFE_FILL 0x{SAFE_FILL:02X}u",
         "",
         "/* burn signatures: byte 0 of each image */",
@@ -1485,7 +1487,7 @@ def main():
     swd_crc = crc16(swd)
     swd_len = len(assemble(SWDEMO_PROGRAM))
     emit_header(real, crcs, HDR, cov)
-    print(f"wrote {3 + len(cov)}x {SIZE}B bins -> {ROMS}")
+    print(f"wrote {3 + len(cov)}x {ROM_IMAGE}B bins -> {ROMS}")
     print(f"wrote expect header -> {HDR}")
     print("burn order: DIAG first (rom.order proves 15 address lines),")
     print("            then REAL (the milestone program)")

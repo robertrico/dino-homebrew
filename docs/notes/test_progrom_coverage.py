@@ -313,7 +313,7 @@ def test_diag_triple_ambiguity_is_generated():
     check(m >= 1, "a worst case exists")
     # recompute independently of the generator's own helper
     seen = {}
-    for a in range(pg.SIZE - 2):
+    for a in range(pg.ROM_IMAGE - 2):
         k = (pg.diag_byte(a), pg.diag_byte(a + 1), pg.diag_byte(a + 2))
         seen[k] = seen.get(k, 0) + 1
     check_eq(m, max(seen.values()), "matches an independent recount")
@@ -328,7 +328,8 @@ def test_images_fit_and_safe_fill():
     print("images fit the ROM and are HALT-filled")
     for tag, prog in pg.COVERAGE.items():
         img = pg.build_image(prog)
-        check_eq(len(img), pg.SIZE, f"{tag}: image is a full {pg.SIZE}B ROM")
+        check_eq(len(img), pg.ROM_IMAGE,
+                 f"{tag}: image is a full {pg.ROM_IMAGE}B ROM")
         check_eq(img[-1], pg.SAFE_FILL, f"{tag}: tail is the safe HALT fill")
         check(img[0] != pg.DIAG_ZERO, f"{tag}: byte 0 does not collide with DIAG")
 

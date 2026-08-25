@@ -3,7 +3,8 @@
 
 Assertions come from the DESIGN CONTRACT (memory map + ISA + test spec),
 not from the generator's own structure:
-  - ROM 0x0000-0x7FFF, one AT28C256, all 32768 bytes programmed
+  - ROM 0x0000-0x3FFF, I/O 0x4000-0x7FFF, one AT28C256, all 32768 bytes
+    programmed
   - safe-fill = HALT opcode, so an erased/short program halts
   - opcodes and instruction LENGTHS come from microcode_gen (single
     source of truth — the assembler validates operand counts against it)
@@ -19,15 +20,15 @@ import unittest
 import progrom_gen as pg
 from microcode_gen import OPCODES, INSTRUCTIONS
 
-SIZE = 32768
+ROM_IMAGE = 32768
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 class TestDiagImage(unittest.TestCase):
     def test_size_and_selfconsistency(self):
         img = pg.build_diag()
-        self.assertEqual(len(img), SIZE)
-        for a in (0, 1, 0x1234, 0x4000, SIZE - 1):
+        self.assertEqual(len(img), ROM_IMAGE)
+        for a in (0, 1, 0x1234, 0x4000, ROM_IMAGE - 1):
             self.assertEqual(img[a], pg.diag_byte(a))
 
     def test_address_zero_marker(self):
@@ -45,7 +46,7 @@ class TestDiagImage(unittest.TestCase):
     def test_not_blank_like(self):
         """an erased chip reads 0xFF everywhere; diag must not look like one"""
         img = pg.build_diag()
-        self.assertLess(img.count(0xFF), SIZE // 64)
+        self.assertLess(img.count(0xFF), ROM_IMAGE // 64)
 
     def test_all_bytes_exercised_on_every_data_line(self):
         """every data line must be seen both high and low somewhere"""
@@ -62,7 +63,7 @@ class TestDiagImage(unittest.TestCase):
 class TestRealImage(unittest.TestCase):
     def test_size_and_safe_fill(self):
         img = pg.build_real()
-        self.assertEqual(len(img), SIZE)
+        self.assertEqual(len(img), ROM_IMAGE)
         self.assertEqual(pg.SAFE_FILL, OPCODES["HALT"])
         tail = img[len(pg.assemble(pg.PROGRAM)):]
         self.assertEqual(set(tail), {pg.SAFE_FILL})
@@ -290,8 +291,38 @@ class TestSpCylonProbes(unittest.TestCase):
         """It never halts, so it has no (OB, END) fingerprint for the
         ladder to match — same reason cylon is excluded."""
         img = pg.build_image(pg.SPCYLON_PROGRAM)
-        self.assertEqual(len(img), SIZE)
+        self.assertEqual(len(img), ROM_IMAGE)
         self.assertNotIn("spcylon", pg.COVERAGE)
+
+
+class TestRomWindowSplit(unittest.TestCase):
+    """SIZE was one constant doing two jobs: the size of the PART and the
+    size of the ADDRESS SPACE that decodes to it. Phase E makes those
+    different numbers -- ROM answers 0x0000-0x3FFF, the part is still a
+    32K AT28C256 and the TL866 still wants 32768 bytes."""
+
+    def test_part_size_and_window_size_are_separate_constants(self):
+        self.assertEqual(pg.ROM_IMAGE, 32768)
+        self.assertEqual(pg.ROM_WINDOW, 16384)
+        self.assertEqual(pg.IO_BASE, 0x4000)
+        self.assertFalse(hasattr(pg, "SIZE"),
+                         "SIZE must not survive the split under any name")
+
+    def test_burn_image_is_still_the_whole_part(self):
+        self.assertEqual(len(pg.build_image(pg.COVERAGE["real"])),
+                         pg.ROM_IMAGE)
+        self.assertEqual(len(pg.build_diag()), pg.ROM_IMAGE)
+
+    def test_a_program_larger_than_the_WINDOW_is_rejected(self):
+        """the old check used the part size, so a 20K program built clean
+        and fetched garbage past 0x3FFF"""
+        big = [("HALT",)] * (pg.ROM_WINDOW + 1)
+        with self.assertRaises(pg.BuildError):
+            pg.build_image(big)
+
+    def test_a_program_that_fits_the_window_is_accepted(self):
+        ok = [("HALT",)] * (pg.ROM_WINDOW - 1)
+        self.assertEqual(len(pg.build_image(ok)), pg.ROM_IMAGE)
 
 
 if __name__ == "__main__":
