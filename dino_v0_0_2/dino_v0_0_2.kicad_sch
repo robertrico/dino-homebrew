@@ -11540,13 +11540,58 @@
 			)
 		)
 	)
+	(sheet
+		(at 237.49 58.42)
+		(size 12.7 3.81)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "eeb646fc-821f-4891-aade-9ed05142e1ec")
+		(property "Sheetname" "Input"
+			(at 237.49 57.658 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "input.kicad_sch"
+			(at 237.236 63.246 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "dino_v0_0_2"
+				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541"
+					(page "12")
+				)
+			)
+		)
+	)
 	(sheet_instances
 		(path "/"
 			(page "1")
 		)
 	)
 	(embedded_fonts no)
-	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: CW12=END, CW15=HALT <- Microcode_Decoder\nOUT: ~{RESET} -> ALU Module\nOUT: CLK -> ALU Module, Memory Address Regiser, Memory Data Register, Program Counter, Register Modules, Stack Pointer\nOUT: ~{CLK} -> ALU Module, Memory, Program Counter\nOUT: T0-3 -> Microcode_Decoder\nOUT: RESET -> Program Counter"
+	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: CW12=END, CW15=HALT <- Microcode_Decoder\nOUT: ~{RESET} -> ALU Module\nOUT: CLK -> ALU Module, Memory, Memory Address Regiser, Memory Data Register, Program Counter, Register Modules, Stack Pointer\nOUT: ~{CLK} -> ALU Module, Memory, Program Counter\nOUT: RESET -> Memory, Program Counter\nOUT: T0-3 -> Microcode_Decoder"
 		(exclude_from_sim no)
 		(at 156.718 170.942 0)
 		(effects

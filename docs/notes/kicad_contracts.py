@@ -281,7 +281,12 @@ PIN_ASSIGN = {
         "~{REG_B_OUT}":     "PC3/D34",   # U28.11
         "~{REG_C_OUT}":     "PC4/D33",   # U28.10
         "~{ALU_OUT}":       "PC5/D32",   # U28.9
-        "~{SW_OUT}":        "PC6/D31",   # U28.7
+        # ~{SW_OUT} (was PC6/D31, U28.7) RETIRED 2026-08-25, PHASE E. IN left
+        # the ISA and U28.7 is unlanded, so the signal has no contract entry
+        # to assign. Deleted rather than repaired: the ATmega rig is retired
+        # and CLAUDE.md forbids extending its hookup tables. A dead name here
+        # raises at IMPORT and takes every other check in test_kicad_blocks
+        # down with it.
         # D30-D22: U30
         "CW0":              "PC7/D30",   # U30.1 (A0)
         "CW1":              "PA7/D29",   # U30.2 (A1)
@@ -315,7 +320,8 @@ PIN_ASSIGN = {
         "~{RAM_OUT}":       "PL4/D45",   # U39.2
         "~{RAM_LOAD}":      "PL5/D44",   # U39.4 (same net as U37.3)
         "~{ALU_OUT}":       "PG0/D41",   # U39.9
-        "~{SW_OUT}":        "PG1/D40",   # U39.10
+        # ~{SW_OUT} (was PG1/D40) RETIRED 2026-08-25, PHASE E. U39.10 now
+        # carries ~{IO_RD}. Not re-assigned -- see the control_word note.
     },
     "alu": {
         # DERIVED FROM THE BOARD (2026-07-26). Strip slots were read off
@@ -541,10 +547,27 @@ BLOCKS = {
         # control_word, in-block. RAM read-back is now covered only by the
         # memory module test. This is a real reduction in block2's surface and
         # it is the price of moving two enables onto the MDR board.
+        #
+        # PHASE E, 2026-08-25. ~{RAM_OE_G} IS NO LONGER STRAPPED -- it is
+        # GENERATED IN-BLOCK. Its driver moved the other way this time, from
+        # U37.10 on the MDR board to U74 g3 on the memory board, so the gate
+        # is inside block2's membership. What crosses in instead are its two
+        # upstream terms' MDR-side halves:
+        #
+        #   RAM_OE_ON   LOW  -> ~{RAM_OE_G} = NAND(LOW, M15) = HIGH. The SAME
+        #                       forced outcome phase D strapped directly; only
+        #                       the pin it is forced at has moved.
+        #   READS_IDLE  HIGH -> ~{IO_RD} = OR(~{IO_SEL}, HIGH) = HIGH, so the
+        #                       published card read strobe never asserts in
+        #                       block2. There is no card in the ladder to read.
+        #
+        # Net effect on block2's surface: unchanged. One strap out, two in, and
+        # the electrical state of U19/U21 is identical to phase D's.
         "strap": dict({"FLAG_Z": ("HIGH", "control_word.truth"),
                        "WRITE_DIR": ("LOW", "memory.window"),
                        "~{ROM_BUF_EN}": ("LOW", "memory.window"),
-                       "~{RAM_OE_G}": ("HIGH", "memory.ramrw")},
+                       "RAM_OE_ON": ("LOW", "memory.ramrw"),
+                       "READS_IDLE": ("HIGH", "memory.ramrw")},
                       **{f"W{i}": ("PULLDOWN10K", "memory.ramrw") for i in range(8)}),
         "sample_anyway": ["CW12=END", "CW15=HALT"],
     },

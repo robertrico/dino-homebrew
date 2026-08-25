@@ -26,7 +26,20 @@ ROOT = os.path.normpath(os.path.join(HERE, "..", "..",
 #   mar              U59.11 B7 (MAR15 buffered out), U60.8/9 ('02 in -> ~{RAM_EN})
 #   memory           U24.20 ~{CE}   (the ROM's chip enable)
 #   program_counter  U12.9, U14.9   (A7 of the high '245 pair)
-M15_PINS = {("U12", 9), ("U14", 9), ("U24", 20),
+#
+# UPDATED 2026-08-25, PHASE E. Two changes, both deliberate:
+#
+#   U24.20 LEFT THIS NET. The ROM's chip enable is now ~{ROM_SEL} = NAND(
+#   ~{RAM_EN}, ~{M14}), so the ROM answers 0x0000-0x3FFF and 0x4000-0x7FFF
+#   is an I/O window. M15 keeps its five ADDRESS consumers and gains U74.10,
+#   which is the M15 term of ~{RAM_OE_G} = NAND(RAM_OE_ON, M15).
+#
+#   THE `ROM_EN` ALIAS WAS DELETED. Once U24.20 moved, `ROM_EN` named a net
+#   with no ROM consumer at all -- a label describing a function that had
+#   moved to ~{ROM_SEL}. This is the exact net whose alias split cost every
+#   continuity checklist this project ever generated, so a stale name on it
+#   re-arms that hazard under a name that now also lies.
+M15_PINS = {("U12", 9), ("U14", 9), ("U74", 10),
             ("U59", 11), ("U60", 8), ("U60", 9)}
 
 
@@ -34,18 +47,18 @@ M15_PINS = {("U12", 9), ("U14", 9), ("U24", 20),
 # at import time, which is fine while they pass -- but a RED one aborts pytest
 # COLLECTION, and a collection error takes the whole `make -C fpga verify` host
 # suite with it. A red test must report itself without hiding the other 147.
-def test_m15_rom_en_is_one_complete_checklist_row():
+def test_m15_is_one_complete_checklist_row():
     rows = continuity_checklist(ROOT)
     hits = [(net, new, old) for net, new, old in rows
             if "M15" in net or "ROM_EN" in net]
 
     assert hits, (
-        "M15/ROM_EN is absent from the continuity checklist entirely. "
+        "M15 is absent from the continuity checklist entirely. "
         "It is a board-to-board wire (mar -> memory, mar -> program_counter) "
         "and the checklist is the only artifact that would tell you to land it.")
 
     assert len(hits) == 1, (
-        f"M15/ROM_EN split across {len(hits)} checklist rows "
+        f"M15 split across {len(hits)} checklist rows "
         f"({', '.join(net for net, _, _ in hits)}) — one wire must be one row, "
         "or beeping the list leaves an end unwalked.")
 
@@ -207,7 +220,10 @@ def test_default_report_is_unchanged_by_the_refs_relaxation():
     assert "~{TC1}" not in nets, (
         "the no-refs report must stay board-to-board only — ~{TC1} is "
         "intra-sheet and must not leak into the default checklist")
-    assert "M15/ROM_EN" in nets, "the default report lost a real crossing"
+    # Was "M15/ROM_EN" until phase E deleted the ROM_EN alias. The CROSSING
+    # is unchanged -- mar -> memory, mar -> program_counter -- only its key
+    # moved, because a net's key here is its full label set.
+    assert "M15" in nets, "the default report lost a real crossing"
 
 
 
@@ -237,6 +253,20 @@ def test_default_report_is_unchanged_by_the_refs_relaxation():
 
 RESERVE_BITS = {"CW16", "CW19", "CW20", "CW21", "CW22", "CW23"}
 
+# PHASE E, 2026-08-25. U75's three published strobes have no consumer in the
+# CORE and are not supposed to have one: they are the bus DINO publishes, and
+# their counterparts live on CARDS that do not exist yet. An unwired output is
+# correct here, exactly as the no-connect bucket's own header says.
+#
+# ~{IO_WR} and ~{IO_RD_Q} retire when the first card lands on them. RESET_B is
+# a BUFFER of RESET for the backplane and may stay a stub indefinitely -- that
+# is what a published reset looks like with no card plugged in.
+PUBLISHED_BUS = {
+    "~{IO_WR}":    "OR(~{IO_SEL}, ~{RAM_WRITE_EN}) -> every card's ~WR",
+    "~{IO_RD_Q}":  "OR(~{IO_RD}, CLK) -> every card's ~RD, CLK-low-qualified",
+    "RESET_B":     "OR(RESET, GND) -> the backplane's reset",
+}
+
 ROOT_CROSSING = {           # counterpart lives on the root sheet
     "CW12":     "END      -> root U61.3",
     "CW15":     "HALT     -> root U61.5/6",
@@ -244,14 +274,18 @@ ROOT_CROSSING = {           # counterpart lives on the root sheet
     "T1":       "root T-counter U6/U7/U8",
     "T2":       "root T-counter U6/U7/U8",
     "T3":       "root T-counter U6/U7/U8",
-    "RESET":    "root U27.9",
     "~{RESET}": "root U27.8",
 }
+# RESET LEFT THIS LEDGER 2026-08-25, PHASE E. It was a stub because its only
+# child-sheet pin was U10.6 (program_counter) and its driver U27.9 is on the
+# ROOT sheet, which net_pins() does not walk. U75.9 gave it a SECOND child-
+# sheet pin, so it is now a genuine cross-sheet crossing and appears on the
+# checklist proper. ~{RESET} still has exactly one (alu U47) and stays.
 
 
 def test_stub_bucket_contains_only_known_entries():
     stubs = set(kicad_contracts.unlanded_stubs(ROOT))
-    allowed = RESERVE_BITS | set(ROOT_CROSSING)
+    allowed = RESERVE_BITS | set(ROOT_CROSSING) | set(PUBLISHED_BUS)
     unexpected = stubs - allowed
     assert not unexpected, (
         "new single-pin net(s) -- either a real alias split (the CW9/SA2 "

@@ -290,11 +290,32 @@ circulation: `NOR` would give `CIN=0` for `SUB` as well, making it compute
 
 Named because they are not settled. None is blocking.
 
-**OPEN — HALT does not hold.** The machine halts, then escapes after a few
-seconds, varying. `CET` on the '163 is sampled every clock, so an escape
-once in millions of clocks is a level problem rather than a logic one — that
-much is inference, not measurement. Only visible on `PROG_flow`; every other
-image has `0xFF` fill past its HALT so an escape just re-halts.
+**CLOSED 2026-08-25 — HALT HOLDS. The "escape" was never tested.**
+`PROG_flow` reached `OB = 0x39` and held it for **at least 81 minutes**
+free-running with Y1 seated — ~5.0x10^9 clocks, with `CET` on the '163
+sampled on every one of them. Rico's ruling: *"it holds. it was a false
+error we probably saw once, but did not test."*
+
+This entry previously read **"OPEN — HALT does not hold. The machine halts,
+then escapes after a few seconds, varying."** It had no recorded date, no
+conditions and no session log — the same defect this document was rewritten
+to stop repeating, and it survived long enough to justify a three-wire
+`U61` latch in `PHASE_F.md` SECTION 0.
+
+**The measurement is sound because the witness cannot miss.** `PROG_flow` is
+the only image where an escape is visible: `bad` (`LDAI 0xE7; OUT; HALT`)
+sits immediately behind the final HALT, so an escape flips OB `0x39 -> 0xE7`
+and **sticks** — everything past `bad` is `SAFE_FILL = 0xFF = HALT` and
+nothing there executes an `OUT`. An unwatched transition is therefore not
+missed data. OB never left `0x39`.
+
+**Consequence: the `U61` HALT latch is NOT built.** `PHASE_E_PLAN.md` Task 0
+steps 0b-0e are retired unexecuted; `U61` g2/g3 stay free for phase F, which
+counts them. Full record in `PHASE_E_PLAN.md` RESULT 0a.
+
+**The lesson is the rule, not the reading:** a fault seen once and never
+reproduced is an observation, not a defect. Give it a witness that cannot
+miss and a recorded duration before it earns a fix.
 
 **OPEN — bus levels have never been characterised on a healthy machine.**
 Every level reading this project has recorded was taken during a debugging

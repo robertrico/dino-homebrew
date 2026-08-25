@@ -3861,6 +3861,10 @@
 		(color 0 0 0 0)
 		(uuid "cf05061a-251e-40c9-ba8c-e9954b771783")
 	)
+	(no_connect
+		(at 153.67 181.61)
+		(uuid "7a3890a3-7bcd-40c7-ad70-2ed2402bb371")
+	)
 	(bus_entry
 		(at 214.63 111.76)
 		(size -2.54 -2.54)
@@ -5049,16 +5053,6 @@
 	)
 	(wire
 		(pts
-			(xy 125.73 181.61) (xy 121.92 181.61)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "5faf0bb9-0e19-45c5-a68e-b71b877f36c7")
-	)
-	(wire
-		(pts
 			(xy 125.73 26.67) (xy 90.17 26.67)
 		)
 		(stroke
@@ -5156,16 +5150,6 @@
 			(type default)
 		)
 		(uuid "70ad474d-8cb1-49e9-bb73-b02df66c2626")
-	)
-	(wire
-		(pts
-			(xy 140.97 181.61) (xy 143.51 181.61)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "7382aad8-9173-4cd1-a985-12b331532645")
 	)
 	(wire
 		(pts
@@ -5536,6 +5520,16 @@
 			(type default)
 		)
 		(uuid "a140f1ba-22b9-4efc-93b0-9775b9ce7163")
+	)
+	(wire
+		(pts
+			(xy 135.89 181.61) (xy 138.43 181.61)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "a217a440-2d91-411c-88f7-20e6bbf77eef")
 	)
 	(wire
 		(pts
@@ -6197,7 +6191,7 @@
 		)
 		(uuid "1886392f-10fc-4e07-8d58-b823f8e476fa")
 	)
-	(label "~{SW_OUT}"
+	(label "~{IO_RD}"
 		(at 25.4 160.02 180)
 		(effects
 			(font
@@ -6467,7 +6461,7 @@
 		)
 		(uuid "51a4dd3e-f2c5-4171-b10c-ac42ba373d90")
 	)
-	(label "FETCH_RAM"
+	(label "~{ROM_SEL}"
 		(at 25.4 190.5 180)
 		(effects
 			(font
@@ -6666,16 +6660,6 @@
 			(justify right bottom)
 		)
 		(uuid "7a79207a-3329-41ff-b151-e1bcd7de6fa8")
-	)
-	(label "RAM_OE_ON"
-		(at 121.92 181.61 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "7ce23888-146b-40e6-b285-cbd588131abd")
 	)
 	(label "~{RAM_LOAD}"
 		(at 30.48 66.04 180)
@@ -6966,16 +6950,6 @@
 			(justify right bottom)
 		)
 		(uuid "c04d75e9-a838-412c-9d09-2f8119ec46c8")
-	)
-	(label "~{RAM_OE_G}"
-		(at 143.51 181.61 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "c07b4b9c-e2ed-4ba4-a22e-44bfde022768")
 	)
 	(label "MDR4"
 		(at 214.63 121.92 0)
@@ -10856,7 +10830,7 @@
 	)
 	(symbol
 		(lib_id "74xx:74LS04")
-		(at 133.35 181.61 0)
+		(at 146.05 181.61 0)
 		(unit 5)
 		(body_style 1)
 		(exclude_from_sim no)
@@ -10867,7 +10841,7 @@
 		(fields_autoplaced yes)
 		(uuid "a900ba20-85cb-4b77-b5b1-c206880664c1")
 		(property "Reference" "U37"
-			(at 133.35 172.72 0)
+			(at 146.05 172.72 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10877,7 +10851,7 @@
 			)
 		)
 		(property "Value" "74LS04"
-			(at 133.35 175.26 0)
+			(at 146.05 175.26 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -10887,7 +10861,7 @@
 			)
 		)
 		(property "Footprint" ""
-			(at 133.35 181.61 0)
+			(at 146.05 181.61 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10898,7 +10872,7 @@
 			)
 		)
 		(property "Datasheet" "http://www.ti.com/lit/gpn/sn74LS04"
-			(at 133.35 181.61 0)
+			(at 146.05 181.61 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10909,7 +10883,7 @@
 			)
 		)
 		(property "Description" "Hex Inverter"
-			(at 133.35 181.61 0)
+			(at 146.05 181.61 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11159,6 +11133,84 @@
 			(project "dino_v0_0_2"
 				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541/dfdf99e6-2845-4ba5-89ea-a5852382fb95"
 					(reference "#PWR014")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GND")
+		(at 135.89 181.61 0)
+		(mirror y)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "acf10804-ed06-4d3a-a378-623f20333d4b")
+		(property "Reference" "#PWR0225"
+			(at 135.89 187.96 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Value" "GND"
+			(at 135.89 186.436 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 135.89 181.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 135.89 181.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
+			(at 135.89 181.61 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "76964025-7023-468c-95b5-2e9cd438cbd9")
+		)
+		(instances
+			(project "dino_v0_0_2"
+				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541/dfdf99e6-2845-4ba5-89ea-a5852382fb95"
+					(reference "#PWR0225")
 					(unit 1)
 				)
 			)
@@ -12649,7 +12701,7 @@
 			)
 		)
 	)
-	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: SRC_ACTIVE, ~{ALU_OUT}, ~{IR_LOAD}, ~{MDR_OUT}, ~{PC_HI_OUT}, ~{PC_LO_OUT}, ~{RAM_LOAD}, ~{RAM_OUT}, ~{ROM_OUT}, ~{SW_OUT} <- Control Word Module\nIN: ~{RAM_EN} <- Memory Address Regiser\nIN: CLK <- root\nOUT: WRITE_DIR, ~{RAM_OE_G}, ~{ROM_BUF_EN} -> Memory\nOUT: IRB0-7 -> Microcode_Decoder\nOUT: PC0-15 -> Program Counter\nBIDIR: W0-7 <-> ALU Module, Memory Address Regiser, Output\nBIDIR: MDR0-7 <-> Memory, Register Modules, Stack Pointer"
+	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: SRC_ACTIVE, ~{ALU_OUT}, ~{IR_LOAD}, ~{MDR_OUT}, ~{PC_HI_OUT}, ~{PC_LO_OUT}, ~{RAM_LOAD}, ~{RAM_OUT}, ~{ROM_OUT} <- Control Word Module\nIN: ~{IO_RD}, ~{ROM_SEL} <- Memory\nIN: ~{RAM_EN} <- Memory Address Regiser\nIN: CLK <- root\nOUT: RAM_OE_ON, READS_IDLE, WRITE_DIR, ~{ROM_BUF_EN} -> Memory\nOUT: IRB0-7 -> Microcode_Decoder\nOUT: PC0-15 -> Program Counter\nBIDIR: W0-7 <-> ALU Module, Input, Memory Address Regiser, Output\nBIDIR: MDR0-7 <-> Memory, Register Modules, Stack Pointer"
 		(exclude_from_sim no)
 		(at 159.258 171.196 0)
 		(effects

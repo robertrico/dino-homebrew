@@ -181,19 +181,33 @@ def test_block2_surface():
     check_eq(set(s["sample"]), MDR | ENDHALT | TIMING | PCBUS16,
              "block2 samples MDR0-7 + PC0-15 + END/HALT + CLK + T0-3")
     check(all(f"M{i}" in s["copper"] for i in range(15)), "M0-14 are copper")
-    check("M15=ROM_EN" in s["copper"], "M15=ROM_EN is copper")
+    # PHASE E, 2026-08-25: the ROM_EN alias was deleted. Once U24.20 moved to
+    # ~{ROM_SEL} the name described a function that had left the net.
+    check("M15" in s["copper"], "M15 is copper")
     # PHASE D, 2026-08-24: ~{ROM_BUF_EN} and ~{RAM_OE_G} joined the strap set
     # when the ROM-buffer and RAM-OE enables moved onto the MDR board, which
     # does not join the ladder until block3. Both values are forced --
     # ~{RAM_OE_G} LOW would leave U19 and U21 both driving MDR0-7. The cost is
     # that block2 no longer reads RAM under microcode control; that path is now
     # covered only by the memory module test.
+    #
+    # PHASE E, 2026-08-25: ~{RAM_OE_G} LEFT the strap set -- U74 g3 generates
+    # it INSIDE block2 now. Its two upstream terms cross in from the MDR board
+    # instead, and the forced electrical state is unchanged: RAM_OE_ON LOW
+    # makes ~{RAM_OE_G} = NAND(LOW, M15) = HIGH, exactly what phase D strapped
+    # by hand. READS_IDLE HIGH keeps the published card read strobe deasserted;
+    # there is no card in the ladder to read.
     check_eq(set(s["strap"]),
-             {"FLAG_Z", "WRITE_DIR", "~{ROM_BUF_EN}", "~{RAM_OE_G}"}
+             {"FLAG_Z", "WRITE_DIR", "~{ROM_BUF_EN}",
+              "RAM_OE_ON", "READS_IDLE"}
              | {f"W{i}" for i in range(8)},
-             "block2 straps FLAG_Z + WRITE_DIR + ROM_BUF_EN + RAM_OE_G + W0-7")
-    check_eq(s["strap"]["~{RAM_OE_G}"][0], "HIGH",
-             "~{RAM_OE_G} strapped HIGH -- LOW would fight U19 onto MDR0-7")
+             "block2 straps FLAG_Z + WRITE_DIR + ROM_BUF_EN + RAM_OE_ON + "
+             "READS_IDLE + W0-7")
+    check_eq(s["strap"]["RAM_OE_ON"][0], "LOW",
+             "RAM_OE_ON strapped LOW -- forces ~{RAM_OE_G} HIGH, so U19 and "
+             "U21 cannot both drive MDR0-7")
+    check_eq(s["strap"]["READS_IDLE"][0], "HIGH",
+             "READS_IDLE strapped HIGH -- ~{IO_RD} never asserts in block2")
     check_eq(s["strap"]["~{ROM_BUF_EN}"][0], "LOW",
              "~{ROM_BUF_EN} strapped LOW -- block2's primary is fetch")
     check_eq(s["strap"]["WRITE_DIR"][0], "LOW", "WRITE_DIR strapped LOW")

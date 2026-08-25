@@ -3662,16 +3662,6 @@
 		)
 		(uuid "098f4e6d-73a9-4ba6-894a-27227cf88249")
 	)
-	(label "ROM_EN"
-		(at 50.8 88.9 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "09e62728-4ecf-4a88-a889-c07d361bf9f1")
-	)
 	(label "MAR2"
 		(at 152.4 45.72 0)
 		(effects
@@ -7802,7 +7792,7 @@
 			)
 		)
 	)
-	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: W0-7 <- ALU Module, Memory Data Register, Output\nIN: ~{MAR_HI_LOAD}, ~{MAR_LO_LOAD} <- Control Word Module\nIN: CW14=PC_MAR_MUX <- Microcode_Decoder\nIN: CLK <- root\nOUT: ~{RAM_EN} -> Memory, Memory Data Register\nOUT: M0-14 -> Memory, Program Counter\nOUT: ~{PC_MAR_MUX} -> Program Counter\nBIDIR: M15=ROM_EN <-> Memory, Program Counter"
+	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: W0-7 <- ALU Module, Input, Memory Data Register\nIN: ~{MAR_HI_LOAD}, ~{MAR_LO_LOAD} <- Control Word Module\nIN: CW14=PC_MAR_MUX <- Microcode_Decoder\nIN: CLK <- root\nOUT: ~{RAM_EN} -> Memory, Memory Data Register\nOUT: M0-14 -> Memory, Program Counter\nOUT: ~{PC_MAR_MUX} -> Program Counter\nBIDIR: M15 <-> Memory, Program Counter"
 		(exclude_from_sim no)
 		(at 177.546 164.338 0)
 		(effects
