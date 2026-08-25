@@ -299,7 +299,7 @@ def build():
           f" 0x{pr.SWDEMO_BLINK_A:02X} is pushed first --",
           "    that is LIFO, visible with two frames. Reversed order names a",
           "    stack returning pushes in the order they went in.",
-          "",
+          "", "### The phase E witness \u2014 not a soak image, and not coverage", "",
           f"    PROG_window.bin  0x{pr.crc16(win):04X}  "
           f"BEFORE 0x{pr.WINDOW_SENTINEL:02X} / AFTER 0x{pr.WINDOW_POISON:02X}",
           "        THE PHASE E WITNESS. One burn, read TWICE, with",

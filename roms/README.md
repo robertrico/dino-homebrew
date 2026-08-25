@@ -183,6 +183,8 @@ construction — no eleventh table.
     that is LIFO, visible with two frames. Reversed order names a
     stack returning pushes in the order they went in.
 
+### The phase E witness — not a soak image, and not coverage
+
     PROG_window.bin  0xECF2  BEFORE 0xA5 / AFTER 0x5A
         THE PHASE E WITNESS. One burn, read TWICE, with
         ~{ROM_SEL} landed on U24.20 between the readings.
