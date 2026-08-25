@@ -183,6 +183,14 @@ construction — no eleventh table.
     that is LIFO, visible with two frames. Reversed order names a
     stack returning pushes in the order they went in.
 
+    PROG_window.bin  0xECF2  BEFORE 0xA5 / AFTER 0x5A
+        THE PHASE E WITNESS. One burn, read TWICE, with
+        ~{ROM_SEL} landed on U24.20 between the readings.
+        Not in PR_COVERAGE: two correct answers, so there is no
+        single (OB, END) fingerprint for the ladder to match.
+        The BEFORE reading cannot be retaken once the window
+        exists -- take it first.
+
 ### SW1 is active low, and the DIP label reads backwards from the bus
 
 Netlist: `R17-R24` pull `IS0-7` to +5V and `SW1.9-16` are all GND, so a CLOSED

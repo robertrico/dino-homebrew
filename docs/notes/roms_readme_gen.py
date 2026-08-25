@@ -246,6 +246,7 @@ def build():
     cyl = pr.build_image(pr.CYLON_PROGRAM)
     spc = pr.build_image(pr.SPCYLON_PROGRAM)
     swd = pr.build_image(pr.SWDEMO_PROGRAM)
+    win = pr.build_window()
     L += ["", "### Soak images — not coverage images", "",
           f"    PROG_cylon.bin   0x{pr.crc16(cyl):04X}  "
           f"{len(pr.assemble(pr.CYLON_PROGRAM))} bytes, NEVER HALTS",
@@ -298,6 +299,15 @@ def build():
           f" 0x{pr.SWDEMO_BLINK_A:02X} is pushed first --",
           "    that is LIFO, visible with two frames. Reversed order names a",
           "    stack returning pushes in the order they went in.",
+          "",
+          f"    PROG_window.bin  0x{pr.crc16(win):04X}  "
+          f"BEFORE 0x{pr.WINDOW_SENTINEL:02X} / AFTER 0x{pr.WINDOW_POISON:02X}",
+          "        THE PHASE E WITNESS. One burn, read TWICE, with",
+          "        ~{ROM_SEL} landed on U24.20 between the readings.",
+          "        Not in PR_COVERAGE: two correct answers, so there is no",
+          "        single (OB, END) fingerprint for the ladder to match.",
+          "        The BEFORE reading cannot be retaken once the window",
+          "        exists -- take it first.",
           PROSE_SW1.rstrip(), PROSE_TAIL.rstrip()]
     return "\n".join(L).rstrip() + "\n"
 

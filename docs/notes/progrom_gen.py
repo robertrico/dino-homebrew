@@ -1213,6 +1213,51 @@ def _build_swdemo(outer_n=None, inner_n=0xFF):
 
 SWDEMO_PROGRAM = _build_swdemo()
 
+# ---- window witness -----------------------------------------------------
+# THE ONLY POSITIVE PROOF THAT PHASE E'S WINDOW EXISTS. One burn, read twice,
+# with the ~{ROM_SEL} wire landed between the readings.
+#
+# IT MUST FETCH. LDA is src=RAM and U24.22 ~OE is ~{ROM_OUT}, asserted only
+# by src=ROM -- so LDA has never enabled U24's outputs and an LDA-based
+# witness would read garbage BEFORE the mod. Fetch is PC-addressed and is the
+# only path that ever reached 0x4000-0x7FFF.
+#
+# THE POISON IS NOT 0xFF. POISON, SAFE_FILL, HALT and IO_PARK are all 0xFF;
+# poisoning with it would make the AFTER reading indistinguishable from a
+# machine that never executed the JMP. 0x5A is the sentinel's complement, so
+# a bit-reversed or nibble-swapped OB names itself.
+#
+# 0xA5 is also DIAG_ZERO. That is cosmetic -- this is not the diag image and
+# build_window plants the sentinel at 0x4000, not at 0.
+WINDOW_POISON   = 0x5A
+WINDOW_SENTINEL = 0xA5
+
+WINDOW_PROGRAM = [
+    ("LDAI", WINDOW_POISON), ("OUT",),      # OB = 0x5A before anything else
+    ("JMP", *_addr(IO_BASE)),               # fetch crosses 0x4000 HERE
+]
+
+WINDOW_UPPER = [
+    ("LDAI", WINDOW_SENTINEL), ("OUT",),    # only reachable if U24 answers
+    ("HALT",),
+]
+
+
+def build_window():
+    """Two segments: the jump at 0x0000, the sentinel at 0x4000."""
+    lo = assemble(WINDOW_PROGRAM)
+    hi = assemble(WINDOW_UPPER)
+    if len(lo) > IO_BASE:
+        raise BuildError("window witness low segment reaches 0x4000")
+    if IO_BASE + len(hi) > ROM_IMAGE:
+        raise BuildError("window witness upper segment overruns the part")
+    if lo[0] == DIAG_ZERO:
+        raise BuildError("program byte 0 collides with the diag signature")
+    img = bytearray([SAFE_FILL]) * ROM_IMAGE
+    img[:len(lo)] = lo
+    img[IO_BASE:IO_BASE + len(hi)] = hi
+    return bytes(img)
+
 # images whose answer depends on the switches. Everything else is read with
 # the default, and the rig is told the setting rather than left to guess.
 # ramexec — THE PHASE-D WITNESS. The first image in this machine's life
@@ -1505,8 +1550,15 @@ def main():
         f.write(swd)
     swd_crc = crc16(swd)
     swd_len = len(assemble(SWDEMO_PROGRAM))
+    # window — THE PHASE E A/B WITNESS. Not in COVERAGE: it has TWO correct
+    # answers, one per side of the ~{ROM_SEL} wire, so there is no single
+    # --expected row for it. Same exclusion as cylon/spcylon/swdemo.
+    win = build_window()
+    with open(os.path.join(ROMS, "PROG_window.bin"), "wb") as f:
+        f.write(win)
+    win_crc = crc16(win)
     emit_header(real, crcs, HDR, cov)
-    print(f"wrote {3 + len(cov)}x {ROM_IMAGE}B bins -> {ROMS}")
+    print(f"wrote {6 + len(cov)}x {ROM_IMAGE}B bins -> {ROMS}")
     print(f"wrote expect header -> {HDR}")
     print("burn order: DIAG first (rom.order proves 15 address lines),")
     print("            then REAL (the milestone program)")
@@ -1528,6 +1580,11 @@ def main():
           f"switch 0 OPEN (bit reads 1) = cylon sweep; "
           f"CLOSED (bit reads 0) = 0x{SWDEMO_BLINK_B:02X}/"
           f"0x{SWDEMO_BLINK_A:02X} interleaved blink")
+    print(f"    PROG_window.bin  crc=0x{win_crc:04X}  "
+          f"BEFORE the mod OB 0x{WINDOW_SENTINEL:02X}, "
+          f"AFTER OB 0x{WINDOW_POISON:02X}")
+    print("      ONE burn, read TWICE, with ~{ROM_SEL} landed on U24.20")
+    print("      between the readings. The BEFORE reading cannot be retaken.")
     print(f"  program: {' '.join(s[0] for s in PROGRAM)}"
           f"  -> OUT should show 0x{EXPECT_SUM:02X}")
     for name, val in crcs.items():

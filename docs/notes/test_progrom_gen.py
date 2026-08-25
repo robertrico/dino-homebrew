@@ -369,5 +369,46 @@ class TestIoRegionModel(unittest.TestCase):
         self.assertEqual(closed["out"], 0x5A)   # fetch at 0x4000 hits the park
 
 
+class TestWindowWitness(unittest.TestCase):
+    """PROG_window is an A/B image: ONE burn, TWO correct answers, one wire
+    changed between them. It is the only positive proof the window exists;
+    the twelve-image regression can only prove nothing broke."""
+
+    def test_poison_is_not_the_park_value(self):
+        """0xFF poison would be indistinguishable from never having jumped"""
+        self.assertNotEqual(pg.WINDOW_POISON, pg.IO_PARK)
+        self.assertNotEqual(pg.WINDOW_POISON, pg.SAFE_FILL)
+
+    def test_sentinel_lands_at_the_window_boundary(self):
+        img = pg.build_window()
+        self.assertEqual(len(img), pg.ROM_IMAGE)
+        upper = pg.assemble(pg.WINDOW_UPPER)
+        self.assertEqual(img[pg.IO_BASE:pg.IO_BASE + len(upper)], upper)
+
+    def test_low_segment_does_not_reach_the_boundary(self):
+        self.assertLess(len(pg.assemble(pg.WINDOW_PROGRAM)), pg.IO_BASE)
+
+    def test_BEFORE_the_mod_it_reads_the_sentinel(self):
+        """rom_window = the whole part models U24 answering 0x0000-0x7FFF"""
+        r = pg.simulate(pg.WINDOW_PROGRAM, image=pg.build_window(),
+                        rom_window=pg.ROM_IMAGE)
+        self.assertEqual(r["out"], pg.WINDOW_SENTINEL)
+
+    def test_AFTER_the_mod_it_reads_the_poison(self):
+        """the fetch at 0x4000 finds the park, 0xFF = HALT, OB keeps 0x5A"""
+        r = pg.simulate(pg.WINDOW_PROGRAM, image=pg.build_window(),
+                        rom_window=pg.ROM_WINDOW)
+        self.assertEqual(r["out"], pg.WINDOW_POISON)
+
+    def test_the_two_answers_differ(self):
+        """if they ever collide the image proves nothing"""
+        self.assertNotEqual(pg.WINDOW_SENTINEL, pg.WINDOW_POISON)
+
+    def test_not_registered_as_coverage(self):
+        """two answers cannot be one --expected row; built, not registered.
+        Same precedent as spcylon."""
+        self.assertNotIn("window", pg.COVERAGE)
+
+
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)
