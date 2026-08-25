@@ -127,8 +127,11 @@ def test_coverage_is_progressive():
         "adda": "TMP_A alone: value + 0, so the answer IS the operand",
         "addb": "TMP_B alone: 0 + value, isolating the other shadow latch",
         "real": "the milestone: the machine adds two numbers",
-        "in": "an operand from the BENCH, not the ROM — the machine is now "
-              "interactive, and the answer is the milestone's own 0x4D",
+        "dip": "an operand from the BENCH, not the ROM -- and since phase E "
+               "it arrives BY ADDRESS, off card zero at 0x4000 through the "
+               "published bus, rather than through a SRC code. IN retired "
+               "with U28.7. First image to reach a peripheral with a plain "
+               "LDA; the answer is still the milestone's own 0x4D",
         "flow": "unconditional PC_LOAD, and the JNZ NOT-taken arm",
         "loop": "the JNZ TAKEN arm, iterated an exact number of times",
         "mem": "MAR as a LATCH, not just a mux — the named gap in BRINGUP.md",
@@ -185,8 +188,8 @@ def test_coverage_is_progressive():
                  "make LIFO order observable rather than decorative",
     }
     seen = set()
-    order = ["probe", "adda", "addb", "real", "in", "alu", "mem", "flow", "loop",
-             "mardisc", "pads", "sp1", "sp2", "sp3", "sp", "calladdr",
+    order = ["probe", "adda", "addb", "real", "dip", "alu", "mem", "flow",
+             "loop", "mardisc", "pads", "sp1", "sp2", "sp3", "sp", "calladdr",
              "callraw", "call", "stack", "ramexec"]
     check_eq(list(pg.COVERAGE), order, "images in ladder order")
     for tag in order:
@@ -203,8 +206,21 @@ def test_coverage_is_progressive():
     # DIFFERENT bytes and popping them into SWAPPED registers is what makes
     # LIFO order observable, so both register pairs are load-bearing rather
     # than decorative.
-    check_eq(unreached, {"LDCI", "NOP"},
-             "only LDCI (C is RET's scratch) and NOP go unexercised")
+    # IN joined this set in PHASE E, 2026-08-25, and it is a DIFFERENT KIND
+    # of unrun from the other two. LDCI and NOP are unreachable BY DESIGN.
+    # IN is unreachable because its BUS SOURCE RETIRED: U28.7 is unlanded,
+    # SW1 answers at an address instead, and no image emits the opcode.
+    #
+    # THE MICROCODE ROW IS STILL IN THE ROM and the opcode still decodes.
+    # Phase E burns no microcode ROM; removing the row would cost a
+    # three-ROM burn for nothing. Executing IN today reads an UNDEFINED
+    # byte, not the park: src=SW asserts SRC_ACTIVE so U25 is enabled, but
+    # SW asserts neither ~{ROM_OUT} nor ~{RAM_OUT}, so READS_IDLE stays
+    # high, ~{IO_RD} stays high, BUS_DIR is LOW, and U25 drives W from a
+    # floating MDR.
+    check_eq(unreached, {"LDCI", "NOP", "IN"},
+             "LDCI (C is RET's scratch) and NOP are unreachable BY DESIGN; "
+             "IN is unreachable because phase E retired its bus source")
 
 
 def test_sp_image_gates_phase_b_without_call_ret():
@@ -230,23 +246,25 @@ def test_sp_image_gates_phase_b_without_call_ret():
              "OB matches PROG_stack's 0x27/0xD9 signature")
 
 
-def test_in_image_takes_its_operand_from_the_switches():
-    """IN is the first instruction whose answer is not fully determined by the
-    ROM. The image must therefore DECLARE the switch setting it expects, or the
-    expectation is unfalsifiable — and it must produce a DIFFERENT answer under
-    a different setting, or it is not really reading the switches at all."""
-    print("the IN image is genuinely driven by SW1")
-    check("in" in pg.COVERAGE_SW, "the image declares its SW1 setting")
-    sw = pg.COVERAGE_SW["in"]
-    got = pg.simulate(pg.COVERAGE["in"], switches=sw)
+def test_dip_image_takes_its_operand_from_the_card():
+    """`dip` is the image whose answer is not fully determined by the ROM --
+    since phase E because of an ADDRESS, not because of an instruction. The
+    machine reads card zero at 0x4000 with a plain LDA. The image must
+    therefore DECLARE the switch setting it expects, or the expectation is
+    unfalsifiable -- and it must produce a DIFFERENT answer under a different
+    setting, or it is not really reading the card at all."""
+    print("the dip image is genuinely driven by SW1, through the bus")
+    check("dip" in pg.COVERAGE_SW, "the image declares its SW1 setting")
+    sw = pg.COVERAGE_SW["dip"]
+    got = pg.simulate(pg.COVERAGE["dip"], switches=sw)
     check_eq(got["out"], pg.EXPECT_SUM,
              f"SW1=0x{sw:02X} reproduces the milestone answer 0x{pg.EXPECT_SUM:02X}")
-    # a stuck '244, or an IN that never reached the bus, would leave B at
-    # whatever it held — the answer must MOVE when the switches move
-    other = pg.simulate(pg.COVERAGE["in"], switches=(sw ^ 0xFF) & 0xFF)
+    # a stuck '244, or a card-zero decode that never selected, would leave A
+    # at whatever it held -- the answer must MOVE when the switches move
+    other = pg.simulate(pg.COVERAGE["dip"], switches=(sw ^ 0xFF) & 0xFF)
     check(other["out"] != got["out"],
           "flipping every switch changes the answer")
-    check_eq(pg.simulate(pg.COVERAGE["in"], switches=sw)["ends"],
+    check_eq(pg.simulate(pg.COVERAGE["dip"], switches=sw)["ends"],
              pg.simulate(pg.PROGRAM)["ends"],
              "same instruction count as the milestone — only the SOURCE moved")
 

@@ -21,7 +21,7 @@ GOLDEN_CRC = {
     "adda":      0xAC3D,
     "addb":      0x8DAE,
     "real":      0x8577,
-    "in":        0x2B9C,
+    "dip":       0xFEE3,
     "alu":       0x642A,
     "mem":       0x3E4B,
     "flow":      0xCED0,

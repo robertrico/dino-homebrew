@@ -336,12 +336,17 @@ class TestIoRegionModel(unittest.TestCase):
         self.assertEqual(pg.IO_PARK, OPCODES["HALT"])
 
     def test_unclaimed_io_address_reads_the_park(self):
-        self.assertEqual(pg.io_read(pg.IO_BASE, 0x00), pg.IO_PARK)
+        # NOT pg.IO_BASE -- phase E step B gave slot 0 to card zero, so
+        # 0x4000-0x47FF now answers. 0x4800 is slot 1 and is empty; 0x7FFF
+        # is the last address in the window and is in slot 7.
+        self.assertEqual(pg.io_read(pg.IO_BASE + 0x800, 0x00), pg.IO_PARK)
         self.assertEqual(pg.io_read(pg.RAM_BASE - 1, 0xFF), pg.IO_PARK)
 
     def test_lda_from_the_window_returns_the_park(self):
+        # slot 1, empty. Reading slot 0 reaches card zero -- that is
+        # TestDipCard's job, and it is the whole point of the window.
         prog = [("LDAI", 0x11), ("OUT",),
-                ("LDA", *pg._addr(pg.IO_BASE)), ("OUT",), ("HALT",)]
+                ("LDA", *pg._addr(pg.IO_BASE + 0x800)), ("OUT",), ("HALT",)]
         self.assertEqual(pg.simulate(prog)["out"], pg.IO_PARK)
 
     def test_rom_reads_below_the_window_are_unchanged(self):
@@ -408,6 +413,59 @@ class TestWindowWitness(unittest.TestCase):
         """two answers cannot be one --expected row; built, not registered.
         Same precedent as spcylon."""
         self.assertNotIn("window", pg.COVERAGE)
+
+
+class TestDipCard(unittest.TestCase):
+    """SW1 stops being a SRC code and becomes an address. IN retires because
+    keeping it alive would wire a microcode signal into the card, giving the
+    slot a signal exactly one card uses -- a slot with a favourite, not a
+    bus."""
+
+    def test_dip_answers_at_its_slot(self):
+        self.assertEqual(pg.io_read(pg.DIP_BASE, 0x1E), 0x1E)
+
+    def test_dip_answers_across_its_whole_slot(self):
+        # card zero decodes M11-M13 only, so it answers at all 2048
+        # addresses in slot 0 -- 0x7FF is the last of them
+        for off in (0, 1, 7, 0xFF, 0x400, 0x7FF):
+            self.assertEqual(pg.io_read(pg.DIP_BASE + off, 0x3C), 0x3C)
+
+    def test_other_slots_still_park(self):
+        # 0x4800 is slot 1, unoccupied. NOT 0x4100 -- that is inside slot 0
+        self.assertEqual(pg.io_read(pg.DIP_BASE + 0x800, 0x1E), pg.IO_PARK)
+        self.assertEqual(pg.io_read(0x7FFF, 0x1E), pg.IO_PARK)
+
+    def test_dip_image_replaces_the_in_image(self):
+        self.assertIn("dip", pg.COVERAGE)
+        self.assertNotIn("in", pg.COVERAGE)
+        self.assertEqual(set(pg.COVERAGE_SW), {"dip"})
+
+    def test_dip_image_keeps_the_milestone_answer(self):
+        """same arithmetic as PROG_in, addend read by address not by IN"""
+        r = pg.simulate(pg.COVERAGE["dip"],
+                        switches=pg.COVERAGE_SW["dip"])
+        self.assertEqual(r["out"], 0x4D)
+
+    def test_no_image_uses_the_IN_opcode(self):
+        # BYTE-LEVEL scan, so it is technically also sensitive to an OPERAND
+        # byte that happens to be 0x52. Verified 2026-08-25: no coverage
+        # image contains 0x52 anywhere once `in` is gone. If a future image
+        # false-fails here, disassemble before weakening the test.
+        for tag, prog in pg.COVERAGE.items():
+            with self.subTest(tag=tag):
+                self.assertNotIn(OPCODES["IN"], pg.assemble(prog), tag)
+
+    def test_the_IN_microcode_row_still_exists(self):
+        """PHASE E BURNS NO MICROCODE ROM. IN retires in COPPER (U28.7
+        unlands) and in the TOOLING (no image emits the opcode). Removing the
+        row would cost a three-ROM burn for nothing, so the row stays and the
+        opcode stays decodable. This test is what stops a later tidy-up from
+        turning a free retirement into a burn."""
+        self.assertIn("IN", INSTRUCTIONS)
+        self.assertIn("IN", OPCODES)
+
+    def test_swdemo_no_longer_uses_IN(self):
+        self.assertNotIn(OPCODES["IN"], pg.assemble(pg.SWDEMO_PROGRAM))
 
 
 if __name__ == "__main__":

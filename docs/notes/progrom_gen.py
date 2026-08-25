@@ -224,13 +224,20 @@ IO_PARK = OPCODES["HALT"]       # 0xFF. W's bus-park pullups, and HALT, and
                                 # unclaimed address stops the machine.
 
 
-def io_read(addr, switches):
-    """One byte from the I/O window, 0x4000-0x7FFF.
+# ---- card zero: the DIP switch ------------------------------------------
+# The '138 on the card decodes M11-M13 -- the SLOT NUMBER -- so each card
+# owns 2K dedicated and NOTHING MIRRORS. 8 slots x 2K = the whole 16K
+# window. Card zero holds slot 0, 0x4000-0x47FF, and ignores M0-M10
+# entirely: it is a bare '244, not a register file, so it answers at all
+# 2048 addresses in its slot and at none outside it.
+DIP_BASE = IO_BASE + 0x0000     # '138 output O0 -- slot 0
+DIP_SLOT = 0x7FF                # 2K of low bits the card does not decode
 
-    Nothing is mapped yet -- every address parks. Task B adds the DIP card.
-    `switches` is threaded through now so the signature does not change
-    when it does.
-    """
+
+def io_read(addr, switches):
+    """One byte from the I/O window, 0x4000-0x7FFF."""
+    if (addr & ~DIP_SLOT) == DIP_BASE:
+        return switches & 0xFF
     return IO_PARK
 
 
@@ -313,8 +320,6 @@ def simulate(program, max_steps=100000, switches=0x00,
                 val = B
             elif src == "REG_C":
                 val = C
-            elif src == "SW":
-                val = switches
             elif src == "SP_LO":
                 val = sp & 0xFF
             elif src == "SP_HI":
@@ -922,21 +927,28 @@ ADDB_PROGRAM = [                     # B carries the value, A is zero
     ("LDAI", 0x00), ("LDBI", PROBE_VALUE), ("ADD",), ("OUT",), ("HALT",),
 ]
 
-# in — THE INTERACTIVE ONE. The second addend comes off SW1 instead of the
-# ROM, so the machine takes an operand from the bench. A is the same 0x2F the
-# milestone uses, so with the switches set to 0x1E the answer is the SAME 0x4D
-# — the value blocks 4 and 5 already proved. Only its SOURCE changed, which
-# makes a wrong answer point squarely at the '244 -> W path.
+# dip — THE INTERACTIVE ONE, now through the BUS. The second addend comes off
+# SW1 the same as it always did, but SW1 is no longer a SRC code: card zero
+# answers at 0x4000-0x47FF and the machine reads it with a plain LDA. A is
+# still 0x2F's partner and the answer is still the milestone's 0x4D, so a
+# wrong answer points squarely at the card-zero decode -> '244 -> W path.
+#
+# THE OPERANDS SWAP REGISTERS AND THAT IS FORCED, NOT COSMETIC. IN was
+# src=SW, dst=REG_B; LDA is src=RAM, dst=REG_A. REG_B is IMMEDIATE-ONLY --
+# LDBI and IN are the only two instructions that write it, and IN is gone --
+# so the card byte HAS to land in A and the constant HAS to come from LDBI.
+# ADD is commutative, so 0x1E + 0x2F is the same 0x4D as 0x2F + 0x1E, and the
+# instruction count is unchanged at 7 (ends = 6, same as PROG_real).
 #
 # SW1 IS ACTIVE LOW: R17-R24 pull IS0-7 to +5V and the switch pulls down, so
 # the byte the '244 puts on W has a 0 wherever a switch is CLOSED. To present
 # 0x1E = 0b00011110, CLOSE the switches for bits 0, 5, 6 and 7.
-IN_SW = ADDEND_B                        # 0x1E, presented on SW1
+DIP_SW = ADDEND_B                       # 0x1E, presented on SW1
 
-IN_PROGRAM = [
+DIP_PROGRAM = [
     ("LDAI", POISON), ("OUT",),         # destroy the previous answer first
-    ("LDAI", ADDEND_A),                 # A = 0x2F, from ROM
-    ("IN",),                            # B <- SW1, and TMP_B with it
+    ("LDA", *_addr(DIP_BASE)),          # A <- card zero = SW1  (TMP_A too)
+    ("LDBI", ADDEND_A),                 # B = 0x2F, from ROM    (TMP_B too)
     ("ADD",), ("OUT",), ("HALT",),
 ]
 
@@ -1150,7 +1162,8 @@ SPCYLON_PROGRAM = _build_spcylon()
 # needing a reset. That is the whole point of the image: it is the first
 # thing this machine does that responds to you while it runs.
 #
-# BIT 0 ALONE, not the whole byte. `LDAI 0x01; IN; AND` leaves A = SW1 & 1,
+# BIT 0 ALONE, not the whole byte. `LDA <card zero>; LDBI 0x01; AND` leaves
+# A = SW1 & 1,
 # so bits 1-7 are ignored and the other seven switches stay free for
 # whatever the next image wants. A JNZ on the masked value is the branch.
 #
@@ -1177,8 +1190,8 @@ def _build_swdemo(outer_n=None, inner_n=0xFF):
     prog = [
         ("LXISP", *_addr(SWDEMO_STACK)),
         "top",
-        ("LDAI", SWDEMO_MASK),      # A = 0x01
-        ("IN",),                    # B <- SW1, and TMP_B with it
+        ("LDA", *_addr(DIP_BASE)),  # A <- card zero = SW1  (TMP_A too)
+        ("LDBI", SWDEMO_MASK),      # B = 0x01             (TMP_B too)
         ("AND",),                   # A = SW1 & 0x01 -- bit 0 alone
         ("JNZ", Ref("sweep")),      # non-zero = switch OPEN = sweep
     ]
@@ -1313,14 +1326,14 @@ RAMEXEC_PROGRAM = [
 ]
 
 
-COVERAGE_SW = {"in": IN_SW}
+COVERAGE_SW = {"dip": DIP_SW}
 
 COVERAGE = {
     "probe": PROBE_PROGRAM,
     "adda": ADDA_PROGRAM,
     "addb": ADDB_PROGRAM,
     "real": PROGRAM,
-    "in": IN_PROGRAM,
+    "dip": DIP_PROGRAM,
     "alu": ALU_PROGRAM,
     "mem": MEM_PROGRAM,
     "flow": FLOW_PROGRAM,

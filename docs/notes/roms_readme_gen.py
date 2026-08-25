@@ -33,8 +33,10 @@ NOTES = {
     "adda": "TMP_A alone: value + 0, so the answer IS the operand.",
     "addb": "TMP_B alone: 0 + value, isolating the other shadow latch.",
     "real": "the MILESTONE. Poisons OB, then adds two numbers.",
-    "in": "THE INTERACTIVE ONE. B comes off SW1 through the '244, so only "
-          "the SOURCE of the operand changed.",
+    "dip": "THE INTERACTIVE ONE, through the BUS. A comes off card zero at "
+           "0x4000 with a plain LDA -- SW1 is an ADDRESS now, not a SRC "
+           "code, and IN retired with U28.7. Only the SOURCE of the "
+           "operand changed; the answer is still the milestone's 0x4D.",
     "alu": "all eight SA codes CHAINED, so a wrong code corrupts the "
            "signature rather than being masked by a later op.",
     "mem": "STA then LDA back through RAM. Uses ONE address twice, so it is "
@@ -292,7 +294,8 @@ def build():
           "",
           "    SW1 IS ACTIVE LOW -- R17-R24 pull IS0-7 up and the switch",
           "    pulls DOWN, so a CLOSED switch reads 0. Bits 1-7 are masked",
-          f"    off (LDAI 0x{pr.SWDEMO_MASK:02X}; IN; AND), so the other seven",
+          f"    off (LDA <card zero>; LDBI 0x{pr.SWDEMO_MASK:02X}; AND), so",
+          "    the other seven",
           "    switches stay free.",
           "",
           f"    Blink shows 0x{pr.SWDEMO_BLINK_B:02X} FIRST even though"

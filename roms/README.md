@@ -60,9 +60,11 @@ construction — no eleventh table.
         TMP_A alone: value + 0, so the answer IS the operand.
     PROG_addb.bin    0x8DAE  0x39  4
         TMP_B alone: 0 + value, isolating the other shadow latch.
-    PROG_in.bin      0x2B9C  0x4D  6   SW1 = 0x1E
-        THE INTERACTIVE ONE. B comes off SW1 through the '244, so only the
-        SOURCE of the operand changed.
+    PROG_dip.bin     0xFEE3  0x4D  6   SW1 = 0x1E
+        THE INTERACTIVE ONE, through the BUS. A comes off card zero at
+        0x4000 with a plain LDA -- SW1 is an ADDRESS now, not a SRC code,
+        and IN retired with U28.7. Only the SOURCE of the operand changed;
+        the answer is still the milestone's 0x4D.
     PROG_alu.bin     0x642A  0x39  13
         all eight SA codes CHAINED, so a wrong code corrupts the signature
         rather than being masked by a later op.
@@ -163,7 +165,7 @@ construction — no eleventh table.
     or a stuck direction pin. PHASE B hardware only (U63-U69);
     no CALL/RET, so it does not wait on U72/U73.
 
-    PROG_swdemo.bin  0x3D83  616 bytes, NEVER HALTS
+    PROG_swdemo.bin  0xB8A3  618 bytes, NEVER HALTS
     THE FIRST IMAGE THAT ANSWERS TO YOU WHILE IT RUNS. SW1 bit 0
     is read every pass, INSIDE the loop, so flipping the switch
     changes the display at the end of the current pass -- no
@@ -176,7 +178,8 @@ construction — no eleventh table.
 
     SW1 IS ACTIVE LOW -- R17-R24 pull IS0-7 up and the switch
     pulls DOWN, so a CLOSED switch reads 0. Bits 1-7 are masked
-    off (LDAI 0x01; IN; AND), so the other seven
+    off (LDA <card zero>; LDBI 0x01; AND), so
+    the other seven
     switches stay free.
 
     Blink shows 0x55 FIRST even though 0xAA is pushed first --
