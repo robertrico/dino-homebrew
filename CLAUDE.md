@@ -260,6 +260,32 @@ Instruments: DSLogic LA, Siglent scope, DMM. See
 `.git/sdd/RIG_RETIREMENT.md` — and note the ROM burn targets live in
 `tests/dino_bringup/Makefile` and must survive any cleanup.
 
+**FACT — PHASE E IS NEXT, AND IT IS SPECCED, NOT BUILT.** The remaining work
+splits three ways, and the split is a decision (Rico, 2026-08-25), not a
+suggestion: **E** is the memory map plus the `IN`/DIP peripheral and nothing
+else; **F** is the ISA extension; **G** is the serial card. F and G are
+independent of E and of each other, in both directions. **Phase E costs no
+microcode burn** — `U9`/`U15`/`U23` are untouched, and the only burns are
+program ROMs for the witness images. Read `.git/sdd/PHASE_E_PLAN.md` first
+and `.git/sdd/PHASE_E.md` for the spec; both are in "Where to read next".
+
+**FACT — all four flags are latched TODAY**, netlist-extracted from
+`dino_v0_0_2/alu.kicad_sch` on 2026-08-25. `U49` is a `'273` clocked on
+`~{CLK}` holding `FLAG_C`/`FLAG_Z`/`FLAG_V`/`FLAG_N`, and `U48` is a `'157`
+whose select is `~{ALU_OUT}` — so the flags UPDATE when the ALU is the source
+and HOLD otherwise. That hold is why a `Z` set by `AND` survives to a `JNZ`
+two instructions later, which every poll loop leans on. **The only thing
+missing is the branch SELECT:** `U62` g1 hardwires
+`COND_TAKEN = NOR(~{COND}, FLAG_Z)`, and `CW21`/`CW22`/`CW23` on `U23` are
+no-connects. One `'157` section closes it — see `.git/sdd/PHASE_F.md`.
+
+**FACT — `ALU_CIN = NAND(SA1, SA0)`.** `U53` is a `74LS08` (pins 12,13 -> 11
+= `AND(SA1, SA0)`) and `U50` g4 is a `74LS02` section wired as an inverter,
+so `ADD` (SA=3) gets `CIN=0` and `SUB`/`BSUB` get `CIN=1`. Recorded at
+project level because a wrong version — `OR`, and later `NOR` — was in
+circulation: `NOR` would give `CIN=0` for `SUB` as well, making it compute
+`A-B-1` on a machine whose `SUB` is bench-proven.
+
 ## Open questions
 
 Named because they are not settled. None is blocking.
@@ -517,6 +543,26 @@ not because they are principles.
   coverage. Both holes found on 2026-08-11 were in the report, not the
   schematic — the machine was right and the paperwork was wrong, which is the
   harder direction to notice.
+- **A test nothing calls is not a test.** `test_microcode_gen.py` held the
+  only check that compares the microcode's SA ENCODING against the '382's
+  WIRING — written after three bench images agreed on a wrong answer because
+  `ADD` executed as `AND`. **It had never run.** Three things stacked: the
+  module's self-check was module-level asserts plus a closing `print("OK")`
+  and never called its own `test_` functions; `unittest` collects nothing
+  from bare functions; and `pytest`, the only runner that would have
+  collected them, is not installed on this machine. It printed OK and
+  exited 0 while asserting nothing. It ALSO would have failed if reached —
+  it matched the bare alias `SA0` where the net reports as `CW11/SA0`, the
+  alphabetical-first rule biting a TOOL instead of a schematic. Guarded now
+  by `test_suite_reachability.py`, and the fix everywhere was to ENUMERATE
+  `test_` functions rather than list them by hand: a tuple of names is a
+  step someone has to remember.
+- **An instruction's T-state cost is `1 + len(rows)`.** `T0` is the implicit
+  universal `FETCH` and is not in `INSTRUCTIONS[name][1]`. Summing rows and
+  calling them T-states put a 2x error into the UART polling headroom — 133x
+  claimed where the real figure is 67x — and it survived review because the
+  conclusion it supported (polling is adequate) was true either way. **A
+  margin that is right for the wrong reason is still unmeasured.**
 - **A 3-bit field decode is bank-blind.** Bank-1 `PC_LO` (code 10) shares its
   low three bits with bank-0 `RAM` (code 2). Both `check_word` and the Python
   oracle read a PC push as a RAM read until the decode folded in the bank
@@ -572,11 +618,23 @@ keeps design and reference docs plus everything generated.
 
 LIVE — read these:
 
-    .git/sdd/PHASE_E.md                      memory-mapped I/O out of ROM
-                                             space; the bus contract and
-                                             R/~W; self-decoding cards; the
-                                             16550. NEXT UP, broad strokes
-                                             only -- NOT a spec
+    .git/sdd/PHASE_E_PLAN.md                 the eight-task implementation plan
+                                             for phase E. START HERE
+    .git/sdd/PHASE_E.md                      the phase E SPEC: a 16K I/O window
+                                             carved out of ROM space at
+                                             0x4000-0x7FFF, eight 2K card slots
+                                             decoded on M11-M13, the published
+                                             bus, IN retires, the DIP switch
+                                             becomes card zero. SPECCED
+                                             2026-08-25, NOT on silicon
+    .git/sdd/PHASE_F.md                      ISA extension: one '157, then
+                                             everything soft. Independent of E
+                                             and G in both directions. Carries
+                                             the collision-free opcode map
+                                             (SECTION 6). SPECCED, not built
+    .git/sdd/PHASE_G.md                      the serial card: '138 + '245 +
+                                             PC16550D. Follows E; does NOT
+                                             depend on F. SPECCED, not built
     .git/sdd/PHASE_D.md                      execute-from-RAM: build
                                              procedure, both checkpoints,
                                              the ramexec result

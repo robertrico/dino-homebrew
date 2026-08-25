@@ -2,6 +2,26 @@
 
 **2026-07-28, updated 2026-08-02. THEORETICAL EXCEPT WHERE MARKED.**
 
+> ## !!! STALE OPCODE NUMBERS — 2026-08-25 !!!
+>
+> **This is a DESIGN roadmap, not a record of silicon, and its opcode
+> numbers were assigned before phases B and C were built. Two of them now
+> collide with instructions that are on hardware.** Verified against
+> `microcode_gen.OPCODES` on 2026-08-25:
+>
+>     §5 assigns  JZ 0x33 / JC 0x34   SILICON HAS  CALL 0x33 / RET 0x34
+>     §5 assigns  MOV x6  0x61-0x66   SILICON HAS  PUSHA 0x61  POPA 0x62
+>                                                  PUSHB 0x63  POPB 0x64
+>
+> The `MOV` range collides a second time inside this document: §5 claims
+> `0x65`/`0x66` for `MOV` while §2.6 claims the same two for `PUSHC`/`POPC`.
+>
+> **`.git/sdd/PHASE_F.md` SECTION 6 is the collision-free opcode map.** Take
+> numbers from there, not from §5. Everything else in this document — the
+> hardware findings, the tier reasoning, the instruction *shapes* — is
+> unaffected; only the numbering is wrong. Do not re-derive these
+> collisions; they are named here so nobody has to.
+
 Rule 2 (CLAUDE.md) gated ISA extension on the machine adding two numbers.
 **That gate is now open** — the ladder passed, blocks 1-5 are bench-proven,
 and the machine free-runs. Block 6 was dropped as pure repetition in favour
@@ -158,6 +178,11 @@ shifter. Divide-by-two must be a software loop or a table.
 
 ### 2.6 PUSHC / POPC — giving C back to the programmer
 
+> **STALE NUMBERS (2026-08-25).** `0x65`/`0x66` are unoccupied on silicon,
+> but §5 below also claims them for `MOV`. The two sections contradict each
+> other. `.git/sdd/PHASE_F.md` SECTION 6 resolves it; take the numbers from
+> there. The *reasoning* in this section still holds.
+
     PUSHC    _PUSH("REG_C")     0x65
     POPC     _POP("REG_C")      0x66
 
@@ -287,6 +312,22 @@ programmable at all. The roadmap changes what comes SECOND — not Tier 1's
 ---
 
 ## 5. The proposed instruction set
+
+> ## !!! THE OPCODE TABLE BELOW COLLIDES WITH SILICON TWICE !!!
+>
+> **STALE 2026-08-25**, verified against `microcode_gen.OPCODES`:
+>
+> - **`0x33`/`0x34` are `CALL`/`RET`**, bench-proven 2026-08-24. The table's
+>   `JZ`/`JC` cannot have them.
+> - **`0x61`-`0x64` are `PUSHA`/`POPA`/`PUSHB`/`POPB`**, bench-proven
+>   2026-08-24. The table's `MOV` ×6 at `0x61`-`0x66` cannot have them, and
+>   its remaining two (`0x65`/`0x66`) are claimed by §2.6 for
+>   `PUSHC`/`POPC` as well.
+>
+> **`.git/sdd/PHASE_F.md` SECTION 6 is the collision-free map.** The table
+> below is kept for its Rows/Tier/Notes columns and its reasoning; its
+> opcode column is superseded. "Existing 18" is also stale — the machine
+> shipped 26 opcodes as of phase C.
 
 Existing 18 unchanged. `HALT=0xFF` stays the erased-EEPROM safe value. High
 nibble remains the family: 0=ctl, 1=imm, 2=mem, 3=flow, 4=ALU, 5=io, and two
