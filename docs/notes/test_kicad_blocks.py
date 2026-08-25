@@ -182,8 +182,20 @@ def test_block2_surface():
              "block2 samples MDR0-7 + PC0-15 + END/HALT + CLK + T0-3")
     check(all(f"M{i}" in s["copper"] for i in range(15)), "M0-14 are copper")
     check("M15=ROM_EN" in s["copper"], "M15=ROM_EN is copper")
-    check_eq(set(s["strap"]), {"FLAG_Z", "WRITE_DIR"} | {f"W{i}" for i in range(8)},
-             "block2 straps FLAG_Z + WRITE_DIR + W0-7")
+    # PHASE D, 2026-08-24: ~{ROM_BUF_EN} and ~{RAM_OE_G} joined the strap set
+    # when the ROM-buffer and RAM-OE enables moved onto the MDR board, which
+    # does not join the ladder until block3. Both values are forced --
+    # ~{RAM_OE_G} LOW would leave U19 and U21 both driving MDR0-7. The cost is
+    # that block2 no longer reads RAM under microcode control; that path is now
+    # covered only by the memory module test.
+    check_eq(set(s["strap"]),
+             {"FLAG_Z", "WRITE_DIR", "~{ROM_BUF_EN}", "~{RAM_OE_G}"}
+             | {f"W{i}" for i in range(8)},
+             "block2 straps FLAG_Z + WRITE_DIR + ROM_BUF_EN + RAM_OE_G + W0-7")
+    check_eq(s["strap"]["~{RAM_OE_G}"][0], "HIGH",
+             "~{RAM_OE_G} strapped HIGH -- LOW would fight U19 onto MDR0-7")
+    check_eq(s["strap"]["~{ROM_BUF_EN}"][0], "LOW",
+             "~{ROM_BUF_EN} strapped LOW -- block2's primary is fetch")
     check_eq(s["strap"]["WRITE_DIR"][0], "LOW", "WRITE_DIR strapped LOW")
     check_eq(set(s["floats"]), set(), "block2 has no unclassified floating input")
     # the retirement cascade: everything block1 sampled is gone here

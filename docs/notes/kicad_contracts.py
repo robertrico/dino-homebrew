@@ -526,8 +526,25 @@ BLOCKS = {
         "primary": "fetch",
         "drive": [f"IRB{i}" for i in range(8)],
         "retire": {},
+        # PHASE D, 2026-08-24. ~{ROM_BUF_EN} and ~{RAM_OE_G} are memory-board
+        # inputs whose driver moved to the MDR board, which does not join the
+        # ladder until block3. Same shape as WRITE_DIR, which has always been
+        # strapped here for exactly this reason.
+        #
+        # The values are forced, not chosen. ~{RAM_OE_G} LOW would leave U19
+        # and U21 both enabled onto MDR0-7 -- the contention phase D exists to
+        # prevent -- so HIGH is the only safe strap, and ~{ROM_BUF_EN} LOW is
+        # the only one that lets block2 fetch at all.
+        #
+        # COST, named rather than buried: block2 can no longer read RAM under
+        # microcode control. Before phase D its RAM enable came from
+        # control_word, in-block. RAM read-back is now covered only by the
+        # memory module test. This is a real reduction in block2's surface and
+        # it is the price of moving two enables onto the MDR board.
         "strap": dict({"FLAG_Z": ("HIGH", "control_word.truth"),
-                       "WRITE_DIR": ("LOW", "memory.window")},
+                       "WRITE_DIR": ("LOW", "memory.window"),
+                       "~{ROM_BUF_EN}": ("LOW", "memory.window"),
+                       "~{RAM_OE_G}": ("HIGH", "memory.ramrw")},
                       **{f"W{i}": ("PULLDOWN10K", "memory.ramrw") for i in range(8)}),
         "sample_anyway": ["CW12=END", "CW15=HALT"],
     },

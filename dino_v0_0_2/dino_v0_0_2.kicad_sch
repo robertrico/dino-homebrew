@@ -3875,17 +3875,6 @@
 			(embedded_fonts no)
 		)
 	)
-	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: CW12=END, CW15=HALT <- Microcode_Decoder\nOUT: ~{RESET} -> ALU Module\nOUT: CLK -> ALU Module, Memory Address Regiser, Memory Data Register, Program Counter, Register Modules\nOUT: ~{CLK} -> ALU Module, Memory, Program Counter\nOUT: T0-3 -> Microcode_Decoder\nOUT: RESET -> Program Counter"
-		(exclude_from_sim no)
-		(at 156.718 170.942 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "8ecb4521-3017-5c82-a0d9-5e36c64a8343")
-	)
 	(junction
 		(at 133.35 74.93)
 		(diameter 0)
@@ -11557,4 +11546,15 @@
 		)
 	)
 	(embedded_fonts no)
+	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: CW12=END, CW15=HALT <- Microcode_Decoder\nOUT: ~{RESET} -> ALU Module\nOUT: CLK -> ALU Module, Memory Address Regiser, Memory Data Register, Program Counter, Register Modules, Stack Pointer\nOUT: ~{CLK} -> ALU Module, Memory, Program Counter\nOUT: T0-3 -> Microcode_Decoder\nOUT: RESET -> Program Counter"
+		(exclude_from_sim no)
+		(at 156.718 170.942 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "a23c424d-74da-51c5-8fb1-302c49c52823")
+	)
 )

@@ -1194,6 +1194,59 @@ SWDEMO_PROGRAM = _build_swdemo()
 
 # images whose answer depends on the switches. Everything else is read with
 # the default, and the rig is told the setting rather than left to guess.
+# ramexec — THE PHASE-D WITNESS. The first image in this machine's life
+# whose PC ever goes above 0x7FFF, and therefore the first time FETCH_RAM
+# is ever high.
+#
+# WHY IT IS NOT PERMUTATION-BLIND. If the fetch silently still comes from
+# ROM, PC=0x9000 presents A0-A14 = 0x1000 to U24, which is 0xFF fill, which
+# is HALT -- so OB keeps the poison and reads 0xFF. The answer byte cannot
+# be produced by anything in ROM: 0x6E is computed inside the RAM program
+# and appears nowhere as a literal.
+#
+# WHY THE PLANT IS VERIFIED FIRST. Unwritten RAM reads 0x00, and 0x00 is
+# NOP -- so a failed plant does not fail, it NOP-slides through 28KB of RAM
+# and wraps. That would look like a fetch fault while actually being a
+# store fault. The read-back names which one it is.
+RAMEXEC_AT     = RAM_BASE + 0x1000              # 0x9000, clear of the stack
+RAMEXEC_A      = 0x8B                           # planted in A by ROM
+RAMEXEC_B      = 0x1D                           # the RAM program's immediate
+RAMEXEC_EXPECT = (RAMEXEC_A - RAMEXEC_B) & 0xFF # 0x6E, computed in RAM
+RAMEXEC_BAD_PLANT = 0xB1
+
+# The program that will live in RAM: LDBI imm; SUB; OUT; HALT.
+# Built from OPCODES so no opcode byte is ever retyped.
+RAMEXEC_CODE = [
+    OPCODES["LDBI"], RAMEXEC_B,
+    OPCODES["SUB"],
+    OPCODES["OUT"],
+    OPCODES["HALT"],
+]
+
+RAMEXEC_PROGRAM = [
+    # POISON FIRST. U35 has no reset and the machine free-runs at power-up,
+    # so OB holds the previous image's answer. Every failure mode of this
+    # image ends without reaching an OUT, so the poison IS the fault report.
+    ("LDAI", POISON), ("OUT",),
+] + [
+    step
+    for i, b in enumerate(RAMEXEC_CODE)
+    for step in (("LDAI", b), ("STA", *_addr(RAMEXEC_AT + i)))
+] + [
+    # Verify byte 0 landed, by ABSOLUTE address. A store fault and a fetch
+    # fault both end at 0xFF otherwise, and they are different repairs.
+    ("LDA", *_addr(RAMEXEC_AT)),
+    ("LDBI", RAMEXEC_CODE[0]),
+    ("SUB",),                                   # Z set iff the plant is good
+    ("JNZ", Ref("plant_bad")),
+    ("LDAI", RAMEXEC_A),                        # the operand RAM code works on
+    ("JMP", *_addr(RAMEXEC_AT)),                # <-- PC crosses 0x8000 HERE
+    ("HALT",),                                  # JMP never jumped -> 0xFF
+    "plant_bad",
+    ("LDAI", RAMEXEC_BAD_PLANT), ("OUT",), ("HALT",),
+]
+
+
 COVERAGE_SW = {"in": IN_SW}
 
 COVERAGE = {
@@ -1216,6 +1269,7 @@ COVERAGE = {
     "callraw": CALLRAW_PROGRAM,
     "call": CALL_PROGRAM,
     "stack": STACK_PROGRAM,
+    "ramexec": RAMEXEC_PROGRAM,
 }
 
 

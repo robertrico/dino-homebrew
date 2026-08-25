@@ -25,9 +25,9 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - OUT   ~{ALU_OUT}  -> ALU Module, Memory Data Register
 - OUT   ~{REG_A_LOAD}, ~{REG_B_LOAD}  -> ALU Module, Register Modules
 - OUT   ~{MAR_HI_LOAD}, ~{MAR_LO_LOAD}  -> Memory Address Regiser
-- OUT   SRC_ACTIVE, ~{IR_LOAD}, ~{MDR_OUT}, ~{PC_HI_OUT}, ~{PC_LO_OUT}, ~{RAM_LOAD}  -> Memory Data Register
+- OUT   SRC_ACTIVE, ~{IR_LOAD}, ~{MDR_OUT}, ~{PC_HI_OUT}, ~{PC_LO_OUT}, ~{RAM_LOAD}, ~{RAM_OUT}  -> Memory Data Register
 - OUT   ~{SW_OUT}  -> Memory Data Register, Output
-- OUT   ~{RAM_OUT}, ~{ROM_OUT}  -> Memory, Memory Data Register
+- OUT   ~{ROM_OUT}  -> Memory, Memory Data Register
 - OUT   ~{PC_CLEAR}, ~{PC_LOAD}  -> Program Counter
 - OUT   ~{REG_A_OUT}, ~{REG_B_OUT}, ~{REG_C_LOAD}, ~{REG_C_OUT}, ~{REG_OUT_LOAD}  -> Register Modules
 - OUT   ~{SP_DOWN}, ~{SP_HI_LOAD}, ~{SP_HI_OUT}, ~{SP_LO_LOAD}, ~{SP_LO_OUT}, ~{SP_UP}  -> Stack Pointer
@@ -37,25 +37,26 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - IN    ~{MAR_HI_LOAD}, ~{MAR_LO_LOAD}  <- Control Word Module
 - IN    CW14=PC_MAR_MUX  <- Microcode_Decoder
 - IN    CLK  <- root
-- OUT   ~{RAM_EN}  -> Memory
+- OUT   ~{RAM_EN}  -> Memory, Memory Data Register
 - OUT   M0-14  -> Memory, Program Counter
 - OUT   ~{PC_MAR_MUX}  -> Program Counter
 - BIDIR M15=ROM_EN  <-> Memory, Program Counter
 
 ## Memory Data Register
 - IN    SRC_ACTIVE, ~{ALU_OUT}, ~{IR_LOAD}, ~{MDR_OUT}, ~{PC_HI_OUT}, ~{PC_LO_OUT}, ~{RAM_LOAD}, ~{RAM_OUT}, ~{ROM_OUT}, ~{SW_OUT}  <- Control Word Module
+- IN    ~{RAM_EN}  <- Memory Address Regiser
 - IN    CLK  <- root
-- OUT   WRITE_DIR  -> Memory
+- OUT   WRITE_DIR, ~{RAM_OE_G}, ~{ROM_BUF_EN}  -> Memory
 - OUT   IRB0-7  -> Microcode_Decoder
 - OUT   PC0-15  -> Program Counter
 - BIDIR W0-7  <-> ALU Module, Memory Address Regiser, Output
 - BIDIR MDR0-7  <-> Memory, Register Modules, Stack Pointer
 
 ## Memory
-- IN    ~{RAM_OUT}, ~{ROM_OUT}  <- Control Word Module
+- IN    ~{ROM_OUT}  <- Control Word Module
 - IN    ~{RAM_EN}  <- Memory Address Regiser
 - IN    M0-14, M15=ROM_EN  <- Memory Address Regiser, Program Counter
-- IN    WRITE_DIR  <- Memory Data Register
+- IN    WRITE_DIR, ~{RAM_OE_G}, ~{ROM_BUF_EN}  <- Memory Data Register
 - IN    ~{CLK}  <- root
 - OUT   MDR0-7  -> Memory Data Register, Register Modules, Stack Pointer
 

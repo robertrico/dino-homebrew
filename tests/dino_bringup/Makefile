@@ -116,6 +116,8 @@ burn-prog-sp:
 	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_sp.bin
 burn-prog-stack:
 	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_stack.bin
+burn-prog-ramexec:
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_ramexec.bin
 read-prog: | $(BUILD)
 	$(MINIPRO) -p $(PROG_CHIP) -r $(BUILD)/prog_read.bin
 verify-prog-diag: read-prog
@@ -153,6 +155,6 @@ verify-real-u23: read-rom
         burn-prog-probe burn-prog-in burn-prog-adda burn-prog-addb burn-prog-alu burn-prog-mem burn-prog-flow \
         burn-prog-loop burn-prog-mardisc burn-prog-pads burn-prog-cylon \
         burn-prog-sp burn-prog-sp1 burn-prog-sp2 burn-prog-sp3 \
-        burn-prog-swdemo burn-prog-calladdr burn-prog-callraw burn-prog-call burn-prog-stack burn-prog-spcylon \
+        burn-prog-swdemo burn-prog-calladdr burn-prog-callraw burn-prog-call burn-prog-stack burn-prog-ramexec burn-prog-spcylon \
         read-rom id-rom \
         verify-diag-u9 verify-diag-u15 verify-real-u9 verify-real-u15 verify-real-u23

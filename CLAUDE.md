@@ -53,6 +53,10 @@ The phase-C images joined them the same day:
 
     calladdr 0x5C   callraw 0x2A   call 0x4B   stack 0x27
 
+And phase D:
+
+    ramexec 0x6E
+
 `LDCI` and `NOP` are the only instructions that have never executed, and they
 are unreachable by design — C is `RET`'s scratch register and nothing can read
 it back. That is a MICROCODE-SOFT gap, not a hardware one: `MOV A,C` or
@@ -101,6 +105,58 @@ on hardware. The whole ISA now runs except `LDCI` and `NOP`.
 **It cost no ROM burn.** `CALL`/`RET` were already in the sockets — decoded
 out of `roms/U9.bin`+`U15.bin`+`U23.bin`, 12 and 14 rows, zero differing from
 the generator. Phase C was two '245s and wire.
+
+**FACT — PHASE D IS ON SILICON as of 2026-08-24. THE MACHINE EXECUTES
+FROM RAM.** `PROG_ramexec` returns `0x6E`. Six gate sections that had never
+been driven in this machine's life are now bench-proven:
+
+    U22 g3   FETCH_RAM     = NOR(~ROM_OUT, ~RAM_EN)        BENCH-PROVEN
+    U22 g4   ROM_BUF_ON    = NOR(~ROM_OUT, FETCH_RAM)      BENCH-PROVEN
+    U37 inv4 ~{FETCH_RAM}                                  BENCH-PROVEN
+    U37 inv6 ~{ROM_BUF_EN} = OR(~ROM_OUT, FETCH_RAM)  -> U19.19
+    U37 inv5 ~{RAM_OE_G}   = AND(~RAM_OUT, ~FETCH_RAM) -> U26.22 + U51.9
+    U39 g4   RAM_OE_ON     = NAND(~RAM_OUT, ~FETCH_RAM)    BENCH-PROVEN
+
+**It cost no new IC.** All six were free sections on `U22`/`U37`/`U39`,
+already in sockets on the MDR board, and `~ROM_OUT`/`~RAM_OUT` were
+already there feeding `READS_IDLE`. Only `~{RAM_EN}` had to be brought in.
+Two pin lifts on the memory board, eleven wires. **`U24.22` stays on
+`~{ROM_OUT}`** — `U24`'s own `~CE = M15` deselects the ROM chip already.
+
+**The MDR board now has ZERO free gate sections.** `U22`, `U37` and `U39`
+are full. The next change needing a gate there needs a package.
+
+**FACT — gating `~{RAM_OUT}` upstream carries `U21`'s enable for free.**
+`U51` is a `7400` computing `~RAM_MDR_EN = AND(~RAM_OUT, ~WRITE_DIR)`, so
+one gate on `~RAM_OUT` moves both the RAM chip's `~OE` and its buffer.
+That is why phase D is six gates and not eight.
+
+**FACT — all 15 `src=ROM` microcode rows carry `mux_pc=True`,** no
+exceptions, `FETCH` included, `FILL` is `src=NONE`. This had to be
+re-proven before phase D: a ROM-side read can now hit RAM, so the standing
+"ROM reads are exempt from the `src=RAM`->MAR loop" rule was no longer
+free. It holds — MAR never drives `M` during a ROM-side read.
+
+**FACT — `U19`'s enable is now two gate delays behind `~ROM_OUT`**, and
+measured at <=50ns on the bench. `U21`'s has been two gate delays behind
+`~RAM_OUT` through `U51` since the machine was built, on a plain `7400`.
+The mod makes the two buffers symmetric; before it, `U19` was the odd one.
+
+**DECISION 2026-08-24 (Rico): THE ATmega2560 RIG IS RETIRED.** Scope, DMM
+and LA. As a complete CPU the machine does not need it. Full record in
+`.git/sdd/RIG_RETIREMENT.md`, including what must NOT be deleted — **the
+ROM burn targets live in `tests/dino_bringup/Makefile`** and have nothing
+to do with the ATmega. Consequence: `--pinmap` throws `IndexError` (the
+MDR sheet needs 21 rig pins, `POOL` has 19). Deferred, not repaired. Do
+not extend `POOL`; that would commit a hookup table for retired hardware.
+`test_kicad_contracts_pinmap.py` and
+`test_kicad_blocks.py::test_pinmap_has_block_bundles` are permanently red.
+
+**COST — `block2` can no longer read RAM under microcode control.** Its
+RAM enable used to come from control_word, in-block; it now comes from the
+MDR board, which does not join the ladder until block3. `block2` straps
+`~{ROM_BUF_EN}` LOW and `~{RAM_OE_G}` HIGH. Both values are forced:
+`~{RAM_OE_G}` LOW would leave `U19` and `U21` both driving `MDR0-7`.
 
 **FACT — the five never-asserted decoder outputs all work.** Before
 2026-08-24 none of these had ever been driven low, because nothing but
@@ -181,10 +237,12 @@ this.
 > repaired, deliberately. Do not read a green badge into this file, and do
 > not gate any bench work on the twin until it is either fixed or removed.
 
-**The rig (ATmega2560) is detached and unwired.** Bench verification is
-therefore continuity against the generated crossing list, TL866 read-back,
-and the coverage ROMs' `OB` values. Instruments available: DSLogic LA,
-Siglent scope, DMM.
+**The rig (ATmega2560) is RETIRED — Rico, 2026-08-24.** Not merely
+detached; retired. Bench verification is continuity against the generated
+crossing list, TL866 read-back, and the coverage ROMs' `OB` values.
+Instruments: DSLogic LA, Siglent scope, DMM. See
+`.git/sdd/RIG_RETIREMENT.md` — and note the ROM burn targets live in
+`tests/dino_bringup/Makefile` and must survive any cleanup.
 
 ## Open questions
 
@@ -473,6 +531,12 @@ in-tree reference to one of them (BRINGUP.md, dino_mar_lo_investigation.md,
 dino_hardware_growth_plan.md, …) resolves to `.git/sdd/<name>`. The repo
 keeps design and reference docs plus everything generated.
 
+    .git/sdd/PHASE_D.md                      execute-from-RAM: the build
+                                             procedure, both checkpoints,
+                                             and the ramexec result
+    .git/sdd/RIG_RETIREMENT.md               the ATmega is retired; what
+                                             is dead, and what must NOT be
+                                             deleted with it
     .git/sdd/CLOCK_DISTRIBUTION.md           the 100R fix, and the PCB
                                              consequence — read before any
                                              board gets its own clock branch
