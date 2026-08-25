@@ -610,6 +610,12 @@ machine; the port is design-ahead.
 
 ## Where to read next
 
+**`.git/sdd/` IS NOT VERSIONED, AND THAT IS A SETTLED CHOICE.** Git cannot
+track its own directory, so the phase documents there have no history and no
+backup. Rico knows and has ruled: **do not raise it again.** Do not propose
+moving them, mirroring them, or committing them. `.git/sdd/` is where process
+documents live, full stop.
+
 **Process documents live out of tree in `.git/sdd/`** — bring-up procedures,
 plans, investigations, session handoffs, progress checkboxes. Any stale
 in-tree reference to one of them (BRINGUP.md, dino_mar_lo_investigation.md,
