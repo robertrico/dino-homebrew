@@ -282,17 +282,24 @@ def test_the_five_repaired_aliases_stay_joined():
 
 
 if __name__ == "__main__":
-    test_alias_splits_flags_one_label_carried_under_two_net_keys()
-    test_alias_splits_is_quiet_when_every_sheet_agrees()
-    test_no_alias_split_survives_anywhere_in_the_design()
-    print("ok  alias_splits: none in the design")
-    test_m15_rom_en_is_one_complete_checklist_row()
-    print(f"ok  M15/ROM_EN: all {len(M15_PINS)} pins on one checklist row")
+    # ENUMERATED, not a hand-written sequence. The block that used to live
+    # here named six of this module's eleven test_ functions; five had never
+    # run -- including both bank-select row checks and the refs-relaxation
+    # regression. Guarded by test_suite_reachability.py.
+    _failed = []
+    for _name, _fn in sorted(
+            (kv for kv in list(globals().items())
+             if kv[0].startswith("test_") and callable(kv[1]))):
+        try:
+            _fn()
+            print(f"ok  {_name}")
+        except AssertionError as _e:
+            _failed.append(_name)
+            print(f"FAIL {_name}: {_e}")
     for _bit, _pins in BANK_SELECTS.items():
         _one_complete_row(_bit, _pins)
         print(f"ok  {_bit}: all {len(_pins)} pins on one checklist row")
-    test_stub_bucket_contains_only_known_entries()
-    print(f"ok  stub bucket: {len(RESERVE_BITS)} reserve + "
-          f"{len(ROOT_CROSSING)} root-crossing, nothing else")
-    test_the_five_repaired_aliases_stay_joined()
-    print("ok  the five 2026-08-23 alias repairs are still joined")
+    if _failed:
+        print(f"\n{len(_failed)} FAILED")
+        sys.exit(1)
+    print("\ncontinuity completeness: OK")

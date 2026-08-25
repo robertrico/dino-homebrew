@@ -168,6 +168,13 @@ def test_coverage_is_progressive():
                 "stack proves a return HAPPENED; this proves it landed on "
                 "the right BYTE, from above 0x00FF so the pushed PC_HI is "
                 "non-zero and U73 cannot pass by delivering 0x00",
+        "ramexec": "no new instruction at all -- the new thing is WHERE the "
+                   "instructions come from. The PC crosses 0x8000 and the "
+                   "machine fetches from RAM, which is phase D's whole "
+                   "claim. The plant is verified by ABSOLUTE address first, "
+                   "because unwritten RAM reads 0x00 = NOP: a failed store "
+                   "would otherwise NOP-slide 28KB and present as a fetch "
+                   "fault. PHASE D.",
         "stack": "WORK DONE INSIDE the subroutine and surviving the return. "
                  "call proves RET lands on the right byte but its subroutine "
                  "is a bare RET, so it says nothing about the machine's state "
@@ -180,7 +187,7 @@ def test_coverage_is_progressive():
     seen = set()
     order = ["probe", "adda", "addb", "real", "in", "alu", "mem", "flow", "loop",
              "mardisc", "pads", "sp1", "sp2", "sp3", "sp", "calladdr",
-             "callraw", "call", "stack"]
+             "callraw", "call", "stack", "ramexec"]
     check_eq(list(pg.COVERAGE), order, "images in ladder order")
     for tag in order:
         used = {s[0] for s in pg.COVERAGE[tag] if not isinstance(s, str)}
@@ -570,17 +577,15 @@ if pytest is not None and __name__ != "__main__":
 
 
 if __name__ == "__main__":
-    for fn in (test_labels, test_simulator_against_microcode,
-               test_flags_hold_across_non_alu, test_images_are_witnesses,
-               test_coverage_is_progressive, test_alu_image_hits_every_sa_code,
-               test_mem_image_round_trips_ram, test_flow_image_never_reaches_poison,
-               test_loop_image_iterates_exactly,
-               test_sp_image_gates_phase_b_without_call_ret,
-               test_milestone_is_a_real_carry_chain,
-               test_in_image_takes_its_operand_from_the_switches,
-               test_diag_triple_ambiguity_is_generated,
-               test_images_fit_and_safe_fill):
-        fn()
+    # ENUMERATED, not a hand-written tuple. The tuple that used to live here
+    # named 14 of this module's 19 test_ functions; five had never run --
+    # including both phase-C witnesses and the swdemo stack-balance check.
+    # Adding a name to a list is a step someone has to remember, and this is
+    # what forgetting looks like. Guarded by test_suite_reachability.py.
+    for _name, _fn in sorted(
+            (kv for kv in list(globals().items())
+             if kv[0].startswith("test_") and callable(kv[1]))):
+        _fn()
     if FAILS:
         print(f"\n{len(FAILS)} FAILED")
         for f in FAILS:

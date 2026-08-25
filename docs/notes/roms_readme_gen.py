@@ -89,6 +89,13 @@ NOTES = {
              "rather than decorative -- and the SUB runs INSIDE the callee "
              "with the only OUT after the return, so the answer exists only "
              "if registers, flags and stack all survived the call. PHASE C.",
+    "ramexec": "THE MACHINE EXECUTES FROM RAM. No new instruction -- the "
+               "new thing is where the instructions come from. ROM plants "
+               "LDBI/SUB/OUT/HALT at 0x9000, verifies byte 0 by ABSOLUTE "
+               "address (unwritten RAM reads 0x00 = NOP, so a failed store "
+               "would NOP-slide 28KB and look like a fetch fault), then "
+               "JMPs across 0x8000 and the answer is computed in RAM. "
+               "PHASE D.",
 }
 
 PROSE_HEAD = """# roms/ — what is physically in the sockets

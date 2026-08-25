@@ -130,6 +130,13 @@ construction — no eleventh table.
         than decorative -- and the SUB runs INSIDE the callee with the
         only OUT after the return, so the answer exists only if registers,
         flags and stack all survived the call. PHASE C.
+    PROG_ramexec.bin 0x9BC7  0x6E  21
+        THE MACHINE EXECUTES FROM RAM. No new instruction -- the new thing
+        is where the instructions come from. ROM plants LDBI/SUB/OUT/HALT
+        at 0x9000, verifies byte 0 by ABSOLUTE address (unwritten RAM
+        reads 0x00 = NOP, so a failed store would NOP-slide 28KB and look
+        like a fetch fault), then JMPs across 0x8000 and the answer is
+        computed in RAM. PHASE D.
 
 ### Soak images — not coverage images
 

@@ -116,3 +116,26 @@ def test_switches_are_seed_derived_reproducible_and_vary():
     assert len(seen) >= 2, \
         f"only {len(seen)} distinct switches value(s) across 200 seeds' " \
         f"IN-using programs ({seen}) -- looks hardcoded, not random-per-seed"
+
+
+# ---- runner -------------------------------------------------------------
+# ENUMERATED, not a hand-written list. This module had NO runner at all: its
+# nine test_ functions were pytest-style bare functions, and pytest is not
+# installed on this machine, so none of them had ever executed. Guarded by
+# test_suite_reachability.py.
+if __name__ == "__main__":
+    import sys as _sys
+    _failed = []
+    for _name, _fn in sorted(
+            (kv for kv in list(globals().items())
+             if kv[0].startswith("test_") and callable(kv[1]))):
+        try:
+            _fn()
+            print(f"  ok   {_name}")
+        except AssertionError as _e:
+            _failed.append(_name)
+            print(f"  FAIL {_name}: {_e}")
+    if _failed:
+        print(f"\n{len(_failed)} FAILED")
+        _sys.exit(1)
+    print("OK test_fuzz_gen")

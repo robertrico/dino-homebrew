@@ -252,16 +252,29 @@ def test_sa_field_reaches_the_382_uninverted():
             sel[int(m.group(2))] = n.group(1)     # S<n> <- net name
     assert set(sel) == {0, 1, 2}, f"could not find U38 S0/S1/S2: {sel}"
 
-    # the schematic aliases CW9=SA2, CW10=SA1, CW11=SA0
+    # The schematic aliases CW9=SA2, CW10=SA1, CW11=SA0.
+    #
+    # RESOLVE AGAINST THE LABEL SET, NOT THE NET NAME. KiCad names a net after
+    # the alphabetically first label on it, so these nets report as
+    # `CW11/SA0`, `CW10/SA1`, `CW9/SA2` -- `CW9` beats `SA2` exactly as
+    # CLAUDE.md's naming rule says it will. Matching the bare alias made this
+    # assertion fire on the GUARD and abort before it compared a single code,
+    # and because nothing called this function the module still printed OK and
+    # exited 0. Found 2026-08-25; see test_suite_reachability.py.
     cw_of = {"SA0": 11, "SA1": 10, "SA2": 9}
+    resolved = {}
     for spin, net in sel.items():
-        assert net in cw_of, f"U38 S{spin} is on {net}, not an SA net"
+        alias = [p for p in net.split("/") if p in cw_of]
+        assert len(alias) == 1, (
+            f"U38 S{spin} is on {net!r}, which carries "
+            f"{len(alias)} SA aliases -- expected exactly one of {sorted(cw_of)}")
+        resolved[spin] = cw_of[alias[0]]
 
     for name, code in SA.items():
         w = word(sa=name)
         got = 0
-        for spin, net in sel.items():
-            got |= ((w >> cw_of[net]) & 1) << spin
+        for spin, bit in resolved.items():
+            got |= ((w >> bit) & 1) << spin
         assert got == code, (
             f"{name}: microcode encodes {code} but the '382 receives {got} — "
             f"the SA field is reaching the chip permuted")
@@ -412,4 +425,23 @@ assert g.crc16(bins["U9.bin"][:4096]) == 0xB5B7, "U9 changed -- reburn intended?
 assert g.crc16(bins["U15.bin"][:4096]) == 0x5174, "U15 changed -- reburn intended?"
 assert g.crc16(bins["U23.bin"][:4096]) == 0x2329, "U23 changed -- reburn intended?"
 
-print("OK test_microcode_gen")
+# ---- runner -------------------------------------------------------------
+# ENUMERATED, not a hand-written list. A tuple of names is a step someone has
+# to remember, and forgetting it is exactly how this module's two test_
+# functions went unrun from the day they were written. Guarded by
+# test_suite_reachability.py.
+if __name__ == "__main__":
+    _failed = []
+    for _name, _fn in sorted(
+            (kv for kv in list(globals().items())
+             if kv[0].startswith("test_") and callable(kv[1]))):
+        try:
+            _fn()
+            print(f"  ok   {_name}")
+        except AssertionError as _e:
+            _failed.append((_name, _e))
+            print(f"  FAIL {_name}: {_e}")
+    if _failed:
+        print(f"\n{len(_failed)} FAILED")
+        sys.exit(1)
+    print("OK test_microcode_gen")
