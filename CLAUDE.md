@@ -574,9 +574,8 @@ LIVE — read these:
 
     .git/sdd/PHASE_E.md                      memory-mapped I/O out of ROM
                                              space; ROM-driven decode; the
-                                             16550 card; the DMA input
-                                             budget. NEXT UP, broad strokes
-                                             only -- NOT a spec
+                                             16550 card. NEXT UP, broad
+                                             strokes only -- NOT a spec
     .git/sdd/PHASE_D.md                      execute-from-RAM: build
                                              procedure, both checkpoints,
                                              the ramexec result
