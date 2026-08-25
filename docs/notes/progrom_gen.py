@@ -219,14 +219,31 @@ def _alu_op(op, a, b):
     raise BuildError(f"interpreter has no model for SA={op}")
 
 
-def simulate(program, max_steps=100000, switches=0x00):
+IO_PARK = OPCODES["HALT"]       # 0xFF. W's bus-park pullups, and HALT, and
+                                # SAFE_FILL are the same byte on purpose: an
+                                # unclaimed address stops the machine.
+
+
+def io_read(addr, switches):
+    """One byte from the I/O window, 0x4000-0x7FFF.
+
+    Nothing is mapped yet -- every address parks. Task B adds the DIP card.
+    `switches` is threaded through now so the signature does not change
+    when it does.
+    """
+    return IO_PARK
+
+
+def simulate(program, max_steps=100000, switches=0x00,
+             image=None, rom_window=None):
     """Execute an assembled image by interpreting its microcode rows.
 
     Returns a dict of observables. `out` is what OB would read — the only
     datapath observable the block ladder has, which is why every coverage
     image ends OUT; HALT."""
-    code = assemble(program)
-    poison = {i for i, _ in _poison_spans(program)}
+    code = assemble(program) if image is None else image
+    poison = {i for i, _ in _poison_spans(program)} if program else set()
+    window = ROM_WINDOW if rom_window is None else rom_window
     ram = {}
     A = B = C = 0
     tmp_a = tmp_b = 0
@@ -250,8 +267,10 @@ def simulate(program, max_steps=100000, switches=0x00):
           "steps": 0, "ends": 0, "outs": []}
 
     def rd(a):
-        if a < ROM_WINDOW:
+        if a < window:
             return code[a] if a < len(code) else SAFE_FILL
+        if a < RAM_BASE:
+            return io_read(a, switches)
         return ram.get(a, 0)
 
     while st["steps"] < max_steps:

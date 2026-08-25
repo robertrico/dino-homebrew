@@ -325,5 +325,49 @@ class TestRomWindowSplit(unittest.TestCase):
         self.assertEqual(len(pg.build_image(ok)), pg.ROM_IMAGE)
 
 
+class TestIoRegionModel(unittest.TestCase):
+    """0x4000-0x7FFF decodes to no chip in the core. W is parked at 0xFF by
+    pullups at the bus origin, and 0xFF is HALT -- so an unclaimed address
+    stops the machine rather than raving. The oracle is the answer key; if
+    it still models this region as ROM it will 'execute' bytes the silicon
+    never returns."""
+
+    def test_park_value_is_the_halt_opcode(self):
+        self.assertEqual(pg.IO_PARK, OPCODES["HALT"])
+
+    def test_unclaimed_io_address_reads_the_park(self):
+        self.assertEqual(pg.io_read(pg.IO_BASE, 0x00), pg.IO_PARK)
+        self.assertEqual(pg.io_read(pg.RAM_BASE - 1, 0xFF), pg.IO_PARK)
+
+    def test_lda_from_the_window_returns_the_park(self):
+        prog = [("LDAI", 0x11), ("OUT",),
+                ("LDA", *pg._addr(pg.IO_BASE)), ("OUT",), ("HALT",)]
+        self.assertEqual(pg.simulate(prog)["out"], pg.IO_PARK)
+
+    def test_rom_reads_below_the_window_are_unchanged(self):
+        """the split must not disturb any existing image"""
+        self.assertEqual(pg.simulate(pg.COVERAGE["real"])["out"], 0x4D)
+        self.assertEqual(pg.simulate(pg.COVERAGE["ramexec"])["out"], 0x6E)
+
+    def test_rom_window_parameter_discriminates(self):
+        """ONE image, TWO window settings, TWO different answers. This is the
+        whole reason rom_window is a parameter: PROG_window's BEFORE reading
+        has no oracle without it. The image jumps to 0x4000 and OUTs a
+        sentinel there; with the window open to the whole part that sentinel
+        is reachable, with it closed to 16K the fetch reads the park."""
+        lo = pg.assemble([("LDAI", 0x5A), ("OUT",),
+                          ("JMP", *pg._addr(pg.IO_BASE))])
+        hi = pg.assemble([("LDAI", 0xA5), ("OUT",), ("HALT",)])
+        img = bytearray([pg.SAFE_FILL]) * pg.ROM_IMAGE
+        img[:len(lo)] = lo
+        img[pg.IO_BASE:pg.IO_BASE + len(hi)] = hi
+        img = bytes(img)
+
+        opened = pg.simulate(None, image=img, rom_window=pg.ROM_IMAGE)
+        closed = pg.simulate(None, image=img, rom_window=pg.ROM_WINDOW)
+        self.assertEqual(opened["out"], 0xA5)   # U24 answers 0x0000-0x7FFF
+        self.assertEqual(closed["out"], 0x5A)   # fetch at 0x4000 hits the park
+
+
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)
