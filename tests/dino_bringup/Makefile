@@ -74,50 +74,31 @@ burn-prog:
 # all — so it splits the milestone in half: if OB shows 0x39 the load/OUT path
 # is proven and a wrong sum is the ALU's, and if it does not the fault is
 # upstream and no amount of staring at a sum will find it.
-burn-prog-probe:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_probe.bin
-burn-prog-in:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_in.bin
-burn-prog-adda:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_adda.bin
-burn-prog-addb:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_addb.bin
-burn-prog-alu:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_alu.bin
-burn-prog-mem:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_mem.bin
-burn-prog-flow:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_flow.bin
-burn-prog-loop:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_loop.bin
-burn-prog-mardisc:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_mardisc.bin
-burn-prog-pads:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_pads.bin
-burn-prog-cylon:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_cylon.bin
-burn-prog-spcylon:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_spcylon.bin
-burn-prog-sp1:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_sp1.bin
-burn-prog-sp2:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_sp2.bin
-burn-prog-sp3:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_sp3.bin
-burn-prog-swdemo:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_swdemo.bin
-burn-prog-calladdr:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_calladdr.bin
-burn-prog-callraw:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_callraw.bin
-burn-prog-call:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_call.bin
-burn-prog-sp:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_sp.bin
-burn-prog-stack:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_stack.bin
-burn-prog-ramexec:
-	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_ramexec.bin
+# ONE PATTERN RULE, NOT A HAND-WRITTEN LIST. `burn-prog-<tag>` burns
+# $(ROMS)/PROG_<tag>.bin for ANY tag the generator emits -- which is what
+# roms/README.md has documented all along.
+#
+# It used to be 24 hand-written targets, and that is a step someone has to
+# remember: PROG_window and PROG_dip were generated in phase E and NEITHER
+# got a target, so `make burn-prog-window` died with "No rule to make target"
+# at the bench with the chip already in the programmer. `burn-prog-in` was
+# left behind pointing at a .bin that had been deleted, which would have
+# failed later and less clearly.
+#
+# The guard is the point: a typo names itself and lists what IS available,
+# instead of handing minipro a missing path.
+burn-prog-%:
+	@test -f $(ROMS)/PROG_$*.bin || { \
+	  echo "no such image: $(ROMS)/PROG_$*.bin"; \
+	  echo "available:"; \
+	  ls $(ROMS)/PROG_*.bin | sed 's|.*/PROG_||; s|\.bin$$||; s|^|    |'; \
+	  exit 1; }
+	$(MINIPRO) -p $(PROG_CHIP) -w $(ROMS)/PROG_$*.bin
+
+# What can be burned right now, straight off disk. No list to fall stale.
+list-prog:
+	@ls $(ROMS)/PROG_*.bin | sed 's|.*/PROG_||; s|\.bin$$||'
+
 read-prog: | $(BUILD)
 	$(MINIPRO) -p $(PROG_CHIP) -r $(BUILD)/prog_read.bin
 verify-prog-diag: read-prog
@@ -151,10 +132,6 @@ verify-real-u23: read-rom
 
 .PHONY: all size flash clean \
         burn-diag-u9 burn-diag-u15 burn-real-u9 burn-real-u15 burn-real-u23 \
-        burn-prog-diag burn-prog read-prog verify-prog-diag verify-prog \
-        burn-prog-probe burn-prog-in burn-prog-adda burn-prog-addb burn-prog-alu burn-prog-mem burn-prog-flow \
-        burn-prog-loop burn-prog-mardisc burn-prog-pads burn-prog-cylon \
-        burn-prog-sp burn-prog-sp1 burn-prog-sp2 burn-prog-sp3 \
-        burn-prog-swdemo burn-prog-calladdr burn-prog-callraw burn-prog-call burn-prog-stack burn-prog-ramexec burn-prog-spcylon \
+        burn-prog list-prog read-prog verify-prog-diag verify-prog \
         read-rom id-rom \
         verify-diag-u9 verify-diag-u15 verify-real-u9 verify-real-u15 verify-real-u23
