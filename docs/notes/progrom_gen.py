@@ -1352,6 +1352,78 @@ COVERAGE = {
 }
 
 
+# ---- suite — THE WHOLE TWELVE-IMAGE REGRESSION IN ONE BURN -------------
+# Card zero made the machine readable AT RUN TIME, so the choice of which
+# test to run can be a DIP setting instead of a chip swap: set SW1 to 1-12,
+# press RESET, read OB. Twelve ROM pulls become one, which on a breadboard
+# with no ZIF on the program socket is the difference between a regression
+# and a rewiring session.
+#
+# LAYOUT. The dispatch owns the first slot and each test gets its own,
+# assembled at its own base. Assembling separately is not a detail: the
+# twelve programs reuse label names ("top", "high", "sub"), so concatenating
+# them into one list would collide on the first duplicate.
+#
+#     0x0000   dispatch, 149 bytes of it
+#     0x0400   test 1 ... 0x3000   test 12       12 x 1K, all under 0x4000
+#
+# THE NO-MATCH ARM REPORTS THE SWITCH BYTE RAW, and that is the rule about
+# raw reports beating assertions, applied to the selector itself: a setting
+# that matches nothing OUTs SW1 rather than a verdict, so a stuck switch or
+# an inverted bank names its own value instead of reporting "no test ran".
+#
+# WHAT THE SUITE DOES NOT REPLACE. Each standalone image is still generated
+# and still burnable. The suite depends on card zero, so a broken card takes
+# the whole regression with it; the twelve singles are the fallback and the
+# reason they stay.
+SUITE_SLOT = 0x0400             # 1K per test; the largest is call at 305B
+SUITE_TESTS = ("mardisc", "pads", "mem", "flow", "alu", "loop",
+               "sp", "sp2", "sp3", "call", "stack", "ramexec")
+
+
+def _suite_dispatch(tests=SUITE_TESTS):
+    """Read card zero, compare against each selector, JMP to the match.
+
+    No indexed jump exists on this machine, so the dispatch is a compare
+    chain: LDA reloads A every pass because SUB consumes it."""
+    prog = []
+    for sel, _tag in enumerate(tests, start=1):
+        prog += [
+            ("LDA", *_addr(DIP_BASE)),          # A <- SW1
+            ("LDBI", sel),
+            ("SUB",),                           # Z set iff SW1 == sel
+            ("JNZ", Ref(f"next{sel}")),
+            ("JMP", *_addr(SUITE_SLOT * sel)),
+        ]
+        prog.append(f"next{sel}")
+    # No match: OUT the switch byte RAW. A verdict here would collapse the
+    # one number that names the fault -- a stuck switch, an inverted bank or
+    # a card that answered 0xFF all read as "no test ran" otherwise.
+    prog += [("LDA", *_addr(DIP_BASE)), ("OUT",), ("HALT",)]
+    return prog
+
+
+def build_suite(tests=SUITE_TESTS):
+    """One ROM image holding the dispatch and every test in `tests`."""
+    img = bytearray([SAFE_FILL]) * ROM_IMAGE
+    disp = assemble(_suite_dispatch(tests))
+    img[0:len(disp)] = disp
+    for sel, tag in enumerate(tests, start=1):
+        base = SUITE_SLOT * sel
+        if base + SUITE_SLOT > ROM_WINDOW:
+            raise BuildError(
+                f"slot {sel} starts at 0x{base:04X}, at or past the ROM "
+                f"window at 0x{ROM_WINDOW:04X} -- ROM is deselected there")
+        code = assemble(COVERAGE[tag], base=base)
+        if len(code) > SUITE_SLOT:
+            raise BuildError(
+                f"{tag} is {len(code)}B and overruns its {SUITE_SLOT}B slot "
+                f"-- it would scribble slot {sel + 1} and the fault would "
+                f"report one slot away from its cause")
+        img[base:base + len(code)] = code
+    return bytes(img)
+
+
 def build_image(program):
     code = assemble(program)
     if len(code) > ROM_WINDOW:
@@ -1563,6 +1635,14 @@ def main():
         f.write(swd)
     swd_crc = crc16(swd)
     swd_len = len(assemble(SWDEMO_PROGRAM))
+    # suite — THE WHOLE TWELVE-IMAGE REGRESSION IN ONE BURN. Not in
+    # COVERAGE and not fingerprinted: it has TWELVE correct answers, one per
+    # DIP setting, so there is no single --expected row for it. Same
+    # exclusion as cylon/spcylon/swdemo/window, for the same reason.
+    suite = build_suite()
+    with open(os.path.join(ROMS, "PROG_suite.bin"), "wb") as f:
+        f.write(suite)
+    suite_crc = crc16(suite)
     # window — THE PHASE E A/B WITNESS. Not in COVERAGE: it has TWO correct
     # answers, one per side of the ~{ROM_SEL} wire, so there is no single
     # --expected row for it. Same exclusion as cylon/spcylon/swdemo.
@@ -1593,6 +1673,13 @@ def main():
           f"switch 0 OPEN (bit reads 1) = cylon sweep; "
           f"CLOSED (bit reads 0) = 0x{SWDEMO_BLINK_B:02X}/"
           f"0x{SWDEMO_BLINK_A:02X} interleaved blink")
+    print(f"    PROG_suite.bin  crc=0x{suite_crc:04X}  "
+          f"the twelve-image regression, ONE burn. SW1 = 1-{len(SUITE_TESTS)} "
+          f"picks the test, RESET re-runs it, OB is the answer. A setting "
+          f"outside the range OUTs SW1 raw.")
+    for _sel, _tag in enumerate(SUITE_TESTS, start=1):
+        _r = simulate(COVERAGE[_tag], switches=COVERAGE_SW.get(_tag, 0x00))
+        print(f"      SW1={_sel:2d}  {_tag:8s} OB=0x{_r['out']:02X}")
     print(f"    PROG_window.bin  crc=0x{win_crc:04X}  "
           f"BEFORE the mod OB 0x{WINDOW_SENTINEL:02X}, "
           f"AFTER OB 0x{WINDOW_POISON:02X}")

@@ -43,6 +43,9 @@ GOLDEN_DIAG_CRC = 0xDFE7
 # side of the ~{ROM_SEL} wire -- so it gets its own literal rather than a
 # GOLDEN_CRC entry, which test_no_pin_is_orphaned would reject.
 GOLDEN_WINDOW_CRC = 0xECF2
+# PROG_suite is NOT in COVERAGE either -- it has TWELVE correct answers, one
+# per DIP setting, so it gets its own literal for the same reason.
+GOLDEN_SUITE_CRC = 0x8A1C
 
 
 class TestImageCrcsArePinned(unittest.TestCase):
@@ -59,6 +62,9 @@ class TestImageCrcsArePinned(unittest.TestCase):
 
     def test_window_witness_matches_its_pin(self):
         self.assertEqual(pg.crc16(pg.build_window()), GOLDEN_WINDOW_CRC)
+
+    def test_suite_image_matches_its_pin(self):
+        self.assertEqual(pg.crc16(pg.build_suite()), GOLDEN_SUITE_CRC)
 
     def test_no_pin_is_orphaned(self):
         """a pin with no image is a stale literal -- delete it deliberately"""

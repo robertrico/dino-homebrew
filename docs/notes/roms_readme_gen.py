@@ -302,6 +302,25 @@ def build():
           f" 0x{pr.SWDEMO_BLINK_A:02X} is pushed first --",
           "    that is LIFO, visible with two frames. Reversed order names a",
           "    stack returning pushes in the order they went in.",
+          "", "### PROG_suite \u2014 the whole regression in ONE burn", "",
+          f"    PROG_suite.bin   0x{pr.crc16(pr.build_suite()):04X}  "
+          f"{len(pr.SUITE_TESTS)} tests, DIP-selected",
+          "    Twelve ROM pulls become one. Set SW1 to the test number,",
+          "    press RESET, read OB. The dispatch reads card zero at",
+          "    0x4000 and jumps to that test's 1K slot; each test is",
+          "    assembled at its own base, which is why their duplicate",
+          "    labels do not collide.",
+          ""] + [
+          f"        SW1 = {sel:2d}   {tag:8s} OB = 0x"
+          f"{pr.simulate(pr.COVERAGE[tag], switches=pr.COVERAGE_SW.get(tag, 0)) ['out']:02X}"
+          for sel, tag in enumerate(pr.SUITE_TESTS, start=1)
+          ] + [
+          "",
+          "    A setting outside 1-12 OUTs SW1 RAW rather than a verdict,",
+          "    so a stuck switch or an inverted bank names its own value.",
+          "    NOT in PR_COVERAGE: twelve correct answers, no single",
+          "    (OB, END) fingerprint. The twelve standalone images stay --",
+          "    the suite depends on card zero and they are the fallback.",
           "", "### The phase E witness \u2014 not a soak image, and not coverage", "",
           f"    PROG_window.bin  0x{pr.crc16(win):04X}  "
           f"BEFORE 0x{pr.WINDOW_SENTINEL:02X} / AFTER 0x{pr.WINDOW_POISON:02X}",

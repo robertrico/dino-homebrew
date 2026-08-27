@@ -186,6 +186,34 @@ construction — no eleventh table.
     that is LIFO, visible with two frames. Reversed order names a
     stack returning pushes in the order they went in.
 
+### PROG_suite — the whole regression in ONE burn
+
+    PROG_suite.bin   0x8A1C  12 tests, DIP-selected
+    Twelve ROM pulls become one. Set SW1 to the test number,
+    press RESET, read OB. The dispatch reads card zero at
+    0x4000 and jumps to that test's 1K slot; each test is
+    assembled at its own base, which is why their duplicate
+    labels do not collide.
+
+        SW1 =  1   mardisc  OB = 0x6B
+        SW1 =  2   pads     OB = 0x40
+        SW1 =  3   mem      OB = 0xC5
+        SW1 =  4   flow     OB = 0x39
+        SW1 =  5   alu      OB = 0x39
+        SW1 =  6   loop     OB = 0x15
+        SW1 =  7   sp       OB = 0x27
+        SW1 =  8   sp2      OB = 0x53
+        SW1 =  9   sp3      OB = 0x2C
+        SW1 = 10   call     OB = 0x4B
+        SW1 = 11   stack    OB = 0x27
+        SW1 = 12   ramexec  OB = 0x6E
+
+    A setting outside 1-12 OUTs SW1 RAW rather than a verdict,
+    so a stuck switch or an inverted bank names its own value.
+    NOT in PR_COVERAGE: twelve correct answers, no single
+    (OB, END) fingerprint. The twelve standalone images stay --
+    the suite depends on card zero and they are the fallback.
+
 ### The phase E witness — not a soak image, and not coverage
 
     PROG_window.bin  0xECF2  BEFORE 0xA5 / AFTER 0x5A
