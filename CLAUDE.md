@@ -260,14 +260,52 @@ Instruments: DSLogic LA, Siglent scope, DMM. See
 `.git/sdd/RIG_RETIREMENT.md` — and note the ROM burn targets live in
 `tests/dino_bringup/Makefile` and must survive any cleanup.
 
-**FACT — PHASE E IS NEXT, AND IT IS SPECCED, NOT BUILT.** The remaining work
-splits three ways, and the split is a decision (Rico, 2026-08-25), not a
-suggestion: **E** is the memory map plus the `IN`/DIP peripheral and nothing
-else; **F** is the ISA extension; **G** is the serial card. F and G are
-independent of E and of each other, in both directions. **Phase E costs no
-microcode burn** — `U9`/`U15`/`U23` are untouched, and the only burns are
-program ROMs for the witness images. Read `.git/sdd/PHASE_E_PLAN.md` first
-and `.git/sdd/PHASE_E.md` for the spec; both are in "Where to read next".
+**FACT — PHASE E IS ON SILICON, COMPLETE, 2026-08-26.** The machine has a
+memory map, a published bus and its first card. The remaining work splits
+three ways, a decision (Rico, 2026-08-25) and not a suggestion: **E** was the
+memory map plus the DIP peripheral; **F** is the ISA extension; **G** is the
+serial card. F and G are independent of E and of each other, in both
+directions. **Phase E cost no microcode burn** — `U9`/`U15`/`U23` were never
+touched; every burn was a program ROM.
+
+    STEP A   the 16K I/O window at 0x4000-0x7FFF, carved out of ROM space.
+             U74 '00 + U75 '32 on the memory board. PROG_window 0xA5 -> 0x5A
+    STEP B   card zero: U76 '138 decodes M11-M13, E1 on ~{IO_RD_Q}, O0 gates
+             SWITCH-GATE1. The DIP switch IS memory at 0x4000-0x47FF
+    IN       RETIRED. U28.7 unlanded; ~{SW_OUT} is gone. LDA replaces it
+
+**FACT — the machine reads the outside world at run time.** `PROG_dip`
+returns `0x4D` at `SW1 = 0x1E`, and a walking `1` through all eight switches
+returned all eight expected sums with **no reburn and no power cycle** —
+toggle, RESET, read. `PROG_swdemo` goes further and reads the switch INSIDE
+its loop, so the display changes without even a RESET. Before card zero every
+image was a fixed film strip.
+
+**FACT — the twelve-image regression now costs ONE burn.** `PROG_suite`
+(`crc 0x8A1C`) holds the dispatch at `0x0000` and each test at its own 1K
+slot; `SW1 = 1-12` selects, `RESET` runs it, `OB` is the answer, and a
+setting outside the range OUTs `SW1` raw so a stuck switch names itself. All
+twelve ran green on 2026-08-26. **The twelve standalone images stay** — the
+suite depends on card zero, and they are the fallback.
+
+**OBSERVATION, NOT A DEFECT — `ramexec`'s answer has been seen to change
+after the fact, sporadically, never watched moving.** It reads `0x6E`
+correctly every run. Rico, 2026-08-26: not a memory-mapping fault, and not
+being chased. It is the only coverage image whose final `HALT` sits in RAM,
+where an escape executes power-up garbage instead of landing on another
+`HALT` — and the 81-minute hold that closed the HALT question was a
+ROM-fetched `HALT`. Shape recorded in `PHASE_E.md`; it does not earn a fix
+until it has a witness that cannot miss.
+
+**A card cannot touch RAM, and that is by construction.** `M0-M15` is
+published TO cards as an input; nothing on the edge lets a card assert an
+address or a write enable, and DMA is removed entirely, not deferred. Card
+code that runs on the CPU is software like any other and has the same reach —
+conflicts there are a convention problem, the Apple/IBM slot-scratch problem,
+and no hardware guards it. **`~{IO_WR}` (`U75.6`) is still a no-connect**;
+land it when the first write-capable card exists.
+
+Read `.git/sdd/PHASE_E.md` for the spec and the RESULT sections.
 
 **FACT — all four flags are latched TODAY**, netlist-extracted from
 `dino_v0_0_2/alu.kicad_sch` on 2026-08-25. `U49` is a `'273` clocked on
