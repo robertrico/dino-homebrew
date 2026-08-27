@@ -3807,6 +3807,17 @@
 		)
 		(uuid "7fea008e-b402-4c1c-97e5-6bb379343025")
 	)
+	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: SRC_ACTIVE, ~{ALU_OUT}, ~{IR_LOAD}, ~{MDR_OUT}, ~{PC_HI_OUT}, ~{PC_LO_OUT}, ~{RAM_LOAD}, ~{RAM_OUT}, ~{ROM_OUT} <- Control Word Module\nIN: ~{IO_RD}, ~{ROM_SEL} <- Memory\nIN: ~{RAM_EN} <- Memory Address Regiser\nIN: CLK <- root\nOUT: RAM_OE_ON, READS_IDLE, WRITE_DIR, ~{ROM_BUF_EN} -> Memory\nOUT: IRB0-7 -> Microcode_Decoder\nOUT: PC0-15 -> Program Counter\nBIDIR: W0-7 <-> ALU Module, Input, Memory Address Regiser, Output\nBIDIR: MDR0-7 <-> Memory, Register Modules, Stack Pointer"
+		(exclude_from_sim no)
+		(at 159.258 171.196 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "8b8130e0-0ae7-52c5-9fe5-41c4fa4bea34")
+	)
 	(junction
 		(at 132.08 26.67)
 		(diameter 0)
@@ -12700,16 +12711,5 @@
 				)
 			)
 		)
-	)
-	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: SRC_ACTIVE, ~{ALU_OUT}, ~{IR_LOAD}, ~{MDR_OUT}, ~{PC_HI_OUT}, ~{PC_LO_OUT}, ~{RAM_LOAD}, ~{RAM_OUT}, ~{ROM_OUT} <- Control Word Module\nIN: ~{IO_RD}, ~{ROM_SEL} <- Memory\nIN: ~{RAM_EN} <- Memory Address Regiser\nIN: CLK <- root\nOUT: RAM_OE_ON, READS_IDLE, WRITE_DIR, ~{ROM_BUF_EN} -> Memory\nOUT: IRB0-7 -> Microcode_Decoder\nOUT: PC0-15 -> Program Counter\nBIDIR: W0-7 <-> ALU Module, Input, Memory Address Regiser, Output\nBIDIR: MDR0-7 <-> Memory, Register Modules, Stack Pointer"
-		(exclude_from_sim no)
-		(at 159.258 171.196 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "8b8130e0-0ae7-52c5-9fe5-41c4fa4bea34")
 	)
 )

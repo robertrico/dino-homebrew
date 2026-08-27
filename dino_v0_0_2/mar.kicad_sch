@@ -2364,6 +2364,17 @@
 			(embedded_fonts no)
 		)
 	)
+	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: W0-7 <- ALU Module, Input, Memory Data Register\nIN: ~{MAR_HI_LOAD}, ~{MAR_LO_LOAD} <- Control Word Module\nIN: CW14=PC_MAR_MUX <- Microcode_Decoder\nIN: CLK <- root\nOUT: ~{RAM_EN} -> Memory, Memory Data Register\nOUT: M0-14 -> Memory, Program Counter\nOUT: ~{PC_MAR_MUX} -> Program Counter\nBIDIR: M15 <-> Memory, Program Counter"
+		(exclude_from_sim no)
+		(at 177.546 164.338 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "4f6c43b2-5e2f-5b03-b6d4-2bab596db911")
+	)
 	(bus_entry
 		(at 165.1 53.34)
 		(size 2.54 2.54)
@@ -7791,16 +7802,5 @@
 				)
 			)
 		)
-	)
-	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: W0-7 <- ALU Module, Input, Memory Data Register\nIN: ~{MAR_HI_LOAD}, ~{MAR_LO_LOAD} <- Control Word Module\nIN: CW14=PC_MAR_MUX <- Microcode_Decoder\nIN: CLK <- root\nOUT: ~{RAM_EN} -> Memory, Memory Data Register\nOUT: M0-14 -> Memory, Program Counter\nOUT: ~{PC_MAR_MUX} -> Program Counter\nBIDIR: M15 <-> Memory, Program Counter"
-		(exclude_from_sim no)
-		(at 177.546 164.338 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "4f6c43b2-5e2f-5b03-b6d4-2bab596db911")
 	)
 )

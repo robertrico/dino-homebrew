@@ -5207,6 +5207,17 @@
 		)
 		(uuid "54cc1c8a-5630-4922-b719-ee9e917587ce")
 	)
+	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: ~{ROM_OUT} <- Control Word Module\nIN: ~{RAM_EN} <- Memory Address Regiser\nIN: M0-15 <- Memory Address Regiser, Program Counter\nIN: RAM_OE_ON, READS_IDLE, WRITE_DIR, ~{ROM_BUF_EN} <- Memory Data Register\nIN: CLK, RESET, ~{CLK} <- root\nOUT: ~{IO_RD}, ~{ROM_SEL} -> Memory Data Register\nOUT: MDR0-7 -> Memory Data Register, Register Modules, Stack Pointer"
+		(exclude_from_sim no)
+		(at 160.02 165.1 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "57c43185-cc55-5aea-93eb-e9cca13e452c")
+	)
 	(text "Derived from \nINV(A15) from MAR\n"
 		(exclude_from_sim no)
 		(at 128.016 99.568 0)
@@ -10431,46 +10442,46 @@
 			)
 		)
 		(pin "6"
-			(uuid "66b1d0ef-4875-4da6-b6ef-f0aa04ebe3ae")
+			(uuid "66b1d0ef-4875-4da6-b6ef-f0aa04ebe3af")
 		)
 		(pin "2"
-			(uuid "62f81b3a-e3d5-47d6-a5dd-f3eab7daf324")
+			(uuid "62f81b3a-e3d5-47d6-a5dd-f3eab7daf325")
 		)
 		(pin "4"
-			(uuid "ca98b1ce-3e10-403f-ad08-8cb0e0177675")
+			(uuid "ca98b1ce-3e10-403f-ad08-8cb0e0177676")
 		)
 		(pin "5"
-			(uuid "aeae443d-f554-47be-9f36-1e78d0105216")
+			(uuid "aeae443d-f554-47be-9f36-1e78d0105217")
 		)
 		(pin "3"
-			(uuid "734d3d66-1626-4e1c-8392-26c710477c03")
+			(uuid "734d3d66-1626-4e1c-8392-26c710477c04")
 		)
 		(pin "1"
-			(uuid "0dfc4091-a0fe-4fe4-b1cd-516149db55cb")
+			(uuid "0dfc4091-a0fe-4fe4-b1cd-516149db55cc")
 		)
 		(pin "8"
-			(uuid "f7aa2899-2baa-48da-a15d-4981ef3732f9")
+			(uuid "f7aa2899-2baa-48da-a15d-4981ef3732fa")
 		)
 		(pin "9"
-			(uuid "f527cbac-a068-4f30-b9e8-2ff9ee3d2f01")
+			(uuid "f527cbac-a068-4f30-b9e8-2ff9ee3d2f02")
 		)
 		(pin "10"
-			(uuid "1228360c-0091-4ad2-b074-6eabb1e16dcc")
+			(uuid "1228360c-0091-4ad2-b074-6eabb1e16dcd")
 		)
 		(pin "11"
-			(uuid "c27e19fd-5184-416c-a353-7f8d6c57bcfb")
+			(uuid "c27e19fd-5184-416c-a353-7f8d6c57bcfc")
 		)
 		(pin "12"
-			(uuid "29985da6-3c4f-486d-b344-3f1b9f6bcf71")
+			(uuid "29985da6-3c4f-486d-b344-3f1b9f6bcf72")
 		)
 		(pin "13"
-			(uuid "1f816a6d-d1d7-4fa0-8ffc-b1dd7ab6e8e7")
+			(uuid "1f816a6d-d1d7-4fa0-8ffc-b1dd7ab6e8e8")
 		)
 		(pin "7"
-			(uuid "388ec236-798c-4532-8e11-3cda58d3ff29")
+			(uuid "388ec236-798c-4532-8e11-3cda58d3ff2a")
 		)
 		(pin "14"
-			(uuid "747fce7f-bf30-412e-a39b-b4b180e5ba4c")
+			(uuid "747fce7f-bf30-412e-a39b-b4b180e5ba4d")
 		)
 		(instances
 			(project "dino_v0_0_2"
@@ -10705,46 +10716,46 @@
 			)
 		)
 		(pin "1"
-			(uuid "d7cb57e9-a078-41eb-96bf-367d52174ce0")
+			(uuid "d7cb57e9-a078-41eb-96bf-367d52174ce1")
 		)
 		(pin "4"
-			(uuid "5dd29674-304e-44e9-a252-1fc599bf9881")
+			(uuid "5dd29674-304e-44e9-a252-1fc599bf9882")
 		)
 		(pin "10"
-			(uuid "126ebbff-baa2-4b04-939f-57c0b9a75711")
+			(uuid "126ebbff-baa2-4b04-939f-57c0b9a75712")
 		)
 		(pin "9"
-			(uuid "623d6445-27c2-4661-a3cd-27ff07ff91ca")
+			(uuid "623d6445-27c2-4661-a3cd-27ff07ff91cb")
 		)
 		(pin "8"
-			(uuid "87942433-4ef3-4dfa-8995-0fa88776c2c8")
+			(uuid "87942433-4ef3-4dfa-8995-0fa88776c2c9")
 		)
 		(pin "3"
-			(uuid "db6745ac-8c26-42b8-ba23-6a1f14388ce2")
+			(uuid "db6745ac-8c26-42b8-ba23-6a1f14388ce3")
 		)
 		(pin "2"
-			(uuid "b3dd731c-3baa-472a-9786-78c96a482909")
+			(uuid "b3dd731c-3baa-472a-9786-78c96a48290a")
 		)
 		(pin "5"
-			(uuid "0e950dbb-82bf-47e1-a587-5cf2c6f49c5a")
+			(uuid "0e950dbb-82bf-47e1-a587-5cf2c6f49c5b")
 		)
 		(pin "6"
-			(uuid "343b914d-f35f-489e-99af-6ca4f341508e")
+			(uuid "343b914d-f35f-489e-99af-6ca4f341508f")
 		)
 		(pin "11"
-			(uuid "821fdefd-9754-4de5-81bf-cf8ecfa831cd")
+			(uuid "821fdefd-9754-4de5-81bf-cf8ecfa831ce")
 		)
 		(pin "12"
-			(uuid "db87ee6e-b84c-41b7-bfd3-24bb1622fa54")
+			(uuid "db87ee6e-b84c-41b7-bfd3-24bb1622fa55")
 		)
 		(pin "13"
-			(uuid "924428de-9292-4af4-8a04-64eb3a4bf166")
+			(uuid "924428de-9292-4af4-8a04-64eb3a4bf167")
 		)
 		(pin "7"
-			(uuid "866aa5c5-fe9c-440d-8559-fef44c9d6104")
+			(uuid "866aa5c5-fe9c-440d-8559-fef44c9d6105")
 		)
 		(pin "14"
-			(uuid "34512347-d9d2-4f2a-89cc-e823a9fc0adc")
+			(uuid "34512347-d9d2-4f2a-89cc-e823a9fc0add")
 		)
 		(instances
 			(project "dino_v0_0_2"
@@ -11643,46 +11654,46 @@
 			)
 		)
 		(pin "6"
-			(uuid "66b1d0ef-4875-4da6-b6ef-f0aa04ebe3ae")
+			(uuid "66b1d0ef-4875-4da6-b6ef-f0aa04ebe3b0")
 		)
 		(pin "2"
-			(uuid "62f81b3a-e3d5-47d6-a5dd-f3eab7daf324")
+			(uuid "62f81b3a-e3d5-47d6-a5dd-f3eab7daf326")
 		)
 		(pin "4"
-			(uuid "ca98b1ce-3e10-403f-ad08-8cb0e0177675")
+			(uuid "ca98b1ce-3e10-403f-ad08-8cb0e0177677")
 		)
 		(pin "5"
-			(uuid "aeae443d-f554-47be-9f36-1e78d0105216")
+			(uuid "aeae443d-f554-47be-9f36-1e78d0105218")
 		)
 		(pin "3"
-			(uuid "734d3d66-1626-4e1c-8392-26c710477c03")
+			(uuid "734d3d66-1626-4e1c-8392-26c710477c05")
 		)
 		(pin "1"
-			(uuid "0dfc4091-a0fe-4fe4-b1cd-516149db55cb")
+			(uuid "0dfc4091-a0fe-4fe4-b1cd-516149db55cd")
 		)
 		(pin "8"
-			(uuid "f7aa2899-2baa-48da-a15d-4981ef3732f9")
+			(uuid "f7aa2899-2baa-48da-a15d-4981ef3732fb")
 		)
 		(pin "9"
-			(uuid "f527cbac-a068-4f30-b9e8-2ff9ee3d2f01")
+			(uuid "f527cbac-a068-4f30-b9e8-2ff9ee3d2f03")
 		)
 		(pin "10"
-			(uuid "1228360c-0091-4ad2-b074-6eabb1e16dcc")
+			(uuid "1228360c-0091-4ad2-b074-6eabb1e16dce")
 		)
 		(pin "11"
-			(uuid "c27e19fd-5184-416c-a353-7f8d6c57bcfb")
+			(uuid "c27e19fd-5184-416c-a353-7f8d6c57bcfd")
 		)
 		(pin "12"
-			(uuid "29985da6-3c4f-486d-b344-3f1b9f6bcf71")
+			(uuid "29985da6-3c4f-486d-b344-3f1b9f6bcf73")
 		)
 		(pin "13"
-			(uuid "1f816a6d-d1d7-4fa0-8ffc-b1dd7ab6e8e7")
+			(uuid "1f816a6d-d1d7-4fa0-8ffc-b1dd7ab6e8e9")
 		)
 		(pin "7"
-			(uuid "388ec236-798c-4532-8e11-3cda58d3ff29")
+			(uuid "388ec236-798c-4532-8e11-3cda58d3ff2b")
 		)
 		(pin "14"
-			(uuid "747fce7f-bf30-412e-a39b-b4b180e5ba4c")
+			(uuid "747fce7f-bf30-412e-a39b-b4b180e5ba4e")
 		)
 		(instances
 			(project "dino_v0_0_2"
@@ -11759,46 +11770,46 @@
 			)
 		)
 		(pin "6"
-			(uuid "66b1d0ef-4875-4da6-b6ef-f0aa04ebe3ae")
+			(uuid "66b1d0ef-4875-4da6-b6ef-f0aa04ebe3b1")
 		)
 		(pin "2"
-			(uuid "62f81b3a-e3d5-47d6-a5dd-f3eab7daf324")
+			(uuid "62f81b3a-e3d5-47d6-a5dd-f3eab7daf327")
 		)
 		(pin "4"
-			(uuid "ca98b1ce-3e10-403f-ad08-8cb0e0177675")
+			(uuid "ca98b1ce-3e10-403f-ad08-8cb0e0177678")
 		)
 		(pin "5"
-			(uuid "aeae443d-f554-47be-9f36-1e78d0105216")
+			(uuid "aeae443d-f554-47be-9f36-1e78d0105219")
 		)
 		(pin "3"
-			(uuid "734d3d66-1626-4e1c-8392-26c710477c03")
+			(uuid "734d3d66-1626-4e1c-8392-26c710477c06")
 		)
 		(pin "1"
-			(uuid "0dfc4091-a0fe-4fe4-b1cd-516149db55cb")
+			(uuid "0dfc4091-a0fe-4fe4-b1cd-516149db55ce")
 		)
 		(pin "8"
-			(uuid "f7aa2899-2baa-48da-a15d-4981ef3732f9")
+			(uuid "f7aa2899-2baa-48da-a15d-4981ef3732fc")
 		)
 		(pin "9"
-			(uuid "f527cbac-a068-4f30-b9e8-2ff9ee3d2f01")
+			(uuid "f527cbac-a068-4f30-b9e8-2ff9ee3d2f04")
 		)
 		(pin "10"
-			(uuid "1228360c-0091-4ad2-b074-6eabb1e16dcc")
+			(uuid "1228360c-0091-4ad2-b074-6eabb1e16dcf")
 		)
 		(pin "11"
-			(uuid "c27e19fd-5184-416c-a353-7f8d6c57bcfb")
+			(uuid "c27e19fd-5184-416c-a353-7f8d6c57bcfe")
 		)
 		(pin "12"
-			(uuid "29985da6-3c4f-486d-b344-3f1b9f6bcf71")
+			(uuid "29985da6-3c4f-486d-b344-3f1b9f6bcf74")
 		)
 		(pin "13"
-			(uuid "1f816a6d-d1d7-4fa0-8ffc-b1dd7ab6e8e7")
+			(uuid "1f816a6d-d1d7-4fa0-8ffc-b1dd7ab6e8ea")
 		)
 		(pin "7"
-			(uuid "388ec236-798c-4532-8e11-3cda58d3ff29")
+			(uuid "388ec236-798c-4532-8e11-3cda58d3ff2c")
 		)
 		(pin "14"
-			(uuid "747fce7f-bf30-412e-a39b-b4b180e5ba4c")
+			(uuid "747fce7f-bf30-412e-a39b-b4b180e5ba4f")
 		)
 		(instances
 			(project "dino_v0_0_2"
@@ -12033,46 +12044,46 @@
 			)
 		)
 		(pin "1"
-			(uuid "d7cb57e9-a078-41eb-96bf-367d52174ce0")
+			(uuid "d7cb57e9-a078-41eb-96bf-367d52174ce2")
 		)
 		(pin "4"
-			(uuid "5dd29674-304e-44e9-a252-1fc599bf9881")
+			(uuid "5dd29674-304e-44e9-a252-1fc599bf9883")
 		)
 		(pin "10"
-			(uuid "126ebbff-baa2-4b04-939f-57c0b9a75711")
+			(uuid "126ebbff-baa2-4b04-939f-57c0b9a75713")
 		)
 		(pin "9"
-			(uuid "623d6445-27c2-4661-a3cd-27ff07ff91ca")
+			(uuid "623d6445-27c2-4661-a3cd-27ff07ff91cc")
 		)
 		(pin "8"
-			(uuid "87942433-4ef3-4dfa-8995-0fa88776c2c8")
+			(uuid "87942433-4ef3-4dfa-8995-0fa88776c2ca")
 		)
 		(pin "3"
-			(uuid "db6745ac-8c26-42b8-ba23-6a1f14388ce2")
+			(uuid "db6745ac-8c26-42b8-ba23-6a1f14388ce4")
 		)
 		(pin "2"
-			(uuid "b3dd731c-3baa-472a-9786-78c96a482909")
+			(uuid "b3dd731c-3baa-472a-9786-78c96a48290b")
 		)
 		(pin "5"
-			(uuid "0e950dbb-82bf-47e1-a587-5cf2c6f49c5a")
+			(uuid "0e950dbb-82bf-47e1-a587-5cf2c6f49c5c")
 		)
 		(pin "6"
-			(uuid "343b914d-f35f-489e-99af-6ca4f341508e")
+			(uuid "343b914d-f35f-489e-99af-6ca4f3415090")
 		)
 		(pin "11"
-			(uuid "821fdefd-9754-4de5-81bf-cf8ecfa831cd")
+			(uuid "821fdefd-9754-4de5-81bf-cf8ecfa831cf")
 		)
 		(pin "12"
-			(uuid "db87ee6e-b84c-41b7-bfd3-24bb1622fa54")
+			(uuid "db87ee6e-b84c-41b7-bfd3-24bb1622fa56")
 		)
 		(pin "13"
-			(uuid "924428de-9292-4af4-8a04-64eb3a4bf166")
+			(uuid "924428de-9292-4af4-8a04-64eb3a4bf168")
 		)
 		(pin "7"
-			(uuid "866aa5c5-fe9c-440d-8559-fef44c9d6104")
+			(uuid "866aa5c5-fe9c-440d-8559-fef44c9d6106")
 		)
 		(pin "14"
-			(uuid "34512347-d9d2-4f2a-89cc-e823a9fc0adc")
+			(uuid "34512347-d9d2-4f2a-89cc-e823a9fc0ade")
 		)
 		(instances
 			(project "dino_v0_0_2"
@@ -12307,46 +12318,46 @@
 			)
 		)
 		(pin "1"
-			(uuid "d7cb57e9-a078-41eb-96bf-367d52174ce0")
+			(uuid "d7cb57e9-a078-41eb-96bf-367d52174ce3")
 		)
 		(pin "4"
-			(uuid "5dd29674-304e-44e9-a252-1fc599bf9881")
+			(uuid "5dd29674-304e-44e9-a252-1fc599bf9884")
 		)
 		(pin "10"
-			(uuid "126ebbff-baa2-4b04-939f-57c0b9a75711")
+			(uuid "126ebbff-baa2-4b04-939f-57c0b9a75714")
 		)
 		(pin "9"
-			(uuid "623d6445-27c2-4661-a3cd-27ff07ff91ca")
+			(uuid "623d6445-27c2-4661-a3cd-27ff07ff91cd")
 		)
 		(pin "8"
-			(uuid "87942433-4ef3-4dfa-8995-0fa88776c2c8")
+			(uuid "87942433-4ef3-4dfa-8995-0fa88776c2cb")
 		)
 		(pin "3"
-			(uuid "db6745ac-8c26-42b8-ba23-6a1f14388ce2")
+			(uuid "db6745ac-8c26-42b8-ba23-6a1f14388ce5")
 		)
 		(pin "2"
-			(uuid "b3dd731c-3baa-472a-9786-78c96a482909")
+			(uuid "b3dd731c-3baa-472a-9786-78c96a48290c")
 		)
 		(pin "5"
-			(uuid "0e950dbb-82bf-47e1-a587-5cf2c6f49c5a")
+			(uuid "0e950dbb-82bf-47e1-a587-5cf2c6f49c5d")
 		)
 		(pin "6"
-			(uuid "343b914d-f35f-489e-99af-6ca4f341508e")
+			(uuid "343b914d-f35f-489e-99af-6ca4f3415091")
 		)
 		(pin "11"
-			(uuid "821fdefd-9754-4de5-81bf-cf8ecfa831cd")
+			(uuid "821fdefd-9754-4de5-81bf-cf8ecfa831d0")
 		)
 		(pin "12"
-			(uuid "db87ee6e-b84c-41b7-bfd3-24bb1622fa54")
+			(uuid "db87ee6e-b84c-41b7-bfd3-24bb1622fa57")
 		)
 		(pin "13"
-			(uuid "924428de-9292-4af4-8a04-64eb3a4bf166")
+			(uuid "924428de-9292-4af4-8a04-64eb3a4bf169")
 		)
 		(pin "7"
-			(uuid "866aa5c5-fe9c-440d-8559-fef44c9d6104")
+			(uuid "866aa5c5-fe9c-440d-8559-fef44c9d6107")
 		)
 		(pin "14"
-			(uuid "34512347-d9d2-4f2a-89cc-e823a9fc0adc")
+			(uuid "34512347-d9d2-4f2a-89cc-e823a9fc0adf")
 		)
 		(instances
 			(project "dino_v0_0_2"
@@ -12423,46 +12434,46 @@
 			)
 		)
 		(pin "6"
-			(uuid "66b1d0ef-4875-4da6-b6ef-f0aa04ebe3ae")
+			(uuid "66b1d0ef-4875-4da6-b6ef-f0aa04ebe3b2")
 		)
 		(pin "2"
-			(uuid "62f81b3a-e3d5-47d6-a5dd-f3eab7daf324")
+			(uuid "62f81b3a-e3d5-47d6-a5dd-f3eab7daf328")
 		)
 		(pin "4"
-			(uuid "ca98b1ce-3e10-403f-ad08-8cb0e0177675")
+			(uuid "ca98b1ce-3e10-403f-ad08-8cb0e0177679")
 		)
 		(pin "5"
-			(uuid "aeae443d-f554-47be-9f36-1e78d0105216")
+			(uuid "aeae443d-f554-47be-9f36-1e78d010521a")
 		)
 		(pin "3"
-			(uuid "734d3d66-1626-4e1c-8392-26c710477c03")
+			(uuid "734d3d66-1626-4e1c-8392-26c710477c07")
 		)
 		(pin "1"
-			(uuid "0dfc4091-a0fe-4fe4-b1cd-516149db55cb")
+			(uuid "0dfc4091-a0fe-4fe4-b1cd-516149db55cf")
 		)
 		(pin "8"
-			(uuid "f7aa2899-2baa-48da-a15d-4981ef3732f9")
+			(uuid "f7aa2899-2baa-48da-a15d-4981ef3732fd")
 		)
 		(pin "9"
-			(uuid "f527cbac-a068-4f30-b9e8-2ff9ee3d2f01")
+			(uuid "f527cbac-a068-4f30-b9e8-2ff9ee3d2f05")
 		)
 		(pin "10"
-			(uuid "1228360c-0091-4ad2-b074-6eabb1e16dcc")
+			(uuid "1228360c-0091-4ad2-b074-6eabb1e16dd0")
 		)
 		(pin "11"
-			(uuid "c27e19fd-5184-416c-a353-7f8d6c57bcfb")
+			(uuid "c27e19fd-5184-416c-a353-7f8d6c57bcff")
 		)
 		(pin "12"
-			(uuid "29985da6-3c4f-486d-b344-3f1b9f6bcf71")
+			(uuid "29985da6-3c4f-486d-b344-3f1b9f6bcf75")
 		)
 		(pin "13"
-			(uuid "1f816a6d-d1d7-4fa0-8ffc-b1dd7ab6e8e7")
+			(uuid "1f816a6d-d1d7-4fa0-8ffc-b1dd7ab6e8eb")
 		)
 		(pin "7"
-			(uuid "388ec236-798c-4532-8e11-3cda58d3ff29")
+			(uuid "388ec236-798c-4532-8e11-3cda58d3ff2d")
 		)
 		(pin "14"
-			(uuid "747fce7f-bf30-412e-a39b-b4b180e5ba4c")
+			(uuid "747fce7f-bf30-412e-a39b-b4b180e5ba50")
 		)
 		(instances
 			(project "dino_v0_0_2"
@@ -12700,46 +12711,46 @@
 			)
 		)
 		(pin "1"
-			(uuid "d7cb57e9-a078-41eb-96bf-367d52174ce0")
+			(uuid "d7cb57e9-a078-41eb-96bf-367d52174ce4")
 		)
 		(pin "4"
-			(uuid "5dd29674-304e-44e9-a252-1fc599bf9881")
+			(uuid "5dd29674-304e-44e9-a252-1fc599bf9885")
 		)
 		(pin "10"
-			(uuid "126ebbff-baa2-4b04-939f-57c0b9a75711")
+			(uuid "126ebbff-baa2-4b04-939f-57c0b9a75715")
 		)
 		(pin "9"
-			(uuid "623d6445-27c2-4661-a3cd-27ff07ff91ca")
+			(uuid "623d6445-27c2-4661-a3cd-27ff07ff91ce")
 		)
 		(pin "8"
-			(uuid "87942433-4ef3-4dfa-8995-0fa88776c2c8")
+			(uuid "87942433-4ef3-4dfa-8995-0fa88776c2cc")
 		)
 		(pin "3"
-			(uuid "db6745ac-8c26-42b8-ba23-6a1f14388ce2")
+			(uuid "db6745ac-8c26-42b8-ba23-6a1f14388ce6")
 		)
 		(pin "2"
-			(uuid "b3dd731c-3baa-472a-9786-78c96a482909")
+			(uuid "b3dd731c-3baa-472a-9786-78c96a48290d")
 		)
 		(pin "5"
-			(uuid "0e950dbb-82bf-47e1-a587-5cf2c6f49c5a")
+			(uuid "0e950dbb-82bf-47e1-a587-5cf2c6f49c5e")
 		)
 		(pin "6"
-			(uuid "343b914d-f35f-489e-99af-6ca4f341508e")
+			(uuid "343b914d-f35f-489e-99af-6ca4f3415092")
 		)
 		(pin "11"
-			(uuid "821fdefd-9754-4de5-81bf-cf8ecfa831cd")
+			(uuid "821fdefd-9754-4de5-81bf-cf8ecfa831d1")
 		)
 		(pin "12"
-			(uuid "db87ee6e-b84c-41b7-bfd3-24bb1622fa54")
+			(uuid "db87ee6e-b84c-41b7-bfd3-24bb1622fa58")
 		)
 		(pin "13"
-			(uuid "924428de-9292-4af4-8a04-64eb3a4bf166")
+			(uuid "924428de-9292-4af4-8a04-64eb3a4bf16a")
 		)
 		(pin "7"
-			(uuid "866aa5c5-fe9c-440d-8559-fef44c9d6104")
+			(uuid "866aa5c5-fe9c-440d-8559-fef44c9d6108")
 		)
 		(pin "14"
-			(uuid "34512347-d9d2-4f2a-89cc-e823a9fc0adc")
+			(uuid "34512347-d9d2-4f2a-89cc-e823a9fc0ae0")
 		)
 		(instances
 			(project "dino_v0_0_2"
@@ -12909,16 +12920,5 @@
 				)
 			)
 		)
-	)
-	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: ~{ROM_OUT} <- Control Word Module\nIN: ~{RAM_EN} <- Memory Address Regiser\nIN: M0-15 <- Memory Address Regiser, Program Counter\nIN: RAM_OE_ON, READS_IDLE, WRITE_DIR, ~{ROM_BUF_EN} <- Memory Data Register\nIN: CLK, RESET, ~{CLK} <- root\nOUT: ~{IO_RD}, ~{ROM_SEL} -> Memory Data Register\nOUT: MDR0-7 -> Memory Data Register, Register Modules, Stack Pointer"
-		(exclude_from_sim no)
-		(at 160.02 165.1 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "57c43185-cc55-5aea-93eb-e9cca13e452c")
 	)
 )

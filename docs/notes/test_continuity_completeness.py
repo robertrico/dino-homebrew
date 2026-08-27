@@ -263,9 +263,12 @@ RESERVE_BITS = {"CW16", "CW19", "CW20", "CW21", "CW22", "CW23"}
 # is what a published reset looks like with no card plugged in.
 PUBLISHED_BUS = {
     "~{IO_WR}":    "OR(~{IO_SEL}, ~{RAM_WRITE_EN}) -> every card's ~WR",
-    "~{IO_RD_Q}":  "OR(~{IO_RD}, CLK) -> every card's ~RD, CLK-low-qualified",
     "RESET_B":     "OR(RESET, GND) -> the backplane's reset",
 }
+# ~{IO_RD_Q} LEFT THIS LEDGER 2026-08-26, PHASE E STEP B. It was a stub while
+# U75.11 was its only pin; card zero's '138 (U76.4, E1) gave it a second and
+# it is now a genuine crossing on the checklist proper. ~{IO_WR} and RESET_B
+# stay -- no card uses them yet.
 
 ROOT_CROSSING = {           # counterpart lives on the root sheet
     "CW12":     "END      -> root U61.3",

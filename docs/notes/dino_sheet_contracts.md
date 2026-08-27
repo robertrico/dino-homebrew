@@ -32,6 +32,8 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - OUT   ~{SP_DOWN}, ~{SP_HI_LOAD}, ~{SP_HI_OUT}, ~{SP_LO_LOAD}, ~{SP_LO_OUT}, ~{SP_UP}  -> Stack Pointer
 
 ## Input
+- IN    ~{IO_RD_Q}  <- Memory
+- IN    M11-13  <- Memory Address Regiser, Program Counter
 - OUT   W0-7  -> ALU Module, Memory Address Regiser, Memory Data Register, Output
 
 ## Memory Address Regiser
@@ -39,8 +41,9 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - IN    ~{MAR_HI_LOAD}, ~{MAR_LO_LOAD}  <- Control Word Module
 - IN    CW14=PC_MAR_MUX  <- Microcode_Decoder
 - IN    CLK  <- root
+- OUT   M11-13  -> Input, Memory, Program Counter
 - OUT   ~{RAM_EN}  -> Memory, Memory Data Register
-- OUT   M0-14  -> Memory, Program Counter
+- OUT   M0-10, M14  -> Memory, Program Counter
 - OUT   ~{PC_MAR_MUX}  -> Program Counter
 - BIDIR M15  <-> Memory, Program Counter
 
@@ -61,6 +64,7 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - IN    M0-15  <- Memory Address Regiser, Program Counter
 - IN    RAM_OE_ON, READS_IDLE, WRITE_DIR, ~{ROM_BUF_EN}  <- Memory Data Register
 - IN    CLK, RESET, ~{CLK}  <- root
+- OUT   ~{IO_RD_Q}  -> Input
 - OUT   ~{IO_RD}, ~{ROM_SEL}  -> Memory Data Register
 - OUT   MDR0-7  -> Memory Data Register, Register Modules, Stack Pointer
 
@@ -82,8 +86,9 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - IN    ~{PC_MAR_MUX}  <- Memory Address Regiser
 - IN    CW13=PC_UP  <- Microcode_Decoder
 - IN    CLK, RESET, ~{CLK}  <- root
+- OUT   M11-13  -> Input, Memory, Memory Address Regiser
 - OUT   PC0-15  -> Memory Data Register
-- OUT   M0-15  -> Memory, Memory Address Regiser
+- OUT   M0-10, M14-15  -> Memory, Memory Address Regiser
 
 ## Register Modules
 - IN    ~{REG_A_LOAD}, ~{REG_A_OUT}, ~{REG_B_LOAD}, ~{REG_B_OUT}, ~{REG_C_LOAD}, ~{REG_C_OUT}, ~{REG_OUT_LOAD}  <- Control Word Module

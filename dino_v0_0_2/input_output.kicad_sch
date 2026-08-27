@@ -750,6 +750,17 @@
 			(embedded_fonts no)
 		)
 	)
+	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: W0-7 <- ALU Module, Input, Memory Data Register\nIN: OB0-7 <- Register Modules"
+		(exclude_from_sim no)
+		(at 159.512 170.434 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "2d8637c1-4ec0-5637-ad74-d0843375e0f9")
+	)
 	(junction
 		(at 46.99 60.96)
 		(diameter 0)
@@ -4371,16 +4382,5 @@
 				)
 			)
 		)
-	)
-	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: W0-7 <- ALU Module, Input, Memory Data Register\nIN: OB0-7 <- Register Modules"
-		(exclude_from_sim no)
-		(at 159.512 170.434 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "2d8637c1-4ec0-5637-ad74-d0843375e0f9")
 	)
 )

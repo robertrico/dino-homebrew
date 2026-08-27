@@ -2446,6 +2446,17 @@
 			(embedded_fonts no)
 		)
 	)
+	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: ~{SP_DOWN}, ~{SP_HI_LOAD}, ~{SP_HI_OUT}, ~{SP_LO_LOAD}, ~{SP_LO_OUT}, ~{SP_UP} <- Control Word Module\nIN: CLK <- root\nBIDIR: MDR0-7 <-> Memory, Memory Data Register, Register Modules"
+		(exclude_from_sim no)
+		(at 177.038 162.306 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "8d955971-2eaa-5836-9ac9-93a0949d876f")
+	)
 	(junction
 		(at 123.19 190.5)
 		(diameter 0)
@@ -8693,16 +8704,5 @@
 				)
 			)
 		)
-	)
-	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: ~{SP_DOWN}, ~{SP_HI_LOAD}, ~{SP_HI_OUT}, ~{SP_LO_LOAD}, ~{SP_LO_OUT}, ~{SP_UP} <- Control Word Module\nIN: CLK <- root\nBIDIR: MDR0-7 <-> Memory, Memory Data Register, Register Modules"
-		(exclude_from_sim no)
-		(at 177.038 162.306 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "8d955971-2eaa-5836-9ac9-93a0949d876f")
 	)
 )

@@ -101,16 +101,26 @@ def test_newly_driven_dead_pin_is_new_wire_not_annotation():
 
 
 def test_adding_an_alias_to_a_net_is_not_copper():
-    """U24.20 went ROM_EN -> M15/ROM_EN in 8127bbb. The label set grew; the
-    net did not move. Same for U23.12 CW17 -> CW17/~{SRC_BANK}."""
+    """U23.12 went CW17 -> CW17/~{SRC_BANK} in 8127bbb. The label set grew;
+    the net did not move, so it is ANNOTATE and not copper.
+
+    U24.20 was this test's other exemplar and IS NO LONGER ONE. Phase E step
+    A moved the ROM's ~CE off M15/ROM_EN onto ~{ROM_SEL} -- a real wire, real
+    copper -- so against STACK_COMMIT that pin now reports COPPER, correctly.
+    It is asserted here from the OTHER side, which guards the same
+    distinction: a pin that genuinely moved must never be filed as
+    annotation. Corrected 2026-08-26; red since step A landed."""
     d = kicad_contracts.pin_net_diff(ROOT, STACK_COMMIT)
     annotate = _by_pin(d["annotate"])
     copper = _by_pin(d["copper"])
 
-    assert ("U24", 20) in annotate, (
-        "U24.20 ROM_EN -> M15/ROM_EN added an alias to the same net")
-    assert ("U24", 20) not in copper
-    assert ("U23", 12) in annotate, "U23.12 CW17 -> CW17/~{SRC_BANK}, same shape"
+    assert ("U23", 12) in annotate, "U23.12 CW17 -> CW17/~{SRC_BANK}"
+    assert ("U23", 12) not in copper
+
+    assert ("U24", 20) in copper, (
+        "U24.20 ROM_EN -> ~{ROM_SEL} is phase E step A's real move")
+    assert ("U24", 20) not in annotate, (
+        "a pin that MOVED must not be filed as an alias growth")
 
 
 def test_a_pin_that_did_not_exist_is_new_pin_not_copper():
