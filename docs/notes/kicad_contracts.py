@@ -268,7 +268,7 @@ PIN_ASSIGN = {
         "~{MDR_OUT}":       "PL2/D47",   # U29.11
         "~{REG_OUT_LOAD}":  "PL3/D46",   # U29.9
         # D45-D42: U62
-        "FLAG_Z":           "PL5/D44",   # U62.3 (gate 1 input, rig drives)
+        "COND_FLAG":        "PL5/D44",   # U62.3 (gate 1 input, rig drives)
         "~{PC_LOAD}":       "PL7/D42",   # U62.10
         # D41-D31: U28
         "CW3":              "PG0/D41",   # U28.1 (A0)
@@ -333,7 +333,7 @@ PIN_ASSIGN = {
         "~{RESET}"          : "PL2/D47",   # slot 30
         "~{CLK}"            : "PL3/D46",   # slot 29
         "CLK"               : "PL4/D45",   # slot 28
-        "FLAG_Z"            : "PG0/D41",   # slot 24
+        "COND_FLAG"         : "PG0/D41",   # slot 24
         "~{REG_B_LOAD}"     : "PC1/D36",   # slot 19
         "~{REG_A_LOAD}"     : "PC2/D35",   # slot 18
         "~{ALU_OUT}"        : "PC3/D34",   # slot 17
@@ -516,7 +516,7 @@ BLOCKS = {
             "RESET":    "root.reset",
             "~{RESET}": "root.reset",
         },
-        "strap": {"FLAG_Z": ("HIGH", "control_word.truth")},
+        "strap": {"COND_FLAG": ("HIGH", "control_word.truth")},
         "sample_anyway": ["CW12=END", "CW15=HALT"],
     },
     "block2": {
@@ -563,7 +563,7 @@ BLOCKS = {
         #
         # Net effect on block2's surface: unchanged. One strap out, two in, and
         # the electrical state of U19/U21 is identical to phase D's.
-        "strap": dict({"FLAG_Z": ("HIGH", "control_word.truth"),
+        "strap": dict({"COND_FLAG": ("HIGH", "control_word.truth"),
                        "WRITE_DIR": ("LOW", "memory.window"),
                        "~{ROM_BUF_EN}": ("LOW", "memory.window"),
                        "RAM_OE_ON": ("LOW", "memory.ramrw"),
@@ -586,7 +586,7 @@ BLOCKS = {
         "steppable": True,          # A0 -> U20.2 available for a stepped run
         "drive": [],
         "retire": {},
-        "strap": {"FLAG_Z": ("HIGH", "control_word.truth")},
+        "strap": {"COND_FLAG": ("HIGH", "control_word.truth")},
         # IRB is copper now (real IR). Sampled at the CONSUMER end anyway: it
         # is the mirror-witness for the U25 bridge, because block2 read that
         # same byte at MDR, BEFORE it crossed U25 and U34.

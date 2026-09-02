@@ -37,6 +37,16 @@ GOLDEN_CRC = {
     "call":      0x14C9,
     "stack":     0x1A77,
     "ramexec":   0x9BC7,
+    # PHASE F witnesses, 2026-08-27
+    "jnc":       0x64C0,
+    "jncswap":   0x3841,
+    "mov":       0x234B,
+    "ptr":       0x8F67,
+    "shl":       0x0E11,
+    # PHASE F+ -- memory-indirect, the one new addressing mode
+    "ind":       0x9B7E,
+    "indst":     0xAB5B,
+    "indj":      0x81A8,
 }
 GOLDEN_DIAG_CRC = 0xDFE7
 # PROG_window is NOT in COVERAGE -- it has two correct answers, one per

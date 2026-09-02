@@ -89,6 +89,12 @@ INERT_THIRD = 0xFF << 16
 FLAG_SEL = {"C": 0b00, "Z": 0b01, "V": 0b10, "N": 0b11}
 
 
+class BuildError(Exception):
+    """Raised by word()/check_word()/check_table(). Defined here rather than
+    with the other policy code below because word() itself now refuses two
+    encodings -- see the two numbered refusals in its cond branch."""
+
+
 def _sa_bits(code):
     """Pack a '382 function code into CW9..CW11 BIT-REVERSED.
 
@@ -141,6 +147,27 @@ def word(mux_pc=False, pc_up=False, end=False, halt=False,
     if cond is not None:
         flag, pol = cond
         sel = FLAG_SEL[flag]
+        # BOTH refusals below are for faults that ENCODE CLEANLY, BURN, and
+        # then branch on the wrong thing with nothing to say so. Same class
+        # as the bit-reversed SA field: invisible unless something computes.
+        #
+        # 1. U77 is a 2:1 on CW21 ALONE. CW22 is a no-connect. V (0b10) and
+        #    N (0b11) both have bit 0 CLEAR, so encoding either drives CW21
+        #    LOW and hands U62.3 FLAG_C. Refuse until CW22 is landed -- and
+        #    when it is, DELETE this branch, do not weaken it.
+        if sel & 2:
+            raise BuildError(
+                f"cond flag {flag!r} needs CW22, which is a NO-CONNECT: U77 "
+                f"is a 2:1 on CW21 alone, so {flag} would select FLAG_C")
+        # 2. word()'s contract says taken = flag XOR pol. The BUILT gate is
+        #    COND_TAKEN = NOR(~{COND}, flag) = flag XOR 1, and there is no
+        #    '86 anywhere in this machine. Encoder and copper agree at
+        #    pol=1 only; pol=0 clears CW23 and inverts every branch the day
+        #    polarity lands.
+        if not pol:
+            raise BuildError(
+                "cond pol=0 needs FLAG_POL/CW23 and a '86; the built gate is "
+                "COND_TAKEN = NOR(~{COND}, flag), which is pol=1")
         if not (sel & 1): w &= ~FLAG_SEL0
         if not (sel & 2): w &= ~FLAG_SEL1
         if not pol: w &= ~FLAG_POL
@@ -149,6 +176,25 @@ def word(mux_pc=False, pc_up=False, end=False, halt=False,
 
 FETCH = word(mux_pc=True, pc_up=True, src="ROM", dst="IR")   # 0x600E
 FILL = word(end=True)                                        # 0x1000, END
+
+# A SETTLING STATE. No source, no destination, no strobe -- electrically
+# identical to SAFE_FILL minus its END, and SAFE_FILL occupies 4000 rows of
+# the image already, so this drives nothing new.
+#
+# WHY IT EXISTS, 2026-08-27. An instruction that loads an ALU operand and
+# reads the ALU in the VERY NEXT state gives the '382 pair no settling time:
+# the operand latch closes on the CLK edge that ends one state and the result
+# must be valid inside the next. Every other instruction in the machine loads
+# its operand in a PREVIOUS instruction and gets a whole fetch state for free.
+#
+# At 500kHz all 147 subtests of PROG_isa pass. At 1.024MHz the same image
+# returns varying subtest numbers from identical resets. Subtract runs out of
+# margin first, because a '382 complements B before the adder starts -- ADI
+# passed in the same run that SUI failed.
+#
+# One state each, byte lengths unchanged, no package.
+SETTLE = word()                                              # 0xFF0000
+
 
 # ---- opcode assignments -------------------------------------------------
 # PROPOSED TABLE (2026-07-16). Only LDAI=0x11 is documented (addressing
@@ -163,7 +209,17 @@ OPCODES = {
     "JMP": 0x31, "JNZ": 0x32,
     "ADD": 0x41, "SUB": 0x42, "AND": 0x43, "OR": 0x44,
     "XOR": 0x45, "CLR": 0x46, "SET": 0x47, "BSUB": 0x48,
-    "OUT": 0x51, "IN": 0x52,        # the I/O group
+    # 0x52 WAS `IN`, RETIRED 2026-08-27 (Rico), at the burn SECTION 5 named.
+    # It went in two stages and they are different KINDS of retirement:
+    # phase E retired it in COPPER (U28.7 unlanded, ~{SW_OUT} deleted, SW1
+    # answers at an ADDRESS as card zero and LDA replaces it) but kept the
+    # row, because phase E burned no microcode ROM and deleting a row would
+    # have cost three ROMs for nothing. Phase F writes all three anyway.
+    # Executing IN on today's copper reads an UNDEFINED byte, not the park:
+    # src=SW asserts SRC_ACTIVE so U25 is enabled, but SW asserts neither
+    # ~{ROM_OUT} nor ~{RAM_OUT}, so READS_IDLE stays high and U25 drives W
+    # from a floating MDR. 0x52 is free. Nothing claims it.
+    "OUT": 0x51,
     # --- the stack, 2026-08-10 ------------------------------------------
     # LXISP joins the immediate-load family; CALL/RET join flow; PUSH/POP
     # open a 0x6x stack family. All five are reachable only because the
@@ -172,6 +228,34 @@ OPCODES = {
     "CALL": 0x33, "RET": 0x34,
     "PUSHA": 0x61, "POPA": 0x62, "PUSHB": 0x63, "POPB": 0x64,
     "HALT": 0xFF,
+
+    # --- PHASE F, 2026-08-27: forty free instructions plus JNC ----------
+    # SECTION 6 of .git/sdd/PHASE_F.md is the collision-free map and this is
+    # it, verbatim. Family 9 (SHR/MOV A,FLAGS/ADC/SBB) is NOT here: those
+    # need packages that are not in sockets, and family 9 means "does not
+    # exist until a package lands".
+    #
+    # ONE BURN COVERS ALL OF THEM. A new opcode writes rows in every byte of
+    # the 24-bit word, so three ROMs is the cost of adding one instruction
+    # AND the cost of adding forty-one. Adding MOV A,C alone would have cost
+    # exactly what this costs.
+    "RST": 0x01,
+    "LDB": 0x23, "LDC": 0x24, "STB": 0x25, "STC": 0x26,
+    "LDAS": 0x27, "STAS": 0x28,
+    "JMPX": 0x35, "JMPSP": 0x36,
+    "JNC": 0x37,                    # the ONLY one that needs U77
+    "CMP": 0x49, "CMPB": 0x4A, "TST": 0x4B,
+    "SHL": 0x4C, "INR": 0x4D, "DCR": 0x4E, "NOT": 0x4F,
+    "PUSHC": 0x65, "POPC": 0x66,
+    "INXSP": 0x67, "DCXSP": 0x68, "SPHL": 0x69, "HLSP": 0x6A,
+    "LDAX": 0x71, "STAX": 0x72, "LDBX": 0x73, "STBX": 0x74,
+    "LDCX": 0x75, "STCX": 0x76,
+    # MOV dst,src -- the mnemonic reads MOVAB = "MOV A,B" = A <- B. The
+    # names carry no comma because they are dict keys and assembler steps.
+    "MOVAB": 0x81, "MOVAC": 0x82, "MOVBA": 0x83,
+    "MOVBC": 0x84, "MOVCA": 0x85, "MOVCB": 0x86,
+    "MOVASPL": 0x87, "MOVASPH": 0x88, "MOVSPLA": 0x89, "MOVSPHA": 0x8A,
+    "MOVAPCL": 0x8B, "MOVAPCH": 0x8C,
 }
 
 # operand-fetch prefix shared by every MAR-consuming instruction:
@@ -188,6 +272,14 @@ def _alu(op):
 # number, not an address driver (Route B), so MAR does the pointing.
 _SP_TO_MAR = [word(src="SP_LO", dst="MAR_LO"),
               word(src="SP_HI", dst="MAR_HI")]
+
+
+# B:C -> MAR, the two-state prefix every indexed access starts with. C is
+# the LOW half: MAR_LO is loaded first and from C, without exception. A
+# swapped pair is an off-by-256 and a round trip through the same pointer
+# cannot see it.
+_BC_TO_MAR = [word(src="REG_C", dst="MAR_LO"),
+              word(src="REG_B", dst="MAR_HI")]
 
 
 def _PUSH_BYTE(src):
@@ -215,21 +307,23 @@ INSTRUCTIONS = {
     "LDA": (3, _MARFILL + [word(end=True, src="RAM", dst="REG_A")]),
     "STA": (3, _MARFILL + [word(end=True, src="REG_A", dst="RAM")]),
     "JMP": (3, _MARFILL + [word(end=True, misc="PC_LOAD")]),
-    "JNZ": (3, _MARFILL + [word(end=True, misc="COND")]),
+    # JNZ NAMES ITS FLAG NOW, and that is the CW22 cure, not cosmetics.
+    # A bare misc="COND" leaves the third ROM's default word -- CW21=1,
+    # CW22=1, CW23=1 -- and under FLAG_SEL {CW22,CW21} = 0b11 is `N`, not
+    # `Z`. It behaved as Z only because FLAG_Z was hardwired to U62.3. Land a
+    # 4:1 on {CW22,CW21} later without a reburn and EVERY JNZ IN THE MACHINE
+    # BECOMES JNN. cond=("Z",1) drives CW22 low now, so the second mux stage
+    # is itself inert when it lands. pol=1 because the built gate is
+    # COND_TAKEN = NOR(~{COND}, flag) and there is no '86 in this machine.
+    "JNZ": (3, _MARFILL + [word(end=True, misc="COND", cond=("Z", 1))]),
     "ADD": (1, _alu("ADD")), "SUB": (1, _alu("SUB")),
     "AND": (1, _alu("AND")), "OR": (1, _alu("OR")),
     "XOR": (1, _alu("XOR")), "CLR": (1, _alu("CLR")),
     "SET": (1, _alu("SET")), "BSUB": (1, _alu("BSUB")),
     "OUT": (1, [word(end=True, misc="REG_OUT_LOAD", src="REG_A")]),
-    # IN — the first instruction that makes the machine INTERACTIVE. src=SW
-    # enables SWITCH-GATE1 (a plain '244, IS0-7 -> W0-7 unpermuted, both halves
-    # on the one ~{SW_OUT} net), and dst=REG_B latches W into B. It also fills
-    # the TMP_B shadow, because U50 makes LE_TMP_B = NOR(~{REG_B_LOAD}, CLK) —
-    # the latch follows the LOAD STROBE, not the LDBI opcode — so ADD sees the
-    # switch byte with no extra row. One byte, so no PC_UP beyond the fetch.
-    # SW1 is ACTIVE LOW at the bench: R17-R24 pull IS0-7 high, the switch pulls
-    # down, so a CLOSED switch reads 0.
-    "IN": (1, [word(end=True, src="SW", dst="REG_B")]),
+    # IN's ROW IS GONE, 2026-08-27. See OPCODES above for why, and
+    # test_microcode_gen.test_IN_is_retired_from_the_isa for the guard that
+    # stops it coming back. SW1 is read with LDA now -- it is memory.
 
     # --- the stack ------------------------------------------------------
     #
@@ -306,12 +400,443 @@ INSTRUCTIONS = {
     ]),
 
     "HALT": (1, [word(halt=True)]),
+
+    # ====================================================================
+    # PHASE F, 2026-08-27 -- forty instructions that cost no wire, plus JNC
+    # which costs exactly one package (U77, the '157 flag mux).
+    #
+    # Every code below was ALREADY LANDED and, with five exceptions noted in
+    # CLAUDE.md, already bench-proven. Nothing here decodes to a pin that has
+    # never been driven; what was missing was rows, not copper.
+    # ====================================================================
+
+    # ---- JNC: the one instruction in this block that needs hardware -----
+    # Identical to JNZ but for CW21. COND_TAKEN = NOR(~{COND}, flag), so the
+    # machine has exactly ONE branch polarity -- "taken if the selected flag
+    # is ZERO" -- and U77 changes which flag, never the sense.
+    #
+    # The '382 pair's CN+4 is a NOT-borrow on the subtract codes, so
+    # FLAG_C = 0 means A < B unsigned. JNC is therefore an unsigned magnitude
+    # branch, and with CMP it asks "less than" without destroying A. The free
+    # polarity is also the RIGHT one for multi-byte arithmetic: ADD; JNC
+    # skip; <carry into the high byte> is the carry-propagate idiom exactly.
+    # That is luck, not design, and it is why FLAG_POL can stay unlanded.
+    "JNC": (3, _MARFILL + [word(end=True, misc="COND", cond=("C", 1))]),
+
+    # ---- register moves -------------------------------------------------
+    # SRC 3/4/5 = U28.O3/O4/O5, DST 1/2/3 = U30.O1/O2/O3. U28.O5 and U30.O3
+    # were first driven by RET (T10 and T4) on 2026-08-24; the rest have run
+    # since the machine booted.
+    #
+    # MOV A,C is the row that RETIRES THE LDCI GAP. LDCI and NOP are the only
+    # two instructions that have never executed, and LDCI is unreachable BY
+    # DESIGN because C is RET's return-address scratch and nothing can read
+    # it back. One row closes it. That gap was always MICROCODE-SOFT.
+    "MOVAB": (1, [word(end=True, src="REG_B", dst="REG_A")]),
+    "MOVAC": (1, [word(end=True, src="REG_C", dst="REG_A")]),
+    "MOVBA": (1, [word(end=True, src="REG_A", dst="REG_B")]),
+    "MOVBC": (1, [word(end=True, src="REG_C", dst="REG_B")]),
+    "MOVCA": (1, [word(end=True, src="REG_A", dst="REG_C")]),
+    "MOVCB": (1, [word(end=True, src="REG_B", dst="REG_C")]),
+
+    # ---- SP and PC readback ---------------------------------------------
+    # SRC 8/9 = U70.O0/O1 (bench-proven by PROG_sp), SRC 10/11 = U70.O2/O3
+    # (bench-proven by CALL T3/T7), DST 8/9 = U71.O0/O1 (bench-proven by
+    # LXISP). Registers sit on MDR0-7 and so does the SP readback pair, so
+    # these are plain one-row transfers with no new decoder output.
+    #
+    # MOV A,SPL / MOV SPL,A are what make SP usable as a SECOND INDEX
+    # REGISTER in a leaf routine: it can be saved and restored. A routine
+    # that also uses CALL or PUSH cannot do this, and that is a real
+    # constraint, not a footnote.
+    "MOVASPL": (1, [word(end=True, src="SP_LO", dst="REG_A")]),
+    "MOVASPH": (1, [word(end=True, src="SP_HI", dst="REG_A")]),
+    "MOVSPLA": (1, [word(end=True, src="REG_A", dst="SP_LO")]),
+    "MOVSPHA": (1, [word(end=True, src="REG_A", dst="SP_HI")]),
+    "MOVAPCL": (1, [word(end=True, src="PC_LO", dst="REG_A")]),
+    "MOVAPCH": (1, [word(end=True, src="PC_HI", dst="REG_A")]),
+
+    # B:C <-> SP, the union of the two rows above. C is the LOW half
+    # throughout this document and this file -- see the pointer group.
+    "SPHL": (1, [word(src="REG_C", dst="SP_LO"),
+                 word(end=True, src="REG_B", dst="SP_HI")]),
+    "HLSP": (1, [word(src="SP_LO", dst="REG_C"),
+                 word(end=True, src="SP_HI", dst="REG_B")]),
+
+    # ---- compares: an ALU op with NO destination -------------------------
+    # U49 (the '273 flag latch) HAS NO CLOCK ENABLE -- it re-clocks every
+    # T-state -- and U48's select is ~{ALU_OUT}. So the flags update on any
+    # row that sources the ALU, whether or not anything latches the result.
+    # DST 0 is U30.O0, the NONE slot, a no-connect by design.
+    #
+    # CMP is what makes JNC worth having: SUB then JNZ can only ask "equal or
+    # not", and CMP + JNC asks "less than" without destroying A.
+    "CMP": (1, [word(end=True, sa="SUB", src="ALU", dst="NONE")]),
+    "CMPB": (1, [word(end=True, sa="BSUB", src="ALU", dst="NONE")]),
+    "TST": (1, [word(end=True, sa="OR", src="ALU", dst="NONE")]),
+
+    # ---- control ---------------------------------------------------------
+    # MISC 1 = U29.O1, in use since the machine booted. RST is PC_CLEAR with
+    # no operand: a one-byte software reset that does NOT clear the stack,
+    # the registers or OB. Say which reset you mean.
+    "RST": (1, [word(end=True, misc="PC_CLEAR")]),
+
+    # MISC 5/7 = U29.O5/O7, bench-proven by POP and PUSH. SP_UP/SP_DOWN are
+    # THE ONLY 16-BIT ARITHMETIC IN THE MACHINE and they touch neither the
+    # ALU nor the flags. B:C has nothing comparable -- there is no carry path
+    # between the registers -- so INXSP is the incrementer a monitor walks a
+    # pointer with.
+    "INXSP": (1, [word(end=True, misc="SP_UP")]),
+    "DCXSP": (1, [word(end=True, misc="SP_DOWN")]),
+
+    # ---- indirect jumps --------------------------------------------------
+    # MISC 2 = U29.O2, in use by JMP. One byte: the target is in B:C or SP,
+    # not in the instruction stream, so there is no PC_UP past the fetch.
+    "JMPX": (1, [word(src="REG_C", dst="MAR_LO"),
+                 word(src="REG_B", dst="MAR_HI"),
+                 word(end=True, misc="PC_LOAD")]),
+    "JMPSP": (1, _SP_TO_MAR + [word(end=True, misc="PC_LOAD")]),
+
+    # ---- B:C as an index pair -------------------------------------------
+    # C IS THE LOW BYTE. MAR_LO is loaded first and from C, everywhere in
+    # this file, and a swapped pair is an off-by-256 that a round trip
+    # through the SAME pointer cannot see -- the PROG_sp1 lesson, which
+    # reported a green machine for most of 2026-08-24 with every bank-1
+    # decoder output dead. Any witness for these must read back a cell only
+    # a MOVED pointer reaches, by a path that cannot inherit the fault.
+    #
+    # src=RAM writing MAR is the forbidden case (the address feeds back into
+    # the read while the '373 is transparent); this is not it -- MAR is
+    # loaded from W, off the registers, before RAM is touched at all.
+    "LDAX": (1, _BC_TO_MAR + [word(end=True, src="RAM", dst="REG_A")]),
+    "LDBX": (1, _BC_TO_MAR + [word(end=True, src="RAM", dst="REG_B")]),
+    "LDCX": (1, _BC_TO_MAR + [word(end=True, src="RAM", dst="REG_C")]),
+    "STAX": (1, _BC_TO_MAR + [word(end=True, src="REG_A", dst="RAM")]),
+    "STBX": (1, _BC_TO_MAR + [word(end=True, src="REG_B", dst="RAM")]),
+    "STCX": (1, _BC_TO_MAR + [word(end=True, src="REG_C", dst="RAM")]),
+
+    # ---- SP as a pointer -------------------------------------------------
+    # The prefix is PUSH's, verbatim. A routine using LDAS/STAS cannot also
+    # be using the stack for calls -- named in the docs, not hidden here.
+    "LDAS": (1, _SP_TO_MAR + [word(end=True, src="RAM", dst="REG_A")]),
+    "STAS": (1, _SP_TO_MAR + [word(end=True, src="REG_A", dst="RAM")]),
+
+    # ---- absolute loads/stores for B and C -------------------------------
+    # _MARFILL is LDA's prefix verbatim. DST 7 = U30.O7, in use by STA.
+    "LDB": (3, _MARFILL + [word(end=True, src="RAM", dst="REG_B")]),
+    "LDC": (3, _MARFILL + [word(end=True, src="RAM", dst="REG_C")]),
+    "STB": (3, _MARFILL + [word(end=True, src="REG_B", dst="RAM")]),
+    "STC": (3, _MARFILL + [word(end=True, src="REG_C", dst="RAM")]),
+
+    # ---- C joins the stack ----------------------------------------------
+    # Identical shape to PUSHA/POPA, bench-proven by PROG_sp2. Together with
+    # MOV A,C these give C a life beyond being RET's scratch -- but RET still
+    # clobbers it, so a routine that calls anything must not expect C to
+    # survive the call.
+    "PUSHC": (1, _PUSH("REG_C")), "POPC": (1, _POP("REG_C")),
+
+    # ---- the TMP-shadow arithmetic ---------------------------------------
+    # ALL FOUR CLOBBER B. That is the price and it is stated, not buried.
+    #
+    # They cost TWO rows and not four because U45/U46 (the ALU's TMP_A/TMP_B
+    # '373 shadows) latch on the LOAD STROBE, not the opcode:
+    #     LE_TMP_B = NOR(~{REG_B_LOAD}, CLK)          U50 g2
+    # so ANY row with dst=REG_B fills TMP_B and the NEXT row's ALU op sees
+    # it. Same mechanism that made the retired IN work in one microword.
+    #
+    # SHL:  row 1 copies A into B, so row 2 computes A + A.
+    # INR:  SET makes 0xFF; A - 0xFF = A + 1 (mod 256).
+    # DCR:  A + 0xFF = A - 1.
+    # NOT:  A XOR 0xFF.
+    # INR/DCR/NOT spend row 1 on the ALU itself (sa=SET, dst=REG_B), which
+    # is why their first row sources ALU where SHL's sources REG_A.
+    "SHL": (1, [word(src="REG_A", dst="REG_B"), SETTLE,
+                word(end=True, sa="ADD", src="ALU", dst="REG_A")]),
+    "INR": (1, [word(sa="SET", src="ALU", dst="REG_B"), SETTLE,
+                word(end=True, sa="SUB", src="ALU", dst="REG_A")]),
+    "DCR": (1, [word(sa="SET", src="ALU", dst="REG_B"), SETTLE,
+                word(end=True, sa="ADD", src="ALU", dst="REG_A")]),
+    "NOT": (1, [word(sa="SET", src="ALU", dst="REG_B"), SETTLE,
+                word(end=True, sa="XOR", src="ALU", dst="REG_A")]),
 }
 
 
-# ---- builder asserts (POLICY layer, dino_design_notes.md list) ----------
-class BuildError(Exception):
-    pass
+# ==========================================================================
+# PHASE F+, 2026-08-27 (Rico: "max the ceiling with all legal hardware-less
+# instructions"). 108 more instructions, ZERO packages, ZERO new decoder
+# outputs. Every row below uses a SRC, DST and MISC code that is already
+# landed in copper and, with the five exceptions CLAUDE.md names, already
+# bench-proven.
+#
+# WHY THIS MANY EXIST AT ALL. The decoders were widened twice -- for the
+# stack (bank 1, 2026-08-10) and for CALL/RET (U72/U73, phase C) -- and the
+# ROWS to use the new codes were only ever written for the instructions that
+# motivated the widening. Everything here was legal the day the copper
+# landed and simply had no opcode.
+#
+# THE ENUMERATION WAS EXHAUSTIVE, NOT INSPIRED. 227 distinct legal row
+# sequences exist over the landed codes; 55 were already the ISA, 172 were
+# new. These are the 108 that survived curation -- see _CUT, which names
+# every rejected family and why, because "we considered it and said no" is
+# not recoverable from an absence.
+#
+# THE BINDING CONSTRAINT MOVED. It is no longer hardware, it is the 256-entry
+# opcode map: all 172 would have left 18 free, and family 9 plus the CW22 and
+# CW23 branch families already claim 10 of those.
+#
+# HIGH NIBBLE IS STILL THE FAMILY. That is what lets a byte be
+# hand-disassembled at the bench, so new families take CONTIGUOUS blocks and
+# spill into 0xA-0xE rather than filling whatever hole comes next. 0x9x stays
+# RESERVED: family 9 means "this opcode does not exist until a package lands".
+# ==========================================================================
+
+_CUT = {
+    "CLR/SET with dst=NONE":
+        "computes a constant and discards it; the flags it would set are "
+        "known without executing it",
+    "immediate + CLR/SET":
+        "CLR and SET read no operand, so the immediate byte is fetched and "
+        "ignored -- CLR with a wasted byte, not an instruction",
+    "SP_LO <-> SP_HI transfers":
+        "no use case was named. Copying half a pointer onto its own other "
+        "half is not an addressing mode",
+    "PC halves -> SP halves":
+        "PUSHPCL/PUSHPCH already put the PC somewhere useful and JMPSP is "
+        "the reverse direction",
+    "ALU result -> SP_LO/SP_HI":
+        "16 opcodes for SP arithmetic that an ALU op plus MOVSPLA does in "
+        "two instructions. Too rare to earn a family",
+    "LD/ST of the SP halves THROUGH the SP":
+        "degenerate -- the pointer loading itself from what it points at",
+    "conditional branch to SP":
+        "JNZ over a JMPSP is two instructions and the case is rare",
+    "OUT of an ALU result through the indexed/SP prefixes":
+        "OUTM/OUTMX/OUTMS already read memory to OB; an ALU result needs no "
+        "address at all",
+}
+
+# name -> opcode. FROZEN AND EXPLICIT. Blocks are contiguous and each names
+# its family; test_microcode_gen asserts no collision and that not one
+# pre-existing opcode moved. Renumbering costs a reburn AND a reassemble of
+# every program image, so this table is append-only in practice.
+_OPCODES_F_PLUS = {
+    # 0x1x  immediate loads -- one SP half at a time
+    "LXIL": 0x15, "LXIH": 0x16,
+    # 0x2x  memory: SP-relative for B and C (A got LDAS/STAS in phase F)
+    "LDBS": 0x29, "STBS": 0x2A, "LDCS": 0x2B, "STCS": 0x2C,
+    # 0x3x  flow: indirect branches, then the indirect loads and stores that
+    #       share their five-byte operand shape
+    "JZX": 0x38, "JCX": 0x39, "JMPM": 0x3A, "JZM": 0x3B, "JCM": 0x3C,
+    "LDAM": 0x3D, "LDBM": 0x3E, "STAM": 0x3F,
+    # 0x4x  ALU -- the last free slot in the family
+    "BIT": 0x40,
+    # 0x5x  I/O: OUT from any SOURCE. U44 is a '245 with its A side on
+    #       MDR0-7 and ~CE = ~{REG_OUT_LOAD}, so OB latches whatever is on
+    #       the bus when the strobe fires. src=REG_A was a microcode
+    #       convention, never a wire.
+    "OUTB": 0x52, "OUTC": 0x53, "OUTSPL": 0x54, "OUTSPH": 0x55,
+    "OUTPCL": 0x56, "OUTPCH": 0x57, "OUTI": 0x58,
+    "OUTM": 0x59, "OUTMX": 0x5A, "OUTMS": 0x5B,
+    # 0x6x  stack: push and pop the pointers themselves
+    "PUSHPCH": 0x60, "PUSHSPL": 0x6B, "POPSPL": 0x6C,
+    "PUSHSPH": 0x6D, "POPSPH": 0x6E, "PUSHPCL": 0x6F,
+    # 0x7x  indexed through B:C
+    "MVIX": 0x77, "STADDX": 0x78, "STSUBX": 0x79, "STBSUBX": 0x7A,
+    "STANDX": 0x7B, "STORX": 0x7C, "STXORX": 0x7D,
+    # 0x9x  RESERVED -- hardware-gated. SHR (U78), MOV A,FLAGS (U79),
+    #       ADC/SBB (U80), and the CW22/CW23 branch families.
+    # 0xAx  memory, overflow from 0x2x: save and restore the pointers, and
+    #       store an immediate without going through A
+    "LDSPL": 0xA0, "LDSPH": 0xA1, "STSPL": 0xA2, "STSPH": 0xA3,
+    "STPCL": 0xA4, "STPCH": 0xA5, "MVI": 0xA6, "MVIS": 0xA7,
+    #       I/O, overflow from 0x5x: OUT an ALU result without storing it
+    "OUTADD": 0xA8, "OUTSUB": 0xA9, "OUTBSUB": 0xAA,
+    "OUTAND": 0xAB, "OUTOR": 0xAC, "OUTXOR": 0xAD,
+    # 0xBx  moves, overflow from 0x8x: B and C to and from the pointers
+    "MOVBSPL": 0xB0, "MOVBSPH": 0xB1, "MOVCSPL": 0xB2, "MOVCSPH": 0xB3,
+    "MOVSPLB": 0xB4, "MOVSPHB": 0xB5, "MOVSPLC": 0xB6, "MOVSPHC": 0xB7,
+    "MOVBPCL": 0xB8, "MOVBPCH": 0xB9, "MOVCPCL": 0xBA, "MOVCPCH": 0xBB,
+    # 0xC0-0xD2  ALU with an IMMEDIATE operand. The biggest real win here:
+    #       LDBI n; ADD is 3 bytes and 2 instructions, ADI n is 2 and 1, and
+    #       CPI n + JNC is compare-against-a-constant-and-branch in four
+    #       bytes -- the shape every loop bound and every status poll wants.
+    "ADI": 0xC0, "ADI_B": 0xC1, "ADI_C": 0xC2,
+    "SUI": 0xC3, "SUI_B": 0xC4, "SUI_C": 0xC5,
+    "BSUI": 0xC6, "BSUI_B": 0xC7, "BSUI_C": 0xC8,
+    "ANI": 0xC9, "ANI_B": 0xCA, "ANI_C": 0xCB,
+    "ORI": 0xCC, "ORI_B": 0xCD, "ORI_C": 0xCE,
+    "XRI": 0xCF, "XRI_B": 0xD0, "XRI_C": 0xD1,
+    "CPI": 0xD2,
+    # 0xD3-0xDF  ALU result into B or C instead of A. Writing B makes B an
+    #       accumulator, since dst=REG_B refills TMP_B through the shadow
+    #       latch; writing C computes without destroying either operand,
+    #       because C has no shadow.
+    "ADD_B": 0xD3, "ADD_C": 0xD4, "SUB_B": 0xD5, "SUB_C": 0xD6,
+    "BSUB_B": 0xD7, "BSUB_C": 0xD8, "AND_B": 0xD9, "AND_C": 0xDA,
+    "OR_B": 0xDB, "OR_C": 0xDC, "XOR_B": 0xDD, "XOR_C": 0xDE,
+    "CPX": 0xDF,
+    # 0xEx  the ALU result straight to memory, absolute and SP-relative
+    "STADD": 0xE0, "STSUB": 0xE1, "STBSUB": 0xE2,
+    "STAND": 0xE3, "STOR": 0xE4, "STXOR": 0xE5,
+    "STADDS": 0xE6, "STSUBS": 0xE7, "STBSUBS": 0xE8,
+    "STANDS": 0xE9, "STORS": 0xEA, "STXORS": 0xEB,
+}
+
+# CLR and SET are excluded from every immediate and every compute-and-store
+# family: neither reads an operand, so the byte would be fetched and thrown
+# away. See _CUT.
+_REAL_SA = ("ADD", "SUB", "BSUB", "AND", "OR", "XOR")
+
+# The three MAR prefixes and the byte length each costs. Every memory-
+# touching family below is one of these plus a final row, which is why
+# adding an addressing mode to an operation is one line and not three.
+_PREFIXES = {"":  (3, _MARFILL),      # absolute, two operand bytes
+             "X": (1, _BC_TO_MAR),    # indexed through B:C
+             "S": (1, _SP_TO_MAR)}    # SP-relative
+
+
+def _f_plus():
+    """Build the 108 from the field tables rather than typing them out.
+
+    108 hand-written rows is 108 chances to transpose a code, and the SA bug
+    proved that a field which agrees with itself but not with the wiring is
+    invisible until something computes with it. Everything this returns goes
+    through check_word and check_table like any other row.
+    """
+    I = {}
+    # ---- ALU with an immediate. Row 1 IS LDBI's row without END, so the
+    # operand lands in TMP_B through the shadow latch (LE_TMP_B =
+    # NOR(~{REG_B_LOAD}, CLK) follows the LOAD STROBE, not the opcode) and
+    # row 2 computes on it. Clobbers B, exactly as LDBI n; ADD already does.
+    for op, sa in zip(("ADI", "SUI", "BSUI", "ANI", "ORI", "XRI"), _REAL_SA):
+        for suffix, dst in (("", "REG_A"), ("_B", "REG_B"), ("_C", "REG_C")):
+            I[op + suffix] = (2, [
+                word(mux_pc=True, pc_up=True, src="ROM", dst="REG_B"),
+                SETTLE,
+                word(end=True, sa=sa, src="ALU", dst=dst)])
+    I["CPI"] = (2, [word(mux_pc=True, pc_up=True, src="ROM", dst="REG_B"),
+                    SETTLE,
+                    word(end=True, sa="SUB", src="ALU", dst="NONE")])
+    # ---- ALU result into B or C, and two more flag-only tests
+    for op, sa in zip(("ADD", "SUB", "BSUB", "AND", "OR", "XOR"), _REAL_SA):
+        for suffix, dst in (("_B", "REG_B"), ("_C", "REG_C")):
+            I[op + suffix] = (1, [word(end=True, sa=sa, src="ALU", dst=dst)])
+    I["BIT"] = (1, [word(end=True, sa="AND", src="ALU", dst="NONE")])
+    I["CPX"] = (1, [word(end=True, sa="XOR", src="ALU", dst="NONE")])
+    # ---- B and C to and from the pointer halves
+    for r in ("B", "C"):
+        for h in ("LO", "HI"):
+            I[f"MOV{r}SP{h[0]}"] = (1, [word(end=True, src=f"SP_{h}",
+                                             dst=f"REG_{r}")])
+            I[f"MOVSP{h[0]}{r}"] = (1, [word(end=True, src=f"REG_{r}",
+                                             dst=f"SP_{h}")])
+            I[f"MOV{r}PC{h[0]}"] = (1, [word(end=True, src=f"PC_{h}",
+                                             dst=f"REG_{r}")])
+    # ---- OUT from any source
+    for name, src in (("OUTB", "REG_B"), ("OUTC", "REG_C"),
+                      ("OUTSPL", "SP_LO"), ("OUTSPH", "SP_HI"),
+                      ("OUTPCL", "PC_LO"), ("OUTPCH", "PC_HI")):
+        I[name] = (1, [word(end=True, misc="REG_OUT_LOAD", src=src)])
+    I["OUTI"] = (2, [word(mux_pc=True, pc_up=True, end=True,
+                          misc="REG_OUT_LOAD", src="ROM")])
+    for name, sa in zip(("OUTADD", "OUTSUB", "OUTBSUB", "OUTAND", "OUTOR",
+                         "OUTXOR"), _REAL_SA):
+        I[name] = (1, [word(end=True, misc="REG_OUT_LOAD", sa=sa, src="ALU")])
+    # ---- the three addressing modes, x the operations that lacked one
+    for p, (nbytes, pre) in _PREFIXES.items():
+        I["OUTM" + p] = (nbytes, list(pre) + [
+            word(end=True, misc="REG_OUT_LOAD", src="RAM")])
+        # STORE AN IMMEDIATE -- and it costs one more T-state than it looks
+        # like it should, for a reason worth stating.
+        #
+        # There is ONE address bus. The immediate is fetched at the PC and
+        # written at MAR, and CW14 cannot point M at both in the same state.
+        # So: fetch with the mux on the PC and NO destination, which parks the
+        # byte in MDR for free (LE_MDR follows every memory read), then replay
+        # it out of MDR with the mux back on MAR.
+        #
+        # The replay MUST be the very next state. MDR holds for exactly one.
+        I["MVI" + p] = (nbytes + 1, list(pre) + [
+            word(mux_pc=True, pc_up=True, src="ROM"),
+            word(end=True, misc="MDR_OUT", dst="RAM")])
+        for name, sa in zip(("STADD", "STSUB", "STBSUB", "STAND", "STOR",
+                             "STXOR"), _REAL_SA):
+            I[name + p] = (nbytes, list(pre) + [
+                word(end=True, sa=sa, src="ALU", dst="RAM")])
+    # ---- save and restore the pointers, absolutely
+    for h in ("LO", "HI"):
+        I[f"LDSP{h[0]}"] = (3, _MARFILL + [word(end=True, src="RAM",
+                                                dst=f"SP_{h}")])
+        I[f"STSP{h[0]}"] = (3, _MARFILL + [word(end=True, src=f"SP_{h}",
+                                                dst="RAM")])
+        I[f"STPC{h[0]}"] = (3, _MARFILL + [word(end=True, src=f"PC_{h}",
+                                                dst="RAM")])
+        I[f"LXI{h[0]}"] = (2, [word(mux_pc=True, pc_up=True, end=True,
+                                    src="ROM", dst=f"SP_{h}")])
+    # ---- SP-relative for B and C
+    for r in ("B", "C"):
+        I[f"LD{r}S"] = (1, _SP_TO_MAR + [word(end=True, src="RAM",
+                                              dst=f"REG_{r}")])
+        I[f"ST{r}S"] = (1, _SP_TO_MAR + [word(end=True, src=f"REG_{r}",
+                                              dst="RAM")])
+    # ---- conditional branch to B:C
+    for name, flag in (("JZX", "Z"), ("JCX", "C")):
+        I[name] = (1, _BC_TO_MAR + [word(end=True, misc="COND",
+                                         cond=(flag, 1))])
+    # ---- push and pop the pointers
+    for h in ("LO", "HI"):
+        I[f"PUSHSP{h[0]}"] = (1, _PUSH(f"SP_{h}"))
+        I[f"POPSP{h[0]}"] = (1, _POP(f"SP_{h}"))
+        I[f"PUSHPC{h[0]}"] = (1, _PUSH(f"PC_{h}"))
+    # ---- MEMORY-INDIRECT, the third addressing mode. RET's shape,
+    # generalised.
+    #
+    # src=RAM CANNOT write MAR -- the address feeds back into the read while
+    # the '373 is transparent -- so the pointer's LO byte is parked in C, MAR
+    # is re-pointed at the pointer's HI byte, that byte is parked in MDR and
+    # REPLAYED IMMEDIATELY (MDR holds for exactly one state), and only then
+    # is MAR complete.
+    #
+    # THE ASSEMBLER EMITS THE ADDRESS TWICE, as addr then addr+1. MAR loads
+    # only from W and has no increment, so the pointer's second half must be
+    # addressed explicitly. That is the price of the mode and why these cost
+    # five bytes.
+    #
+    # Clobbers C. B SURVIVES -- which is what makes LDAM better than
+    # LDC addr; LDB addr+1; LDAX: five bytes against seven, and one fewer
+    # register destroyed.
+    def _indirect(final):
+        return (_MARFILL + [word(src="RAM", dst="REG_C")]
+                + _MARFILL
+                + [word(src="RAM"),
+                   word(misc="MDR_OUT", dst="MAR_HI"),
+                   word(src="REG_C", dst="MAR_LO")]
+                + final)
+    I["LDAM"] = (5, _indirect([word(end=True, src="RAM", dst="REG_A")]))
+    I["LDBM"] = (5, _indirect([word(end=True, src="RAM", dst="REG_B")]))
+    I["STAM"] = (5, _indirect([word(end=True, src="REG_A", dst="RAM")]))
+    I["JMPM"] = (5, _indirect([word(end=True, misc="PC_LOAD")]))
+    I["JZM"] = (5, _indirect([word(end=True, misc="COND", cond=("Z", 1))]))
+    I["JCM"] = (5, _indirect([word(end=True, misc="COND", cond=("C", 1))]))
+    return I
+
+
+_F_PLUS = _f_plus()
+
+# The two tables must name the SAME set. A row with no opcode is unreachable;
+# an opcode with no row safe-fills to a silent END. Both are bugs a bare
+# update() would hide.
+if set(_F_PLUS) != set(_OPCODES_F_PLUS):
+    raise BuildError(
+        f"phase F+ tables disagree -- rows without opcodes: "
+        f"{sorted(set(_F_PLUS) - set(_OPCODES_F_PLUS))}; opcodes without "
+        f"rows: {sorted(set(_OPCODES_F_PLUS) - set(_F_PLUS))}")
+_collide = set(_OPCODES_F_PLUS.values()) & set(OPCODES.values())
+if _collide:
+    raise BuildError(f"phase F+ opcode collision: "
+                     f"{sorted(hex(o) for o in _collide)}")
+OPCODES.update(_OPCODES_F_PLUS)
+INSTRUCTIONS.update(_F_PLUS)
 
 
 def _fields(w):
@@ -370,6 +895,35 @@ def check_word(addr, w):
     # post-count one. Ambiguous by construction -- refuse to encode it.
     if misc in (MISC["SP_UP"], MISC["SP_DOWN"]) and src in (SRC["SP_LO"], SRC["SP_HI"]):
         raise BuildError(f"{where}: SP counted and read in the same word")
+    # THE ADDRESS BUS CARRIES ONE ADDRESS. CW14 (PC_MAR_MUX) points M at the
+    # PC or at MAR, and a row cannot have it both ways:
+    #
+    #   src=ROM  needs the PC on M    (mux_pc=1)
+    #   src=RAM  needs MAR on M       (mux_pc=0)
+    #   dst=RAM  needs MAR on M       (mux_pc=0)  -- the write address is MAR
+    #
+    # So src=ROM with dst=RAM is UNSATISFIABLE, and it does not fail loudly:
+    # the mux stays on the PC and the byte is written to the PC's own address,
+    # which is ROM, so the store simply evaporates.
+    #
+    # PAID FOR ON 2026-08-27. MVI/MVIX/MVIS were encoded exactly that way. On
+    # the bench the symptom was a program whose answer CHANGED ON EVERY RESET
+    # -- its loop counter was initialised with MVI, the store went nowhere,
+    # and the count came from uninitialised RAM. Nothing in check_word looked
+    # at CW14 at all, so 174 instructions passed the police with three of them
+    # unable to work. The cure is the MDR park: fetch with the mux on the PC
+    # and NO destination, then replay out of MDR with the mux on MAR.
+    if src == SRC["ROM"] and dst == DST["RAM"]:
+        raise BuildError(f"{where}: src=ROM with dst=RAM -- one address bus, "
+                         f"and the fetch and the store want different halves "
+                         f"of it. Park the byte in MDR and replay it")
+    if (w & MUX_PC) and (src == SRC["RAM"] or dst == DST["RAM"]):
+        raise BuildError(f"{where}: RAM accessed with mux_pc set -- M carries "
+                         f"the PC, not MAR, so the access lands at the wrong "
+                         f"address")
+    if src == SRC["ROM"] and not (w & MUX_PC):
+        raise BuildError(f"{where}: src=ROM without mux_pc -- M carries MAR, "
+                         f"so the fetch reads the wrong address")
     # PC_UP + PC_LOAD same word: defined-but-fragile on '193 internals
     if (w & PC_UP) and misc == MISC["PC_LOAD"]:
         raise BuildError(f"{where}: PC_UP with /PC_LOAD")

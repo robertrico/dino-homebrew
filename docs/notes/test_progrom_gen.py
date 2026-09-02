@@ -446,26 +446,414 @@ class TestDipCard(unittest.TestCase):
                         switches=pg.COVERAGE_SW["dip"])
         self.assertEqual(r["out"], 0x4D)
 
-    def test_no_image_uses_the_IN_opcode(self):
-        # BYTE-LEVEL scan, so it is technically also sensitive to an OPERAND
-        # byte that happens to be 0x52. Verified 2026-08-25: no coverage
-        # image contains 0x52 anywhere once `in` is gone. If a future image
-        # false-fails here, disassemble before weakening the test.
+    def test_no_image_names_a_retired_mnemonic(self):
+        """RETIRED, and replaced. The old form of this test scanned every
+        image for the BYTE 0x52; that stopped meaning anything the moment
+        phase F+ reassigned 0x52 to OUTB. Scanning bytes was always the weak
+        form -- it false-fires on an operand that happens to equal the
+        opcode. Scan the PROGRAMS instead: every step must name an
+        instruction the ISA still has."""
         for tag, prog in pg.COVERAGE.items():
             with self.subTest(tag=tag):
-                self.assertNotIn(OPCODES["IN"], pg.assemble(prog), tag)
+                for step in prog:
+                    if isinstance(step, str):
+                        continue
+                    self.assertIn(step[0], INSTRUCTIONS,
+                                  f"{tag}: {step[0]} is not in the ISA")
 
-    def test_the_IN_microcode_row_still_exists(self):
-        """PHASE E BURNS NO MICROCODE ROM. IN retires in COPPER (U28.7
-        unlands) and in the TOOLING (no image emits the opcode). Removing the
-        row would cost a three-ROM burn for nothing, so the row stays and the
-        opcode stays decodable. This test is what stops a later tidy-up from
-        turning a free retirement into a burn."""
-        self.assertIn("IN", INSTRUCTIONS)
-        self.assertIn("IN", OPCODES)
+    def test_the_IN_microcode_row_is_gone(self):
+        """PHASE F BURNS ALL THREE MICROCODE ROMS, so the row that phase E
+        could not afford to delete is now free to delete. Ruled by Rico
+        2026-08-27, at the burn SECTION 5 named for it.
 
-    def test_swdemo_no_longer_uses_IN(self):
-        self.assertNotIn(OPCODES["IN"], pg.assemble(pg.SWDEMO_PROGRAM))
+        Keeping it would have left a DECODABLE OPCODE THAT READS GARBAGE:
+        src=SW asserts SRC_ACTIVE so U25 is enabled, but SW asserts neither
+        ~{ROM_OUT} nor ~{RAM_OUT}, so READS_IDLE stays high, ~{IO_RD} stays
+        high, BUS_DIR is LOW, and U25 drives W from a floating MDR. Worse
+        than no opcode at all."""
+        self.assertNotIn("IN", INSTRUCTIONS)
+        self.assertNotIn("IN", OPCODES)
+        # 0x52 IS REUSED, and deliberately: it is OUTB in phase F+. The slot
+        # was freed by the same burn that reassigns it, so no ROM ever exists
+        # in which 0x52 means IN and something else decodes it. Reusing a
+        # freed opcode ACROSS burns would be the hazard; within one is not.
+        self.assertEqual(OPCODES["OUTB"], 0x52)
+
+    def test_swdemo_names_only_live_instructions(self):
+        for step in pg.SWDEMO_PROGRAM:
+            if not isinstance(step, str):
+                self.assertIn(step[0], INSTRUCTIONS)
+
+
+class TestFlagModelPhaseF(unittest.TestCase):
+    """The oracle grows a CARRY. It had only FLAG_Z, because JNZ was the only
+    branch in the machine.
+
+    NETLIST-EXTRACTED, alu.kicad_sch, 2026-08-25: U49 is a '273 with NO clock
+    enable -- it re-clocks every T-state -- and U48 is a '157 whose select is
+    ~{ALU_OUT}. So the flags UPDATE on any row that sources the ALU and HOLD
+    on every other row. That hold is why a Z set by AND survives to a JNZ two
+    instructions later, and the same hold now carries C to a JNC."""
+
+    def _run(self, prog, **kw):
+        return pg.simulate(prog, **kw)
+
+    def test_flag_c_is_NOT_borrow_on_sub(self):
+        """THE SIGN OF THIS IS THE WHOLE POINT, and getting it backwards
+        would make every JNC branch the wrong way.
+
+        The '382 pair computes A-B as A + ~B + CIN with CIN=1 (ALU_CIN =
+        NAND(SA1,SA0), and SUB is SA=0b010). CN+4 is therefore a NOT-borrow:
+        FLAG_C = 1 means A >= B unsigned, FLAG_C = 0 means A < B."""
+        r = self._run([("LDAI", 0x10), ("LDBI", 0x20), ("SUB",), ("HALT",)])
+        self.assertEqual(r["flag_c"], 0, "0x10 - 0x20 borrows: FLAG_C must be 0")
+        r = self._run([("LDAI", 0x20), ("LDBI", 0x10), ("SUB",), ("HALT",)])
+        self.assertEqual(r["flag_c"], 1, "0x20 - 0x10 does not borrow")
+        r = self._run([("LDAI", 0x20), ("LDBI", 0x20), ("SUB",), ("HALT",)])
+        self.assertEqual(r["flag_c"], 1, "A == B is A >= B")
+
+    def test_flag_c_is_carry_out_on_add(self):
+        r = self._run([("LDAI", 0xFF), ("LDBI", 0x01), ("ADD",), ("HALT",)])
+        self.assertEqual(r["flag_c"], 1)
+        r = self._run([("LDAI", 0x01), ("LDBI", 0x01), ("ADD",), ("HALT",)])
+        self.assertEqual(r["flag_c"], 0)
+
+    def test_the_carry_is_UNDEFINED_after_a_logic_op(self):
+        """A '382 in a LOGIC mode does not produce a meaningful CN+4. Modelling
+        it as 0 would be a stand-in BETTER THAN THE HARDWARE, which is the
+        defect class that let a rig-emulated bridge pass schematic bug 4.
+
+        So the oracle tracks DEFINEDNESS and refuses to answer a JNC that
+        reads a carry no ALU op defined. Z is unaffected -- it comes off the
+        F0-7 NOR tree and is meaningful for every function code."""
+        r = self._run([("LDAI", 0x0F), ("LDBI", 0xF0), ("AND",), ("HALT",)])
+        self.assertFalse(r["flag_c_defined"],
+                         "AND must leave the carry undefined")
+        self.assertEqual(r["flag_z"], 1, "Z is defined for logic ops")
+        r = self._run([("LDAI", 0x10), ("LDBI", 0x20), ("SUB",), ("HALT",)])
+        self.assertTrue(r["flag_c_defined"])
+
+    def test_jnc_on_an_undefined_carry_is_refused(self):
+        prog = [("LDAI", 0x0F), ("LDBI", 0xF0), ("AND",),
+                ("JNC", 0x00, 0x00), ("HALT",)]
+        with self.assertRaises(pg.BuildError):
+            self._run(prog)
+
+    def test_flags_hold_across_non_alu_rows(self):
+        """The hold leg is what makes compare-then-branch work at all: the
+        AND sets Z, and the FETCH, the immediate load and the operand states
+        between it and the JNZ never assert ~{ALU_OUT}."""
+        r = self._run([("LDAI", 0x20), ("LDBI", 0x10), ("SUB",),
+                       ("LDAI", 0x00), ("OUT",), ("HALT",)])
+        self.assertEqual(r["flag_c"], 1, "LDAI/OUT must not disturb the carry")
+
+
+class TestPhaseFInstructions(unittest.TestCase):
+    """One test per group, each asserting the thing that would be WRONG if the
+    row were mis-encoded rather than merely that it runs."""
+
+    def _run(self, prog, **kw):
+        return pg.simulate(prog, **kw)
+
+    def test_jnc_takes_the_branch_when_A_is_less_than_B(self):
+        """SECTION 8's PROG_jnc, in the oracle. BOTH DIRECTIONS, because a
+        one-sided branch test is passed by a branch wired permanently taken."""
+        def img(a, b):
+            return [("LDAI", a), ("LDBI", b), ("CMP",),
+                    ("JNC", 0x0C, 0x00),
+                    ("LDAI", 0xEE), ("OUT",), ("HALT",),
+                    "hit", ("LDAI", 0x5A), ("OUT",), ("HALT",)]
+        r = self._run(img(0x10, 0x20))
+        self.assertEqual(r["out"], 0x5A, "0x10 < 0x20: JNC must be taken")
+        r = self._run(img(0x20, 0x10))
+        self.assertEqual(r["out"], 0xEE, "0x20 >= 0x10: JNC must NOT be taken")
+
+    def test_cmp_sets_flags_and_leaves_A_alone(self):
+        r = self._run([("LDAI", 0x20), ("LDBI", 0x10), ("CMP",),
+                       ("OUT",), ("HALT",)])
+        self.assertEqual(r["out"], 0x20, "CMP must not write a destination")
+        self.assertEqual(r["flag_c"], 1)
+        self.assertEqual(r["flag_z"], 0)
+
+    def test_mov_a_c_makes_C_observable_for_the_first_time(self):
+        """LDCI has never executed in this machine's life because nothing
+        could read C back. This is the row that retires that gap."""
+        r = self._run([("LDCI", 0x5A), ("MOVAC",), ("OUT",), ("HALT",)])
+        self.assertEqual(r["out"], 0x5A)
+
+    def test_ldax_stax_walk_bc_and_are_read_back_by_ABSOLUTE_address(self):
+        """PROG_sp3's discipline, and it is not optional. A pointer test that
+        reads back through the SAME pointer is blind in the pointer -- exactly
+        how PROG_sp1 stayed green through 2026-08-24 with every bank-1
+        decoder output dead. Three cells, a different sentinel in each, each
+        read back absolutely so an off-by-one names its direction."""
+        base = pg.RAM_BASE + 0x100
+        prog = [("LXISP", 0xFF, 0xFF)]
+        for i, val in enumerate((0x11, 0x22, 0x33)):
+            a = base + i
+            prog += [("LDBI", (a >> 8) & 0xFF), ("LDCI", a & 0xFF),
+                     ("LDAI", val), ("STAX",)]
+        prog += [("LDA", base & 0xFF, (base >> 8) & 0xFF), ("OUT",), ("HALT",)]
+        r = self._run(prog)
+        self.assertEqual(r["out"], 0x11, "cell 0 read back absolutely")
+        self.assertEqual(r["ram_writes"], 3)
+
+    def test_ldax_reads_through_the_pointer(self):
+        base = pg.RAM_BASE + 0x200
+        prog = [("LDAI", 0x7E), ("STA", base & 0xFF, (base >> 8) & 0xFF),
+                ("LDBI", (base >> 8) & 0xFF), ("LDCI", base & 0xFF),
+                ("LDAI", 0x00), ("LDAX",), ("OUT",), ("HALT",)]
+        self.assertEqual(self._run(prog)["out"], 0x7E)
+
+    def test_C_is_the_LOW_half_of_the_index_pair(self):
+        """A swapped pair is an off-by-256, and it survives every round trip
+        that uses the same pointer. Plant through B:C, read back absolutely
+        at the address C names."""
+        base = pg.RAM_BASE + 0x0055
+        prog = [("LDBI", 0x82), ("LDCI", 0x55), ("LDAI", 0x99), ("STAX",),
+                ("LDA", 0x55, 0x82), ("OUT",), ("HALT",)]
+        self.assertEqual(pg.RAM_BASE, 0x8000, "this test hardcodes 0x8255")
+        self.assertEqual(self._run(prog)["out"], 0x99)
+        self.assertEqual(base, 0x8055)
+
+    def test_shl_inr_dcr_not(self):
+        for op, start, want in (("SHL", 0x2C, 0x58), ("INR", 0x2C, 0x2D),
+                                ("DCR", 0x2C, 0x2B), ("NOT", 0x2C, 0xD3)):
+            with self.subTest(op=op):
+                r = self._run([("LDAI", start), (op,), ("OUT",), ("HALT",)])
+                self.assertEqual(r["out"], want, f"{op} {start:#04x}")
+
+    def test_shl_inr_dcr_not_all_clobber_B(self):
+        """Stated, not hidden. The TMP_B shadow is how they cost two rows."""
+        for op in ("SHL", "INR", "DCR", "NOT"):
+            with self.subTest(op=op):
+                r = self._run([("LDBI", 0x77), ("LDAI", 0x01), (op,), ("HALT",)])
+                self.assertNotEqual(r["B"], 0x77, f"{op} must clobber B")
+
+    def test_sp_is_a_second_index_register(self):
+        base = pg.RAM_BASE + 0x300
+        prog = [("LDBI", (base >> 8) & 0xFF), ("LDCI", base & 0xFF),
+                ("SPHL",),
+                ("LDAI", 0x64), ("STAS",),
+                ("LDAI", 0x00), ("LDAS",), ("OUT",), ("HALT",)]
+        r = self._run(prog)
+        self.assertEqual(r["out"], 0x64)
+
+    def test_inxsp_is_the_machines_only_16_bit_increment(self):
+        """B:C has no carry path between the registers, so INXSP is the only
+        way to walk a pointer across a page boundary in one instruction."""
+        prog = [("LXISP", 0xFF, 0x80), ("INXSP",),
+                ("MOVASPL",), ("OUT",), ("HALT",)]
+        r = self._run(prog)
+        self.assertEqual(r["out"], 0x00, "0x80FF + 1 must carry into SPH")
+        prog = [("LXISP", 0xFF, 0x80), ("INXSP",),
+                ("MOVASPH",), ("OUT",), ("HALT",)]
+        self.assertEqual(self._run(prog)["out"], 0x81)
+
+    def test_rst_clears_the_pc_without_clearing_anything_else(self):
+        """RST is PC_CLEAR and nothing more: the stack, the registers and OB
+        all survive it. Say which reset you mean."""
+        prog = [("LDAI", 0x3C), ("OUT",), ("JMP", 0x07, 0x00),
+                ("HALT",), "target", ("RST",)]
+        r = pg.simulate(prog, max_steps=40)
+        self.assertFalse(r["halted"], "RST must jump to 0x0000 and re-run")
+
+    def test_movapcl_reads_the_live_pc(self):
+        r = self._run([("MOVAPCL",), ("OUT",), ("HALT",)])
+        self.assertEqual(r["out"], 0x01, "PC has been incremented once, by T0")
+
+
+class TestPhaseFPlus(unittest.TestCase):
+    """The 108 that the copper already allowed. One test per MECHANISM, not
+    per opcode -- 108 near-identical tests would be a blind counter."""
+
+    def _run(self, prog, **kw):
+        return pg.simulate(prog, **kw)
+
+    def test_OUT_latches_the_BUS_not_the_accumulator(self):
+        """NETLIST-EXTRACTED 2026-08-27, registers_a_b.kicad_sch: U44 is a
+        '245 with DIR tied +5V, its A side on MDR0-7 and ~CE on
+        ~{REG_OUT_LOAD}; U35's LE is ~{REG_OUT_LE}. So OB latches whatever
+        is on MDR when the strobe fires. `src=REG_A` was a MICROCODE
+        CONVENTION, never a wire -- which is why OUT-from-anything costs
+        nothing, and why an oracle that models `out = A` is wrong the moment
+        the source varies."""
+        r = self._run([("LDAI", 0x11), ("LDBI", 0x22), ("OUTB",), ("HALT",)])
+        self.assertEqual(r["out"], 0x22, "OUTB must show B, not A")
+        r = self._run([("LDAI", 0x11), ("LDCI", 0x33), ("OUTC",), ("HALT",)])
+        self.assertEqual(r["out"], 0x33)
+        r = self._run([("LDAI", 0x11), ("OUTI", 0x44), ("HALT",)])
+        self.assertEqual(r["out"], 0x44, "OUTI shows the immediate")
+        self.assertEqual(r["A"], 0x11, "OUTI must not touch A")
+
+    def test_OUT_the_pointers(self):
+        r = self._run([("LXISP", 0x34, 0x12), ("OUTSPL",), ("HALT",)])
+        self.assertEqual(r["out"], 0x34)
+        r = self._run([("LXISP", 0x34, 0x12), ("OUTSPH",), ("HALT",)])
+        self.assertEqual(r["out"], 0x12)
+        r = self._run([("OUTPCL",), ("HALT",)])
+        self.assertEqual(r["out"], 0x01, "PC has been incremented once, by T0")
+
+    def test_OUT_an_ALU_result_without_storing_it(self):
+        r = self._run([("LDAI", 0x20), ("LDBI", 0x0C), ("OUTADD",), ("HALT",)])
+        self.assertEqual(r["out"], 0x2C)
+        self.assertEqual(r["A"], 0x20, "OUTADD must not write a destination")
+
+    def test_OUT_memory_in_all_three_addressing_modes(self):
+        base = pg.RAM_BASE + 0x400
+        plant = [("LDAI", 0x7A), ("STA", *pg._addr(base))]
+        r = self._run(plant + [("LDAI", 0x00), ("OUTM", *pg._addr(base)),
+                               ("HALT",)])
+        self.assertEqual(r["out"], 0x7A, "OUTM, absolute")
+        self.assertEqual(r["A"], 0x00, "OUTM must not go through A")
+        r = self._run(plant + [("LDBI", base >> 8), ("LDCI", base & 0xFF),
+                               ("OUTMX",), ("HALT",)])
+        self.assertEqual(r["out"], 0x7A, "OUTMX, indexed through B:C")
+        r = self._run(plant + [("LXISP", base & 0xFF, base >> 8),
+                               ("OUTMS",), ("HALT",)])
+        self.assertEqual(r["out"], 0x7A, "OUTMS, SP-relative")
+
+    def test_immediate_alu_saves_the_LDBI(self):
+        r = self._run([("LDAI", 0x20), ("ADI", 0x0C), ("OUT",), ("HALT",)])
+        self.assertEqual(r["out"], 0x2C)
+        r = self._run([("LDAI", 0x30), ("SUI", 0x04), ("OUT",), ("HALT",)])
+        self.assertEqual(r["out"], 0x2C)
+        r = self._run([("LDAI", 0xFF), ("ANI", 0x2C), ("OUT",), ("HALT",)])
+        self.assertEqual(r["out"], 0x2C)
+
+    def test_CPI_sets_the_flags_and_leaves_A(self):
+        r = self._run([("LDAI", 0x10), ("CPI", 0x20), ("OUT",), ("HALT",)])
+        self.assertEqual(r["out"], 0x10, "CPI must not write a destination")
+        self.assertEqual(r["flag_c"], 0, "0x10 < 0x20 unsigned")
+        r = self._run([("LDAI", 0x20), ("CPI", 0x10), ("HALT",)])
+        self.assertEqual(r["flag_c"], 1)
+
+    def test_CPI_plus_JNC_is_a_four_byte_compare_and_branch(self):
+        def img(a):
+            return [("LDAI", a), ("CPI", 0x20), ("JNC", Ref := 0x0A, 0x00),
+                    ("LDAI", 0xEE), ("OUT",), ("HALT",),
+                    ("LDAI", 0x6C), ("OUT",), ("HALT",)]
+        # CPI is 2B: LDAI@0(2) CPI@2(2) JNC@4(3) LDAI@7(2) OUT@9 -> recompute
+        prog = [("LDAI", 0x10), ("CPI", 0x20), ("JNC", 0x0B, 0x00),
+                ("LDAI", 0xEE), ("OUT",), ("HALT",),
+                ("LDAI", 0x6C), ("OUT",), ("HALT",)]
+        self.assertEqual(len(pg.assemble(prog[:3])), 7, "the branch is 7 bytes in")
+        self.assertEqual(self._run(prog)["out"], 0x6C, "0x10 < 0x20 -> taken")
+        prog[0] = ("LDAI", 0x30)
+        self.assertEqual(self._run(prog)["out"], 0xEE, "0x30 >= 0x20 -> not taken")
+
+    def test_ALU_into_C_destroys_neither_operand(self):
+        """C has no TMP shadow, so it is the only destination that leaves both
+        ALU inputs intact."""
+        r = self._run([("LDAI", 0x20), ("LDBI", 0x0C), ("ADD_C",),
+                       ("OUTC",), ("HALT",)])
+        self.assertEqual(r["out"], 0x2C)
+        self.assertEqual((r["A"], r["B"]), (0x20, 0x0C),
+                         "ADD_C must leave A and B alone")
+
+    def test_ALU_into_B_makes_B_an_accumulator(self):
+        """dst=REG_B refills TMP_B through the shadow latch, so the next ALU
+        op sees the result -- which is what makes a sum loop work."""
+        r = self._run([("LDAI", 0x01), ("LDBI", 0x00),
+                       ("ADD_B",), ("ADD_B",), ("ADD_B",),
+                       ("OUTB",), ("HALT",)])
+        self.assertEqual(r["out"], 0x03, "B accumulated A three times")
+
+    def test_MVI_stores_an_immediate_without_touching_A(self):
+        base = pg.RAM_BASE + 0x500
+        r = self._run([("LDAI", 0x11), ("MVI", *pg._addr(base), 0x99),
+                       ("LDA", *pg._addr(base)), ("OUT",), ("HALT",)])
+        self.assertEqual(r["out"], 0x99)
+        r = self._run([("LDAI", 0x11), ("MVI", *pg._addr(base), 0x99),
+                       ("OUTM", *pg._addr(base)), ("HALT",)])
+        self.assertEqual(r["A"], 0x11, "MVI must not go through A")
+
+    def test_MVIX_fills_through_the_pointer(self):
+        base = pg.RAM_BASE + 0x600
+        r = self._run([("LDBI", base >> 8), ("LDCI", base & 0xFF),
+                       ("MVIX", 0x5B), ("LDA", *pg._addr(base)),
+                       ("OUT",), ("HALT",)])
+        self.assertEqual(r["out"], 0x5B)
+
+    def test_compute_and_store_in_one_instruction(self):
+        base = pg.RAM_BASE + 0x700
+        r = self._run([("LDAI", 0x20), ("LDBI", 0x0C),
+                       ("STADD", *pg._addr(base)),
+                       ("LDAI", 0x00), ("LDA", *pg._addr(base)),
+                       ("OUT",), ("HALT",)])
+        self.assertEqual(r["out"], 0x2C, "STADD wrote A+B straight to memory")
+
+    def test_save_and_restore_the_stack_pointer(self):
+        base = pg.RAM_BASE + 0x800
+        r = self._run([("LXISP", 0x34, 0x12),
+                       ("STSPL", *pg._addr(base)),
+                       ("STSPH", *pg._addr(base + 1)),
+                       ("LXISP", 0xFF, 0xFF),
+                       ("LDSPL", *pg._addr(base)),
+                       ("LDSPH", *pg._addr(base + 1)),
+                       ("OUTSPH",), ("HALT",)])
+        self.assertEqual(r["out"], 0x12)
+        self.assertEqual(r["sp"], 0x1234, "SP came back whole")
+
+    def test_SP_relative_for_B_and_C(self):
+        base = pg.RAM_BASE + 0x900
+        r = self._run([("LXISP", base & 0xFF, base >> 8),
+                       ("LDBI", 0x3C), ("STBS",),
+                       ("LDBI", 0x00), ("LDBS",), ("OUTB",), ("HALT",)])
+        self.assertEqual(r["out"], 0x3C)
+
+    def test_pushing_the_PC_is_a_software_CALL(self):
+        r = self._run([("LXISP", 0xFF, 0x80), ("PUSHPCL",),
+                       ("POPA",), ("OUT",), ("HALT",)])
+        self.assertEqual(r["out"], 0x04,
+                         "LXISP is 3 bytes, so T0 of PUSHPCL leaves PC=4 -- "
+                         "and PC_LO is read at T3, before any further step. "
+                         "This is the same PC+1 convention CALL pushes, which "
+                         "is why RET has to step over two operand bytes")
+
+    def test_MEMORY_INDIRECT_loads_through_a_pointer_held_in_RAM(self):
+        """The third addressing mode. The pointer lives in memory; the
+        instruction names WHERE THE POINTER IS, not where the data is."""
+        ptr, data = pg.RAM_BASE + 0xA00, pg.RAM_BASE + 0xABC
+        prog = [("MVI", *pg._addr(ptr), data & 0xFF),
+                ("MVI", *pg._addr(ptr + 1), data >> 8),
+                ("MVI", *pg._addr(data), 0x7E),
+                ("LDBI", 0xB5),                      # B must SURVIVE
+                ("LDAM", *pg._addr(ptr), *pg._addr(ptr + 1)),
+                ("OUT",), ("HALT",)]
+        r = self._run(prog)
+        self.assertEqual(r["out"], 0x7E, "LDAM followed the pointer")
+        self.assertEqual(r["B"], 0xB5, "LDAM must not clobber B")
+
+    def test_MEMORY_INDIRECT_jump(self):
+        """The landing address is COMPUTED, not typed. A hand-counted offset
+        in a test that also exercises the addressing mode under test is a
+        test that passes for the wrong reason the first time the prologue
+        changes length."""
+        ptr = pg.RAM_BASE + 0xB00
+        prologue = [("MVI", *pg._addr(ptr), 0x00),
+                    ("MVI", *pg._addr(ptr + 1), 0x00),
+                    ("JMPM", *pg._addr(ptr), *pg._addr(ptr + 1)),
+                    ("LDAI", 0xEE), ("OUT",), ("HALT",)]
+        land = len(pg.assemble(prologue))
+        prog = [("MVI", *pg._addr(ptr), land & 0xFF),
+                ("MVI", *pg._addr(ptr + 1), land >> 8),
+                ("JMPM", *pg._addr(ptr), *pg._addr(ptr + 1)),
+                ("LDAI", 0xEE), ("OUT",), ("HALT",),
+                ("LDAI", 0x6C), ("OUT",), ("HALT",)]
+        r = self._run(prog)
+        self.assertEqual(r["out"], 0x6C,
+                         "JMPM must land where the RAM pointer says; 0xEE is "
+                         "the fall-through")
+
+    def test_STAM_stores_through_a_pointer_held_in_RAM(self):
+        ptr, data = pg.RAM_BASE + 0xC00, pg.RAM_BASE + 0xCDE
+        prog = [("MVI", *pg._addr(ptr), data & 0xFF),
+                ("MVI", *pg._addr(ptr + 1), data >> 8),
+                ("LDAI", 0x5B),
+                ("STAM", *pg._addr(ptr), *pg._addr(ptr + 1)),
+                ("OUTM", *pg._addr(data)), ("HALT",)]
+        self.assertEqual(self._run(prog)["out"], 0x5B)
 
 
 if __name__ == "__main__":

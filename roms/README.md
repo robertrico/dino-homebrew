@@ -23,9 +23,9 @@ writes rows in every byte of the word. `U9`/`U15` stay untouched only for
 changes confined to `CW16-23`.
 
     IMAGE            BITS      SET    CRC16
-    U9.bin           CW0-7     REAL   0xB5B7
-    U15.bin          CW8-15    REAL   0x5174
-    U23.bin          CW16-23   REAL   0x2329
+    U9.bin           CW0-7     REAL   0xE991
+    U15.bin          CW8-15    REAL   0x33EA
+    U23.bin          CW16-23   REAL   0xCB8E
     U9_diag.bin      CW0-7     DIAG   0x0F69
     U15_diag.bin     CW8-15    DIAG   0xF1B9
     U23_diag.bin     CW16-23   DIAG   0x56CC
@@ -139,6 +139,43 @@ construction — no eleventh table.
         reads 0x00 = NOP, so a failed store would NOP-slide 28KB and look
         like a fetch fault), then JMPs across 0x8000 and the answer is
         computed in RAM. PHASE D.
+    PROG_jnc.bin     0x64C0  0x6C  8
+        THE ONLY IMAGE WHOSE ANSWER DEPENDS ON U77, the '157 flag mux. CMP
+        sets FLAG_C, JNC selects it through CW21, and the taken arm is the
+        only path to 0x6C. Run it WITH jncswap: a one-sided branch test is
+        passed by a branch wired permanently taken. PHASE F.
+    PROG_jncswap.bin 0x3841  0xEE  8
+        jnc's other direction, same code, swapped operands. 0xEE is the
+        pass here. PHASE F.
+    PROG_mov.bin     0x234B  0x9C  6
+        LDCI EXECUTES FOR THE FIRST TIME. C was write-only by design --
+        RET's return-address scratch, with no way to read it back -- and
+        MOV A,C is the one microcode row that closes it. A is cleared
+        first so a dead MOV cannot report LDAI's byte. PHASE F.
+    PROG_ptr.bin     0x8F67  0x22  21
+        B:C AS AN INDEX PAIR, with PROG_sp3's discipline. Three cells, a
+        different sentinel in each, planted through the pointer with STAX
+        -- then read back down TWO paths, one through the pointer (LDAX)
+        and one by ABSOLUTE address (LDB), and the answer is their
+        difference. The absolute path cannot inherit a pointer fault.
+        PHASE F.
+    PROG_shl.bin     0x0E11  0xA4  9
+        the TMP_B shadow doing arithmetic: SHL, INR, INR, NOT, DCR. Two
+        INRs and one DCR on purpose -- INR then DCR returns the same byte
+        whether both worked or neither did. PHASE F.
+    PROG_ind.bin     0x9B7E  0x63  10
+        MEMORY-INDIRECT, the third addressing mode. The pointer is in RAM
+        and the operand names WHERE THE POINTER IS. 0x63 passes; 0xE0
+        means it read the pointer byte instead of following it; 0x9C means
+        it read an unwritten cell. B must survive. PHASE F+.
+    PROG_indst.bin   0xAB5B  0x5B  9
+        memory-indirect STORE, read back by absolute address so the
+        readback cannot inherit the fault. 0x5B passes, 0x00 means the
+        store never reached the target. PHASE F+.
+    PROG_indj.bin    0x81A8  0x6C  7
+        memory-indirect JUMP, landing site as the observable. 0x6C passes,
+        0xE7 is the fall-through. The target address is computed from the
+        assembled prologue, never counted. PHASE F+.
 
 ### Soak images — not coverage images
 
@@ -262,3 +299,147 @@ TL866, and Rico does the burning. Tools verify; they never program.
 `progrom_gen.py`'s `DIAG_ZERO = 0xA5` is bit-reverse-invariant, which makes
 the diag image's byte 0 mirror-blind. Change it to a non-palindrome the next
 time the DIAG image is reburned — no reason to reburn just for this.
+
+### PROG_isa — the self-checking ISA test
+
+    PROG_isa.bin     0xB96F  147 subtests, 3250 bytes
+
+    Burn it, press RESET, read OB. 0xB4 means every
+    subtest passed. ANY OTHER VALUE IS THE NUMBER OF THE FIRST
+    INSTRUCTION THAT MISBEHAVED, and the table below names it.
+    0xFF means the program halted without reaching an
+    OUT at all -- a jump went somewhere it should not have.
+
+    Every expected value in it was computed by the oracle, and
+    every subtest is mutation-tested: breaking an instruction's
+    microcode makes the program report that instruction. A
+    subtest that survives its own instruction being broken is
+    not counted as coverage.
+
+    PROG_isacount.bin  0xA2D0  the SAME 147 subtests, COUNTED
+
+    Identical tests, but a failure bumps a counter and
+    execution CONTINUES. OB is then the NUMBER of subtests
+    that failed, 0x00 for a clean run. Use it when the
+    machine is marginal rather than broken: PROG_isa stops
+    at the first failure and cannot tell one bad
+    instruction from forty, and a wild jump into its stub
+    table reports a subtest number that nothing failed.
+
+    PROG_isaid.bin     0x019B  the SAME 147, reporting WHICH one failed
+
+    Execution continues past a failure, as in isacount, so
+    a wild jump cannot fabricate an answer -- but the cell
+    holds the ID of the last failing subtest instead of a
+    tally. When the count is reliably 0 or 1, last-failing
+    IS the-one-failing. 0x00 is still clean, because ids
+    start at 1.
+
+    PROG_isasoak.bin   0x9554  the 147, run 255 TIMES, failures totalled
+
+    ~9,400 subtest executions in under a tenth of a second.
+    OB is the total failure count, 0x00 for a clean soak.
+    Use it when the failure rate is low enough that
+    resetting is not a measurement: at 1-in-60 you cannot
+    tell whether a repair helped, and this turns that into a
+    number that moves. 0x00 clean, 0xFE saturated,
+    0xFF means it never finished.
+
+    PROG_isalive.bin   0x504A  HOW FAR does it get before it dies
+
+    Every pass OUTs its own number, so OB holds the last
+    pass the machine actually reached. 0xB4 means it
+    survived all 64. Anything else is where it died.
+
+    A HANG cannot report anything at the end, because there
+    is no end. This reports as it goes, which turns 'it
+    usually does not finish' into a mean time to failure in
+    passes -- a number that moves when a repair helps.
+    Miscompares are deliberately ignored: this measures how
+    FAR, not whether it AGREES.
+
+    PROG_isawhere.bin  0xF87F  WHICH subtest was running when it died
+
+    OB is updated with the subtest id before each subtest
+    runs, so a machine that hangs leaves the id of the one
+    it was in. 0xB4 means it survived all 64 passes. Use
+    the id table below to name it.
+
+    isalive says HOW FAR (a rate); this says WHERE (a place).
+
+      1 LDAI       2 LDBI       3 LDCI       4 LXISP      5 LXIL       6 LXIH     
+      7 LDA        8 STA        9 LDB       10 LDC       11 STB       12 STC      
+     13 LDAS      14 STAS      15 LDBS      16 STBS      17 LDCS      18 STCS     
+     19 JMP       20 JNZ       21 CALL      22 JMPX      23 JMPSP     24 JNC      
+     25 JZX       26 JCX       27 JMPM      28 JZM       29 JCM       30 LDAM     
+     31 LDBM      32 STAM      33 BIT       34 ADD       35 SUB       36 AND      
+     37 OR        38 XOR       39 CLR       40 SET       41 BSUB      42 CMP      
+     43 CMPB      44 TST       45 SHL       46 INR       47 DCR       48 NOT      
+     49 PUSHA     50 POPA      51 PUSHB     52 POPB      53 PUSHC     54 POPC     
+     55 INXSP     56 DCXSP     57 SPHL      58 HLSP      59 PUSHSPL   60 POPSPL   
+     61 PUSHSPH   62 POPSPH    63 PUSHPCL   64 LDAX      65 STAX      66 LDBX     
+     67 STBX      68 LDCX      69 STCX      70 MVIX      71 STADDX    72 STSUBX   
+     73 STBSUBX   74 STANDX    75 STORX     76 STXORX    77 MOVAB     78 MOVAC    
+     79 MOVBA     80 MOVBC     81 MOVCA     82 MOVCB     83 MOVASPL   84 MOVASPH  
+     85 MOVSPLA   86 MOVSPHA   87 MOVAPCL   88 LDSPL     89 LDSPH     90 STSPL    
+     91 STSPH     92 MVI       93 MVIS      94 MOVBSPL   95 MOVBSPH   96 MOVCSPL  
+     97 MOVCSPH   98 MOVSPLB   99 MOVSPHB  100 MOVSPLC  101 MOVSPHC  102 MOVBPCL  
+    103 MOVCPCL  104 ADI      105 ADI_B    106 ADI_C    107 SUI      108 SUI_B    
+    109 SUI_C    110 BSUI     111 BSUI_B   112 BSUI_C   113 ANI      114 ANI_B    
+    115 ANI_C    116 ORI      117 ORI_B    118 ORI_C    119 XRI      120 XRI_B    
+    121 XRI_C    122 CPI      123 ADD_B    124 ADD_C    125 SUB_B    126 SUB_C    
+    127 BSUB_B   128 BSUB_C   129 AND_B    130 AND_C    131 OR_B     132 OR_C     
+    133 XOR_B    134 XOR_C    135 CPX      136 STADD    137 STSUB    138 STBSUB   
+    139 STAND    140 STOR     141 STXOR    142 STADDS   143 STSUBS   144 STBSUBS  
+    145 STANDS   146 STORS    147 STXORS   
+
+    NOT covered by PROG_isa (27): NOP, RST, RET, OUT, OUTB, OUTC, OUTSPL, OUTSPH, OUTPCL, OUTPCH, OUTI, OUTM, OUTMX, OUTMS, PUSHPCH, MOVAPCH, STPCL, STPCH, OUTADD, OUTSUB, OUTBSUB, OUTAND, OUTOR, OUTXOR, MOVBPCH, MOVCPCH, HALT
+    The OUT family cannot be tested this way at all -- OB is
+    write-only, so an OUT's result cannot be read back and
+    compared inside the program. It needs its own image.
+
+
+### Hand-written programs — assembled from .asm
+
+    Written by hand in `asm/`, assembled with
+    `python3 docs/notes/asm.py <src> -o roms/<image>`.
+    These are NOT part of the regression: the coverage images
+    above are generated and CRC-pinned, these are yours. The
+    expected OB below is what the oracle computes by
+    interpreting the same microcode the machine will run.
+
+    IMAGE            CRC16   OB    SOURCE
+    PROG_a47.bin     0x272D  0x47  asm/a47.asm
+    PROG_addcheck.bin 0x25E3  0x0F  asm/addcheck.asm
+    PROG_alub.bin    0x4848  0x47  asm/alub.asm
+    PROG_aluecho.bin 0x6E93  0x00  asm/aluecho.asm
+    PROG_b40.bin     0x2176  0x40  asm/b40.asm
+    PROG_cpisoak.bin 0xAF9A  0x41* asm/cpisoak.asm
+    PROG_dcrsoak.bin 0xE6A9  0x41* asm/dcrsoak.asm
+    PROG_echo.bin    0x2139  0x00* asm/echo.asm
+    PROG_hello.bin   0x9C68  0x96  asm/hello.asm
+    PROG_jmpmsoak.bin 0x6FF4  0x4F* asm/jmpmsoak.asm
+    PROG_jmpsoak.bin 0xFEAC  0x4F* asm/jmpsoak.asm
+    PROG_jnzctl.bin  0x8C31  0x37* asm/jnzctl.asm
+    PROG_jnzsoak.bin 0x3179  0x37* asm/jnzsoak.asm
+    PROG_make47.bin  0x62B5  0x47  asm/make47.asm
+    PROG_mvisoak.bin 0x8324  0x4E* asm/mvisoak.asm
+    PROG_ob6.bin     0xB0D2  0x15  asm/ob6.asm
+    PROG_origsoak.bin 0xAB52  0x4E* asm/origsoak.asm
+    PROG_ramsoak.bin 0x8BFB  0x45* asm/ramsoak.asm
+    PROG_readsoak.bin 0xBA67  0x4E* asm/readsoak.asm
+    PROG_regb.bin    0x68D6  0x47  asm/regb.asm
+    PROG_soak.bin    0x0E7D  0x00  asm/soak.asm
+    PROG_soakbasic.bin 0xE12F  0x00  asm/soakbasic.asm
+    PROG_spin.bin    0xD40A  0x61* asm/spin.asm
+    PROG_sub2.bin    0x5213  0x15  asm/sub2.asm
+    PROG_sub40.bin   0xDA74  0x0F  asm/sub40.asm
+    PROG_subflag.bin 0x6859  0x0F  asm/subflag.asm
+    PROG_subok.bin   0xB3C4  0x6C  asm/subok.asm
+    PROG_subtwice.bin 0x0148  0x0F  asm/subtwice.asm
+    PROG_subwhat.bin 0x06D9  0x0F  asm/subwhat.asm
+    PROG_sui16.bin   0xF3F9  0x0F  asm/sui16.asm
+    PROG_suiraw.bin  0x9918  0x15  asm/suiraw.asm
+    PROG_suitwice.bin 0x2969  0x0F  asm/suitwice.asm
+    PROG_test.bin    0x1059  0x00* asm/test.asm
+    PROG_writesoak.bin 0x1CCD  0x4E* asm/writesoak.asm

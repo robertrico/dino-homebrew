@@ -26,25 +26,27 @@ adapted from the b8008 fuzzer's discipline
     fuzzer that always reuses one address is blind to MAR_LO collapsing
     two addresses into one cell, same as MEM_PROGRAM's single-cell
     round trip
-  - IN is allowed anywhere in the menu; `meta["uses_in"]` records
-    whether it was chosen so the differential harness knows to drive
-    switches on the real oracle run; `meta["switches"]` is a
+  - IN IS GONE from the menu (phase F burn, 2026-08-27): it left the
+    ISA, and SW1 is read with LDA now because card zero makes it
+    memory. `meta["switches"]` survives — it is the seed-derived
+    DIP-switch value the differential harness drives, still a
     `rng.randrange(256)` draw taken AFTER every program-shaping
     decision (body, jump targets) is finished, so it never perturbs
-    the program itself — same seed still gives byte-identical
-    `program`/`meta["text"]` as before this field existed — but is
-    still fully reproducible from the seed alone, no second source of
-    entropy. Drawn unconditionally (even when `uses_in` is False) so
-    the draw sequence, and therefore the value, is independent of
-    which branch the harness takes with it.
+    the program itself and is fully reproducible from the seed alone.
+  - JNC joins JNZ in the jump menu, with a STRICTER fixup rule. Z comes
+    off the F0-7 NOR tree and is meaningful for every '382 function
+    code, so any ALU op is a legitimate producer for JNZ. CN+4 is only
+    meaningful for the three ARITHMETIC codes, so JNC needs ADD, SUB or
+    BSUB before it and `simulate()` raises rather than inventing a
+    carry after AND/OR/XOR/CLR/SET.
 
 `gen(seed, main_len=24, limit=None)` -> `(program, meta)`. `program` is
 a list of `progrom_gen` tuple-form steps, ready for
 `progrom_gen.assemble()` / `progrom_gen.build_image()`. `meta` is a
-dict with `text` (address-annotated listing), `uses_in` (bool), and
-`jump_targets` (list of `(src_addr, dst_addr)` byte pairs, one per
-JMP/JNZ), and `switches` (int 0-255, the seed-derived DIP-switch value
-the differential harness drives when `uses_in` is True). `limit`
+dict with `text` (address-annotated listing), `jump_targets` (list of
+`(src_addr, dst_addr)` byte pairs, one per JMP/JNZ/JNC), and
+`switches` (int 0-255, the seed-derived DIP-switch value the
+differential harness drives). `limit`
 truncates the body-generation loop to its first `limit` slots (the
 shrinker's knob, 8008 precedent) — jump targets are chosen only from
 what actually got generated, so they clamp to the (now closer) final
@@ -63,9 +65,18 @@ from progrom_gen import (OPCODES, sim_supports, RAM_BASE,  # noqa: E402
 ALU_OPS = ["ADD", "SUB", "AND", "OR", "XOR", "CLR", "SET", "BSUB"]
 IMM_OPS = ["LDAI", "LDBI", "LDCI"]
 MEM_OPS = ["LDA", "STA"]
-IO_OPS = ["OUT", "IN"]
-JUMP_OPS = ["JMP", "JNZ"]
-FLAG_FIXUP_OPS = ["ADD", "SUB"]          # what gets inserted before a bare JNZ
+# IN LEFT THE ISA on 2026-08-27 (phase F burn). OUT is the whole I/O menu
+# now -- SW1 is memory, at card zero's 0x4000-0x47FF, and it is read with
+# LDA like any other address.
+IO_OPS = ["OUT"]
+JUMP_OPS = ["JMP", "JNZ", "JNC"]
+FLAG_FIXUP_OPS = ["ADD", "SUB"]          # what gets inserted before a bare branch
+# JNC IS FUSSIER THAN JNZ AND THE DIFFERENCE IS NOT COSMETIC. Z comes off the
+# F0-7 NOR tree and is meaningful for every '382 function code; CN+4 is only
+# meaningful for the three ARITHMETIC codes. So an AND before a JNZ is a
+# legitimate flag producer and an AND before a JNC is not -- simulate() raises
+# on it rather than inventing a carry. The fixup rule has to know that.
+CARRY_OPS = ["ADD", "SUB", "BSUB"]
 
 # every op this generator can choose is a real, sim-supported opcode —
 # checked once at import time rather than re-checked per instruction
@@ -137,7 +148,8 @@ def _emit_one(rng, body, last_name):
         return name
     if choice < 95:                                        # jump
         name = rng.choice(JUMP_OPS)
-        if name == "JNZ" and last_name not in ALU_OPS:
+        producers = {"JNZ": ALU_OPS, "JNC": CARRY_OPS}.get(name)
+        if producers is not None and last_name not in producers:
             fixup = rng.choice(FLAG_FIXUP_OPS)
             body.append(_Entry(fixup))
         body.append(_Entry(name, None, is_jump=True))    # target: patched later
@@ -188,26 +200,31 @@ def gen(seed, main_len=24, limit=None):
     for i, e in enumerate(body):
         if not e.is_jump:
             continue
-        future = addrs[i + 1:]
+        # A JUMP MAY NOT LAND ON A BRANCH. The generator pairs each branch
+        # with a flag producer immediately before it, and a jump into the
+        # branch itself SKIPS THE PRODUCER -- which for JNC means arriving at
+        # a carry no arithmetic op defined, and simulate() rightly refuses
+        # it. Found by seed sweep the day JNC joined the menu; the static
+        # "preceded by" rule alone is not enough once control flow can
+        # arrive from elsewhere.
+        future = [a for a, entry in zip(addrs[i + 1:], body[i + 1:])
+                  if entry.name not in JUMP_OPS or entry.name == "JMP"]
         tgt = rng.choice(future) if future else addrs[-1]
         e.operand = (tgt & 0xFF, tgt >> 8)
         jump_targets.append((addrs[i], tgt))
 
     program = []
     text = []
-    uses_in = False
     for e, ad in zip(body, addrs):
         step = (e.name,) if e.operand is None else (e.name, *e.operand)
         program.append(step)
         operand_s = "" if e.operand is None else " " + ",".join(
             f"{b:#04x}" for b in e.operand)
         text.append(f"{ad:#06x}: {e.name}{operand_s}")
-        if e.name == "IN":
-            uses_in = True
 
     switches = rng.randrange(256)
-    meta = {"text": text, "uses_in": uses_in, "jump_targets": jump_targets,
-             "switches": switches}
+    meta = {"text": text, "jump_targets": jump_targets,
+            "switches": switches}
     return program, meta
 
 
@@ -215,5 +232,5 @@ if __name__ == "__main__":
     seed = int(sys.argv[1]) if len(sys.argv) > 1 else 0
     prog, meta = gen(seed)
     print("\n".join(meta["text"]))
-    print(f"; uses_in={meta['uses_in']} switches={meta['switches']:#04x} "
+    print(f"; switches={meta['switches']:#04x} "
           f"jump_targets={meta['jump_targets']}")

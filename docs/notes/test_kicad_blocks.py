@@ -76,8 +76,11 @@ T03 = {f"T{i}" for i in range(4)}
 CW08 = {f"CW{i}" for i in range(9)}
 DST7 = {"~{REG_A_LOAD}", "~{REG_B_LOAD}", "~{REG_C_LOAD}", "~{MAR_LO_LOAD}",
         "~{MAR_HI_LOAD}", "~{IR_LOAD}", "~{RAM_LOAD}"}
-SRC8 = {"SRC_ACTIVE", "~{ROM_OUT}", "~{RAM_OUT}", "~{REG_A_OUT}", "~{REG_B_OUT}",
-        "~{REG_C_OUT}", "~{ALU_OUT}", "~{SW_OUT}"}
+# PHASE E, 2026-08-26: ~{SW_OUT} IS GONE. IN retired, U28.7 is unlanded, and
+# the DIP switch is card zero -- memory at 0x4000-0x47FF, reached by LDA. The
+# set is seven decodes now, not eight.
+SRC7 = {"SRC_ACTIVE", "~{ROM_OUT}", "~{RAM_OUT}", "~{REG_A_OUT}", "~{REG_B_OUT}",
+        "~{REG_C_OUT}", "~{ALU_OUT}"}
 JMP4 = {"~{PC_CLEAR}", "~{MDR_OUT}", "~{REG_OUT_LOAD}", "~{PC_LOAD}"}
 SA3 = {"CW9=SA2", "CW10=SA1", "CW11=SA0"}
 PCBITS = {"CW13=PC_UP", "CW14=PC_MAR_MUX"}
@@ -92,6 +95,14 @@ SPCTL8 = {"~{SP_LO_OUT}", "~{SP_HI_OUT}", "~{PC_LO_OUT}", "~{PC_HI_OUT}",
 # board-to-board wires, the largest single crossing added since the MAR-lo
 # post-mortem named that category.
 PCBUS16 = {f"PC{i}" for i in range(16)}
+# PHASE E, 2026-08-26: the 16K I/O window's three memory-board outputs. U74/U75
+# generate them in-block, and they leave the memory board, so they are block2
+# SAMPLE signals -- new surface, not new wire count.
+IOWIN3 = {"~{IO_RD}", "~{IO_RD_Q}", "~{ROM_SEL}"}
+# PHASE F, 2026-08-26: CW21 leaves the microcode board for the first time. It
+# is U77's select -- the flag mux -- and it joins CW9/CW10/CW11 on the path to
+# the ALU board rather than opening a new one.
+FLAGSEL1 = {"CW21=FLAG_SEL0"}
 # CLK is sampled in every block as a CAPTURE QUALIFIER, never as an assertion:
 # the ROM outputs are invalid for one access time after T changes, and a blind
 # sampler splits one T-state into several frames. Gating on CLK low samples
@@ -144,8 +155,8 @@ def test_driven_gate():
 def test_sample_counts():
     print("sample ladder")
     counts = [len(SURF[b]["sample"]) for b in SURF]
-    check_eq(counts, [39, 31, 15, 15, 15],
-             "sampled ladder 39,31,15,15,15 (CLK+T0-3 in every block)")
+    check_eq(counts, [39, 34, 15, 15, 15],
+             "sampled ladder 39,34,15,15,15 (CLK+T0-3 in every block)")
     for b in SURF:
         check_eq(SURF[b]["qualify"], ["CLK", "T0", "T1", "T2", "T3"],
                  f"{b} carries the standing timing set")
@@ -154,7 +165,8 @@ def test_sample_counts():
 def test_block1_surface():
     print("block1 — control")
     s = SURF["block1"]
-    want = DST7 | SRC8 | JMP4 | SA3 | PCBITS | ENDHALT | QUAL1 | SPCTL8
+    want = (DST7 | SRC7 | JMP4 | SA3 | PCBITS | ENDHALT | QUAL1
+            | SPCTL8 | FLAGSEL1)
     check_eq(set(s["sample"]), want,
              "block1 samples the 34 + CLK + T0-3 as sample labels")
     check(T03 <= set(s["copper"]), "T0-3 is copper")
@@ -166,8 +178,8 @@ def test_block1_surface():
     check(T03 <= set(s["copper"]), "T0-3 is still copper — sampled as a LABEL")
     for sig in T03:
         check(sig not in s["drive"], f"{sig} is sampled, never driven")
-    check_eq(set(s["strap"]), {"FLAG_Z"}, "block1 straps exactly FLAG_Z")
-    check_eq(s["strap"]["FLAG_Z"][0], "HIGH", "FLAG_Z strapped HIGH")
+    check_eq(set(s["strap"]), {"COND_FLAG"}, "block1 straps exactly COND_FLAG")
+    check_eq(s["strap"]["COND_FLAG"][0], "HIGH", "COND_FLAG strapped HIGH")
     check_eq(set(s["floats"]), set(), "block1 has no unclassified floating input")
     for sig in ("CLK", "~{CLK}", "RESET", "~{RESET}"):
         check(sig in s["retired"], f"{sig} retired at block1")
@@ -178,8 +190,8 @@ def test_block1_surface():
 def test_block2_surface():
     print("block2 — + pc + mar + memory")
     s = SURF["block2"]
-    check_eq(set(s["sample"]), MDR | ENDHALT | TIMING | PCBUS16,
-             "block2 samples MDR0-7 + PC0-15 + END/HALT + CLK + T0-3")
+    check_eq(set(s["sample"]), MDR | ENDHALT | TIMING | PCBUS16 | IOWIN3,
+             "block2 samples MDR0-7 + PC0-15 + IO window + END/HALT + CLK + T0-3")
     check(all(f"M{i}" in s["copper"] for i in range(15)), "M0-14 are copper")
     # PHASE E, 2026-08-25: the ROM_EN alias was deleted. Once U24.20 moved to
     # ~{ROM_SEL} the name described a function that had left the net.
@@ -198,10 +210,10 @@ def test_block2_surface():
     # by hand. READS_IDLE HIGH keeps the published card read strobe deasserted;
     # there is no card in the ladder to read.
     check_eq(set(s["strap"]),
-             {"FLAG_Z", "WRITE_DIR", "~{ROM_BUF_EN}",
+             {"COND_FLAG", "WRITE_DIR", "~{ROM_BUF_EN}",
               "RAM_OE_ON", "READS_IDLE"}
              | {f"W{i}" for i in range(8)},
-             "block2 straps FLAG_Z + WRITE_DIR + ROM_BUF_EN + RAM_OE_ON + "
+             "block2 straps COND_FLAG + WRITE_DIR + ROM_BUF_EN + RAM_OE_ON + "
              "READS_IDLE + W0-7")
     check_eq(s["strap"]["RAM_OE_ON"][0], "LOW",
              "RAM_OE_ON strapped LOW -- forces ~{RAM_OE_G} HIGH, so U19 and "
@@ -213,7 +225,7 @@ def test_block2_surface():
     check_eq(s["strap"]["WRITE_DIR"][0], "LOW", "WRITE_DIR strapped LOW")
     check_eq(set(s["floats"]), set(), "block2 has no unclassified floating input")
     # the retirement cascade: everything block1 sampled is gone here
-    for sig in DST7 | SRC8 | SA3:
+    for sig in DST7 | SRC7 | SA3:
         check(sig not in s["sample"], f"{sig} retired by block1, not resampled")
     check_eq(s["retired_by"].get("SRC_ACTIVE"), "block1.decode",
              "block1 retirements are cited to the block, not a module")
@@ -229,7 +241,7 @@ def test_block3_surface():
     check(IRB <= set(s["copper"]), "IRB is copper now — the IR is real")
     check(all(f"W{i}" in s["copper"] for i in range(8)), "W0-7 is copper now")
     check("WRITE_DIR" in s["copper"], "WRITE_DIR is copper now")
-    check_eq(set(s["strap"]), {"FLAG_Z"}, "only FLAG_Z still strapped at block3")
+    check_eq(set(s["strap"]), {"COND_FLAG"}, "only COND_FLAG still strapped at block3")
     check(all(m not in s["sample"] for m in MDR), "MDR retired by block2")
 
 
@@ -238,7 +250,7 @@ def test_block4_surface():
     s = SURF["block4"]
     check_eq(set(s["sample"]), OB | ENDHALT | TIMING,
              "block4 samples OB0-7 + END/HALT + CLK + T0-3")
-    check("FLAG_Z" in s["copper"], "FLAG_Z is copper now — real flags")
+    check("COND_FLAG" in s["copper"], "COND_FLAG is copper now — real flags")
     check_eq(set(s["strap"]), set(), "block4 straps nothing")
     check(all(i not in s["sample"] for i in IRB), "IRB retired by block3")
 
@@ -290,7 +302,7 @@ def test_hard_errors():
 
     def unclassified():
         kc.block_surface(CONTRACTS, "x", dict(good, strap={}))
-    check_raises(unclassified, "FLAG_Z", "an unfed input left unclassified raises")
+    check_raises(unclassified, "COND_FLAG", "an unfed input left unclassified raises")
 
     def bad_member():
         kc.block_surface(CONTRACTS, "x", dict(good, members=["root", "nosuchmod"]))
@@ -340,7 +352,7 @@ def test_block1_port_alignment():
     for i, pin in enumerate(("PF4/A4", "PF5/A5", "PF6/A6", "PF7/A7")):
         check_eq(pins[f"T{i}"], pin,
                  f"T{i} on {pin} — one PF read gives jmp strobes AND the T label")
-    for grp, label in ((SRC8, "SRC"), (DST7, "DST"), (JMP4, "JMP"),
+    for grp, label in ((SRC7, "SRC"), (DST7, "DST"), (JMP4, "JMP"),
                        (SA3 | PCBITS | ENDHALT | QUAL, "anchor"),
                        (T03, "T label")):
         ports = {port_of(s) for s in grp}
@@ -362,7 +374,7 @@ def test_owner_board_is_where_the_wire_lands():
         return {s: o for s, _p, _d, o in kc.block_pins(CONTRACTS, b)}
 
     o1 = owners("block1")
-    for s in DST7 | SRC8 | JMP4:
+    for s in DST7 | SRC7 | JMP4:
         check_eq(o1[s], "control_word", f"block1 {s} lands on control_word")
     for s in SA3 | PCBITS:
         check_eq(o1[s], "microcode", f"block1 {s} lands on microcode")

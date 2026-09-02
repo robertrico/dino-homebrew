@@ -14,13 +14,13 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 
 ## ALU Module
 - IN    ~{ALU_OUT}, ~{REG_A_LOAD}, ~{REG_B_LOAD}  <- Control Word Module
-- IN    CW10=SA1, CW11=SA0, CW9=SA2  <- Microcode_Decoder
+- IN    CW10=SA1, CW11=SA0, CW21=FLAG_SEL0, CW9=SA2  <- Microcode_Decoder
 - IN    CLK, ~{CLK}, ~{RESET}  <- root
-- OUT   FLAG_Z  -> Control Word Module
+- OUT   COND_FLAG  -> Control Word Module
 - BIDIR W0-7  <-> Input, Memory Address Regiser, Memory Data Register, Output
 
 ## Control Word Module
-- IN    FLAG_Z  <- ALU Module
+- IN    COND_FLAG  <- ALU Module
 - IN    CW0-8, CW17=~{SRC_BANK}, CW18=~{DST_BANK}  <- Microcode_Decoder
 - OUT   ~{ALU_OUT}  -> ALU Module, Memory Data Register
 - OUT   ~{REG_A_LOAD}, ~{REG_B_LOAD}  -> ALU Module, Register Modules
@@ -71,7 +71,7 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 ## Microcode_Decoder
 - IN    IRB0-7  <- Memory Data Register
 - IN    T0-3  <- root
-- OUT   CW10=SA1, CW11=SA0, CW9=SA2  -> ALU Module
+- OUT   CW10=SA1, CW11=SA0, CW21=FLAG_SEL0, CW9=SA2  -> ALU Module
 - OUT   CW0-8, CW17=~{SRC_BANK}, CW18=~{DST_BANK}  -> Control Word Module
 - OUT   CW14=PC_MAR_MUX  -> Memory Address Regiser
 - OUT   CW13=PC_UP  -> Program Counter

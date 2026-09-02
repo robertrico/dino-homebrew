@@ -4231,7 +4231,7 @@
 		)
 		(uuid "fb6f26c3-1724-48a0-ad3b-6a27808de79f")
 	)
-	(label "FLAG_Z"
+	(label "COND_FLAG"
 		(at 27.94 125.73 180)
 		(effects
 			(font

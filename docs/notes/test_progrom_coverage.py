@@ -186,11 +186,55 @@ def test_coverage_is_progressive():
                  "the registers, the flags and the stack all came back intact "
                  "-- and two DIFFERENT bytes popped into SWAPPED registers "
                  "make LIFO order observable rather than decorative",
+        # ---- PHASE F, 2026-08-27 ----------------------------------------
+        "jnc": "THE ONLY IMAGE IN THE WHOLE SET WHOSE ANSWER DEPENDS ON U77. "
+               "Everything else phase F adds is microcode and would pass with "
+               "the '157 unlanded. CMP sets FLAG_C, JNC selects it through "
+               "CW21, and the taken arm is the only path to 0x5A",
+        "jncswap": "THE OTHER DIRECTION, and it is not redundant: a one-sided "
+                   "branch test is passed by a branch wired PERMANENTLY "
+                   "TAKEN, which is exactly what a floating CW21 or a shorted "
+                   "U77.4 produces. Same code, swapped operands, opposite "
+                   "answer",
+        "mov": "LDCI EXECUTES FOR THE FIRST TIME IN THIS MACHINE'S LIFE. C "
+               "was write-only by design -- it is RET's return-address "
+               "scratch and nothing could read it back -- so the gap was "
+               "MICROCODE-SOFT and MOV A,C is the one row that closes it",
+        "ptr": "B:C as an INDEX PAIR, with PROG_sp3's discipline. Three cells, "
+               "a different sentinel in each, planted through the pointer and "
+               "read back down TWO paths: one through the pointer (LDAX) and "
+               "one by ABSOLUTE address (LDB). The absolute path cannot "
+               "inherit a pointer fault, so the two disagree exactly when the "
+               "pointer is wrong -- which is the blindness that let PROG_sp1 "
+               "report a green machine with every bank-1 decode dead",
+        "shl": "the TMP_B shadow doing ARITHMETIC. Two INRs and one DCR, not "
+               "one of each: INR then DCR returns the same byte whether both "
+               "worked or neither did, and no two faults in this sequence "
+               "cancel",
+        # ---- PHASE F+, 2026-08-27 ---------------------------------------
+        "ind": "MEMORY-INDIRECT, the third addressing mode and the only new "
+               "one phase F+ adds. The pointer lives in RAM and the "
+               "instruction names WHERE THE POINTER IS, so a machine that "
+               "ignores the indirection reads the POINTER BYTE and says so "
+               "(0xE0). B is loaded before the LDAM and subtracted after, so "
+               "the answer is wrong if EITHER the data or B is wrong -- the "
+               "mode clobbers C by construction and must not touch B",
+        "indst": "the same mode STORING, read back by ABSOLUTE address so "
+                 "the readback cannot inherit the fault under test. The "
+                 "target is cleared first, so a STAM that never fired reads "
+                 "0x00 rather than a convincing leftover",
+        "indj": "the same mode BRANCHING, with the PC's landing site as the "
+                "observable -- pads, for JMPM. The landing address is "
+                "COMPUTED from the assembled prologue, not counted by hand: "
+                "when the landing site IS the answer, a miscounted offset "
+                "and a broken jump look identical at OB",
     }
     seen = set()
     order = ["probe", "adda", "addb", "real", "dip", "alu", "mem", "flow",
              "loop", "mardisc", "pads", "sp1", "sp2", "sp3", "sp", "calladdr",
-             "callraw", "call", "stack", "ramexec"]
+             "callraw", "call", "stack", "ramexec",
+             "jnc", "jncswap", "mov", "ptr", "shl",
+             "ind", "indst", "indj"]
     check_eq(list(pg.COVERAGE), order, "images in ladder order")
     for tag in order:
         used = {s[0] for s in pg.COVERAGE[tag] if not isinstance(s, str)}
@@ -198,29 +242,88 @@ def test_coverage_is_progressive():
               f"{tag}: adds a new instruction or a declared new behaviour")
         seen |= used
     unreached = set(INSTRUCTIONS) - seen
-    # LDCI is unreachable by design: C is write-only until MOV exists -- and
-    # RET now clobbers C as its return-address scratch, which is the second
-    # reason it stays unavailable to user code.
+    # RULES, NOT A NAME LIST. At 66 instructions the uncovered set could be
+    # enumerated by hand. At 174 a hand list rots on the next addition and
+    # stops being read, which is worse than no list -- so every uncovered
+    # instruction must match exactly ONE rule below, and each rule says what
+    # WOULD cover the family and why nothing does yet.
     #
-    # The stack image exercises all four push/pop variants -- pushing two
-    # DIFFERENT bytes and popping them into SWAPPED registers is what makes
-    # LIFO order observable, so both register pairs are load-bearing rather
-    # than decorative.
-    # IN joined this set in PHASE E, 2026-08-25, and it is a DIFFERENT KIND
-    # of unrun from the other two. LDCI and NOP are unreachable BY DESIGN.
-    # IN is unreachable because its BUS SOURCE RETIRED: U28.7 is unlanded,
-    # SW1 answers at an address instead, and no image emits the opcode.
+    # "Uncovered" is not "unproven". Most of these are one microcode row
+    # whose decoder output is bench-proven by an image that IS here: LDBS is
+    # PUSH's SP->MAR prefix with a different last row, ADI_C is ADI with one
+    # DST code changed. What is untested is the ROW, and a wrong row is one
+    # burn away from a right one.
     #
-    # THE MICROCODE ROW IS STILL IN THE ROM and the opcode still decodes.
-    # Phase E burns no microcode ROM; removing the row would cost a
-    # three-ROM burn for nothing. Executing IN today reads an UNDEFINED
-    # byte, not the park: src=SW asserts SRC_ACTIVE so U25 is enabled, but
-    # SW asserts neither ~{ROM_OUT} nor ~{RAM_OUT}, so READS_IDLE stays
-    # high, ~{IO_RD} stays high, BUS_DIR is LOW, and U25 drives W from a
-    # floating MDR.
-    check_eq(unreached, {"LDCI", "NOP", "IN"},
-             "LDCI (C is RET's scratch) and NOP are unreachable BY DESIGN; "
-             "IN is unreachable because phase E retired its bus source")
+    # THE COUNT IS THE TRIPWIRE. Rules alone would silently absorb a new
+    # instruction; the count makes every addition a deliberate edit here.
+    RULES = [
+        (lambda n: n == "NOP",
+         "does nothing observable -- there is no OB reading that "
+         "distinguishes NOP from the state before it"),
+        (lambda n: n.startswith("MOV"),
+         "one row over a U28/U30 or U70/U71 decoder pair that PROG_mov and "
+         "PROG_sp already drive; the row differs only in which code it names"),
+        (lambda n: n.endswith(("_B", "_C")) or n in ("BIT", "CPX", "CMPB", "TST"),
+         "an ALU row with a different destination or a different '382 "
+         "function code; PROG_alu proves every code and PROG_jnc proves the "
+         "NONE destination"),
+        (lambda n: n in ("ADI", "SUI", "BSUI", "ANI", "ORI", "XRI", "CPI"),
+         "immediate ALU -- LDBI's fetch row followed by an ALU row, and both "
+         "halves are separately covered. An image would only re-prove the "
+         "TMP_B shadow that PROG_shl already leans on"),
+        (lambda n: n.startswith("OUT"),
+         "OB latches MDR, so every OUT variant is the SAME strobe over a "
+         "source that some other image already drives onto the bus"),
+        (lambda n: n.startswith(("PUSH", "POP")),
+         "identical shape to PUSHA/POPA, bench-proven by PROG_sp2"),
+        (lambda n: n.startswith(("LDSP", "STSP", "STPC", "LXI")),
+         "_MARFILL with a pointer half as the source or destination; the "
+         "prefix is LDA's verbatim and the codes are PROG_sp's"),
+        (lambda n: n.startswith("MVI"),
+         "a MAR prefix plus src=ROM dst=RAM. Both halves covered; the new "
+         "thing is only that the byte never passes through a register"),
+        (lambda n: n.startswith("ST") and n[2:].rstrip("XS") in
+                   ("ADD", "SUB", "BSUB", "AND", "OR", "XOR"),
+         "a MAR prefix plus an ALU row writing RAM -- PROG_alu proves the "
+         "ALU, PROG_mem proves the store, and nothing new sits between them"),
+        (lambda n: n in ("LDAS", "STAS", "LDBS", "STBS", "LDCS", "STCS"),
+         "SP-relative: PUSH's SP->MAR prefix with a different final row"),
+        (lambda n: n in ("LDAX", "STAX", "LDBX", "STBX", "LDCX", "STCX",
+                         "JZX", "JCX"),
+         "indexed through B:C -- PROG_ptr covers the prefix and both "
+         "directions through it"),
+        (lambda n: n in ("LDB", "LDC", "STB", "STC"),
+         "LDA/STA's _MARFILL prefix with a different register on the last "
+         "row; PROG_ptr reaches LDB, which is the one whose readback path "
+         "carries the pointer witness"),
+        (lambda n: n.endswith("M") and n.startswith(("LD", "ST", "JMP", "JZ", "JC")),
+         "MEMORY-INDIRECT. LDAM, STAM and JMPM each have their OWN image "
+         "(ind, indst, indj) because this is the only new ADDRESSING MODE, "
+         "the only use of the MDR park outside RET, and the only operand "
+         "shape that writes an address twice. LDBM, JZM and JCM are the "
+         "same eight-row prefix with a different final row"),
+        (lambda n: n in ("RST", "INXSP", "DCXSP", "SPHL", "HLSP", "JMPX",
+                         "JMPSP", "LDCI"),
+         "no (OB, END) fingerprint of its own -- it either restarts the "
+         "program, or only moves a pointer, and the ladder matches images by "
+         "their answer. Same reason PROG_swdemo is not a coverage image"),
+    ]
+    unruled, multi = [], []
+    for name in sorted(unreached):
+        hits = [r for pred, r in RULES if pred(name)]
+        if not hits:
+            unruled.append(name)
+        elif len(hits) > 1:
+            multi.append((name, len(hits)))
+    check_eq(unruled, [],
+             "every uncovered instruction matches a rule that says what "
+             "would cover it")
+    check_eq(multi, [],
+             "no instruction matches two rules -- overlapping rules mean the "
+             "reason printed is arbitrary")
+    check_eq(len(unreached), 135,
+             "the uncovered count is a TRIPWIRE: adding an instruction "
+             "without an image is fine, doing it silently is not")
 
 
 def test_sp_image_gates_phase_b_without_call_ret():

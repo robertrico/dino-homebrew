@@ -174,7 +174,8 @@ _DST = {v: k for k, v in DST.items()}
 _SRC = {v: k for k, v in SRC.items()}
 _MISC = {v: k for k, v in MISC.items()}
 _SA = {v: k for k, v in SA.items()}
-from microcode_gen import SRC_BANK_N, DST_BANK_N, MISC_BANK_N  # noqa: E402
+from microcode_gen import (SRC_BANK_N, DST_BANK_N, MISC_BANK_N,  # noqa: E402
+                           MUX_PC)
 
 RAM_BASE = 0x8000       # ROM 0x0000-0x3FFF, I/O 0x4000-0x7FFF, RAM 0x8000+
 
@@ -196,26 +197,44 @@ def sim_supports(name):
     return True
 
 
+# The '382's CN+4 is only meaningful for the three ARITHMETIC function codes.
+# BSUB=1, SUB=2, ADD=3; CLR=0, XOR=4, OR=5, AND=6, SET=7 are logic modes and
+# the datasheet does not define CN+4 for them.
+#
+# THIS IS WHY _alu_op RETURNS A DEFINEDNESS FLAG rather than a plain 0. An
+# oracle that answered "carry is 0 after AND" would be a STAND-IN BETTER THAN
+# THE HARDWARE -- the defect class that let a rig-emulated bridge pass
+# schematic bug 4, and the same reason the '169 model powers SP up non-zero.
+# simulate() refuses a JNC that reads an undefined carry instead of guessing.
+_CARRY_DEFINED = ("ADD", "SUB", "BSUB")
+
+
 def _alu_op(op, a, b):
+    """(result, carry, carry_is_defined).
+
+    CARRY IS NOT BORROW. ALU_CIN = NAND(SA1, SA0), so SUB (0b010) and BSUB
+    (0b001) both get CIN=1 and the '382 computes A + ~B + 1. CN+4 is then a
+    NOT-borrow: FLAG_C = 1 means A >= B unsigned, FLAG_C = 0 means A < B.
+    That polarity is what makes JNC an unsigned "less than", and inverting it
+    here would make every JNC branch the wrong way while every existing
+    JNZ image still passed."""
     if op == "CLR":
-        return 0, 0
+        return 0, 0, False
     if op == "SET":
-        return 0xFF, 0
+        return 0xFF, 0, False
     if op == "ADD":
         r = a + b
-        return r & 0xFF, (r >> 8) & 1
+        return r & 0xFF, (r >> 8) & 1, True
     if op == "SUB":
-        r = a - b
-        return r & 0xFF, 1 if r < 0 else 0
+        return (a - b) & 0xFF, 1 if a >= b else 0, True
     if op == "BSUB":
-        r = b - a
-        return r & 0xFF, 1 if r < 0 else 0
+        return (b - a) & 0xFF, 1 if b >= a else 0, True
     if op == "XOR":
-        return a ^ b, 0
+        return a ^ b, 0, False
     if op == "OR":
-        return a | b, 0
+        return a | b, 0, False
     if op == "AND":
-        return a & b, 0
+        return a & b, 0, False
     raise BuildError(f"interpreter has no model for SA={op}")
 
 
@@ -264,7 +283,19 @@ def simulate(program, max_steps=100000, switches=0x00,
     sp = SP_POISON
     mdr = 0
     out = None
+    # THE FLAG MODEL. U49 is a '273 with NO clock enable -- it re-clocks every
+    # T-state -- and U48 is a '157 whose select is ~{ALU_OUT}. So the flags
+    # UPDATE on any row that sources the ALU and HOLD on every other row.
+    # That hold is what makes compare-then-branch work: the FETCH, the
+    # immediate loads and the operand states between a CMP and its branch
+    # never assert ~{ALU_OUT}.
+    #
+    # flag_c_defined tracks whether the LAST ALU op was one of the three
+    # arithmetic function codes -- see _CARRY_DEFINED. It is not hardware;
+    # it is the oracle refusing to invent an answer the '382 does not give.
     flag_z = 0
+    flag_c = 0
+    flag_c_defined = False
     # `outs` is the ORDERED history of what OB showed, not just the last
     # value. A never-halting image has no final answer, so the only way to
     # assert one is to compare the SEQUENCE -- which is exactly what a
@@ -308,11 +339,16 @@ def simulate(program, max_steps=100000, switches=0x00,
             sa = _SA[_sa_bits((w >> 9) & 7)]
             halt, pc_up = (w >> 15) & 1, (w >> 13) & 1
 
+            # M carries the PC when CW14 is set and MAR otherwise. One bus,
+            # one address, and every memory access in this state uses it.
+            def _addr_bus():
+                return pc if (w & MUX_PC) else mar
+
             val = None
             if src == "ROM":
                 val = rd(pc)
             elif src == "RAM":
-                val = rd(mar)
+                val = rd(_addr_bus())
                 st["ram_reads"] += 1
             elif src == "REG_A":
                 val = A
@@ -357,7 +393,7 @@ def simulate(program, max_steps=100000, switches=0x00,
             if val is not None and (src in ("ROM", "RAM") or dst == "RAM"):
                 mdr = val
             elif src == "ALU":
-                val, _c = _alu_op(sa, tmp_a, tmp_b)
+                val, flag_c, flag_c_defined = _alu_op(sa, tmp_a, tmp_b)
                 flag_z = 1 if val == 0 else 0       # U48 mux: commits only
                                                     # while ~{ALU_OUT} is low
             if pc_up:
@@ -376,7 +412,20 @@ def simulate(program, max_steps=100000, switches=0x00,
             elif dst == "MAR_HI":
                 mar = (mar & 0x00FF) | (val << 8)
             elif dst == "RAM":
-                ram[mar] = val
+                # THE ADDRESS COMES OFF THE BUS, NOT FROM MAR DIRECTLY. There
+                # is one address bus and CW14 chooses what drives it, so a row
+                # that sets mux_pc writes at the PC no matter what MAR holds.
+                #
+                # Modelling this as `ram[mar]` was KINDER THAN THE HARDWARE
+                # and it hid a real defect: MVI/MVIX/MVIS were encoded
+                # src=ROM dst=RAM, which cannot work, and the oracle reported
+                # them working. check_word refuses those rows now, but the
+                # oracle must not be the thing that would have missed it.
+                a = _addr_bus()
+                if a < RAM_BASE:
+                    st["lost_writes"] = st.get("lost_writes", 0) + 1
+                else:
+                    ram[a] = val
                 st["ram_writes"] += 1
                 st["stored"] = val
             elif dst == "SP_LO":
@@ -389,27 +438,68 @@ def simulate(program, max_steps=100000, switches=0x00,
             elif misc == "PC_LOAD":
                 pc = mar
             elif misc == "COND":
-                # COND_TAKEN = NOR(~{COND}, FLAG_Z): taken when NOT zero
-                if not flag_z:
+                # COND_TAKEN = NOR(~{COND}, COND_FLAG): taken when the
+                # SELECTED flag is ZERO. The machine has exactly ONE branch
+                # polarity; U77 changes which flag, never the sense.
+                #
+                # U77 IS A 2:1 ON CW21 ALONE. CW22 is a no-connect, so this
+                # reads bit 21 and ignores bit 22 exactly as the copper does
+                # -- modelling a 4:1 here would pass encodings the hardware
+                # cannot honour. word() refuses V and N for the same reason.
+                if (w >> 21) & 1:
+                    flag = flag_z                   # S=1 -> I1 = FLAG_Z
+                else:
+                    # S=0 -> I0 = FLAG_C. A carry no arithmetic op defined is
+                    # not 0, it is unknown: the '382 does not specify CN+4 for
+                    # its logic function codes. Refuse rather than guess.
+                    if not flag_c_defined:
+                        raise BuildError(
+                            f"pc=0x{pc:04X}: JNC reads a carry that no "
+                            f"arithmetic op defined -- the last ALU row was a "
+                            f"LOGIC function code and the '382 does not "
+                            f"specify CN+4 for those. Put an ADD/SUB/BSUB "
+                            f"(or CMP/CMPB) before the branch.")
+                    flag = flag_c
+                if not flag:
                     pc = mar
                     st["branches_taken"] += 1
                 else:
                     st["branches_not_taken"] += 1
             elif misc == "REG_OUT_LOAD":
-                out = A
-                st["outs"].append(A)
+                # OB LATCHES THE BUS, NOT THE ACCUMULATOR. NETLIST-EXTRACTED
+                # 2026-08-27, registers_a_b.kicad_sch:
+                #     U44  '245  A side = MDR0-7,  ~CE = ~{REG_OUT_LOAD}
+                #               DIR tied +5V,  B side -> U35.D0-7
+                #     U35  '373  LE = ~{REG_OUT_LE}  (U57.13)
+                # so whatever is on MDR when the strobe fires is what OB
+                # shows. `src=REG_A` was a MICROCODE CONVENTION and never a
+                # wire, which is why OUT-from-anything costs no hardware.
+                #
+                # Modelling this as `out = A` was correct for exactly one
+                # instruction and silently wrong for the sixteen that came
+                # with phase F+.
+                #
+                # val is None only if no source drove the bus at all; then
+                # U25 is off and U44 passes whatever MDR is holding.
+                shown = val if val is not None else mdr
+                out = shown
+                st["outs"].append(shown)
             elif misc == "SP_UP":
                 sp = (sp + 1) & 0xFFFF
             elif misc == "SP_DOWN":
                 sp = (sp - 1) & 0xFFFF
 
             if halt:
-                st.update(out=out, halted=True, A=A, B=B, C=C, flag_z=flag_z)
+                st.update(out=out, halted=True, A=A, B=B, C=C,
+                          flag_z=flag_z, flag_c=flag_c,
+                          flag_c_defined=flag_c_defined, sp=sp)
                 return st
             if (w >> 12) & 1:                       # END
                 st["ends"] += 1
                 break
-    st.update(out=out, halted=False, A=A, B=B, C=C, flag_z=flag_z)
+    st.update(out=out, halted=False, A=A, B=B, C=C,
+              flag_z=flag_z, flag_c=flag_c,
+              flag_c_defined=flag_c_defined, sp=sp)
     return st
 
 
@@ -1326,6 +1416,241 @@ RAMEXEC_PROGRAM = [
 ]
 
 
+# ======================================================================
+# PHASE F WITNESSES, 2026-08-27. SECTION 8 step 4 of .git/sdd/PHASE_F.md,
+# in the order it names, and each one names its OWN failure rather than
+# reporting a bare mismatch.
+#
+# THESE ARE PROGRAM ROMS, NOT MICROCODE. They ride a U24 burn, which is a
+# different chip and a different burn event from U9/U15/U23. Do not read
+# "the phase F burn" as one operation.
+# ======================================================================
+
+# ---- PROG_jnc: the '157 in one image ---------------------------------
+# The ONLY image in the whole set whose answer depends on U77. Everything
+# else in phase F is microcode and would pass with the mux unlanded.
+#
+# TWO IMAGES, NOT ONE, AND THAT IS THE POINT. A one-sided branch test is
+# passed by a branch wired PERMANENTLY TAKEN -- which is exactly what a
+# floating CW21 or a shorted U77.4 would produce. `jnc` must take the
+# branch and `jncswap` must not, with the same code and swapped operands.
+#
+#   0x6C   taken     A < B unsigned, FLAG_C = 0, U77 selected I0 = FLAG_C
+#   0xEE   not taken A >= B
+#
+# and each image reports the OTHER one's answer when it is wrong, so the
+# pair reads as a direction rather than a pass/fail.
+JNC_LO   = 0x10                 # the smaller operand
+JNC_HI   = 0x20                 # the larger
+# 0x6C and 0xEE, not the 0x5A PHASE_F SECTION 8 writes: 0x5A IS ITS OWN
+# BIT-REVERSAL and every coverage answer must differ from its mirror. That
+# rule came from the flipped PORTF->MDR bank, which every round-trip test
+# passed. The document's constant is illustrative; the rule is not.
+JNC_TAKEN     = 0x6C            # mirror 0x36
+JNC_NOT_TAKEN = 0xEE            # mirror 0x77
+
+
+def _jnc_image(a, b):
+    """CMP then JNC. CMP is src=ALU dst=NONE, so A survives the compare --
+    that is the whole reason CMP exists and it is asserted by the fact that
+    neither arm reloads A before OUT... except that both arms DO reload A,
+    because OB is the only observable and the arms have to differ. A's
+    survival is witnessed by PROG_jnc's sibling in the host tests, not here.
+    """
+    return [
+        ("LDAI", POISON), ("OUT",),         # U35 has no reset: poison OB first
+        ("LDAI", a), ("LDBI", b),
+        ("CMP",),                           # SUB with no destination
+        ("JNC", Ref("hit")),
+        ("LDAI", JNC_NOT_TAKEN), ("OUT",), ("HALT",),
+        "hit",
+        ("LDAI", JNC_TAKEN), ("OUT",), ("HALT",),
+    ]
+
+
+JNC_PROGRAM = _jnc_image(JNC_LO, JNC_HI)          # 0x10 <  0x20 -> taken
+JNCSWAP_PROGRAM = _jnc_image(JNC_HI, JNC_LO)      # 0x20 >= 0x10 -> not taken
+
+# ---- PROG_mov: LDCI executes for the first time ----------------------
+# CLAUDE.md has carried "LDCI and NOP have never executed" since the machine
+# was built, and LDCI was unreachable BY DESIGN -- C is RET's return-address
+# scratch and nothing could read it back. MOV A,C is one microcode row and
+# it closes that. This image is the first time in this machine's life that
+# a byte goes into C and comes back out.
+#
+#   0x9C   LDCI wrote C and MOV A,C read it back
+#   0x00   C never took the byte, or MOV A,C sourced nothing
+#   0xFF   the image never reached its OUT
+MOV_SENTINEL = 0x9C             # mirror 0x39; 0x5A is its own mirror
+MOV_PROGRAM = [
+    ("LDAI", POISON), ("OUT",),
+    ("LDAI", 0x00),                     # A must be CLEARED first, or a dead
+                                        # MOV A,C would report LDAI's byte
+    ("LDCI", MOV_SENTINEL),
+    ("MOVAC",),
+    ("OUT",), ("HALT",),
+]
+
+# ---- PROG_ptr: B:C as an index pair ----------------------------------
+# PROG_sp3's DISCIPLINE, AND IT IS NOT OPTIONAL. A pointer test that reads
+# back through the same pointer is blind in the pointer: PROG_sp1 reported a
+# green machine for most of 2026-08-24 while every bank-1 decoder output was
+# dead, because it pushed to [SP] and popped from [SP] and a stuck SP uses
+# the same cell twice.
+#
+# So: three cells, a DIFFERENT sentinel in each, planted through B:C with
+# STAX -- then one read back through the pointer (LDAX) and one read back by
+# ABSOLUTE address (LDB), and the answer is their DIFFERENCE. The absolute
+# read cannot inherit a pointer fault, so the two paths disagree exactly when
+# the pointer is wrong.
+#
+#   0x22   PASS: LDB read 0x33 at ptr+2 absolutely, LDAX read 0x11 at ptr+0
+#   0xCD   the plant never walked -- all three STAX hit ptr+0, so ptr+2 is
+#          unwritten (0x00) and ptr+0 holds the LAST sentinel
+#   0x11   LDAX read ptr+1
+#   0x33   LDAX read an unwritten cell
+#   0xEF   LDB read nothing -- the absolute path is broken, not the pointer
+#   0x00   both paths returned the SAME byte, which is a pointer collapse
+#   0xFF   never reached the OUT
+PTR_BASE = RAM_BASE + 0x200                 # 0x8200, clear of stack and mem
+PTR_CELLS = (0x11, 0x22, 0x33)
+PTR_PROGRAM = [
+    ("LDAI", POISON), ("OUT",),
+] + [
+    step
+    for i, v in enumerate(PTR_CELLS)
+    for step in (("LDBI", (PTR_BASE + i) >> 8),      # B = pointer HIGH
+                 ("LDCI", (PTR_BASE + i) & 0xFF),    # C = pointer LOW
+                 ("LDAI", v),
+                 ("STAX",))                          # [B:C] = A
+] + [
+    # read cell 0 THROUGH the pointer
+    ("LDBI", PTR_BASE >> 8), ("LDCI", PTR_BASE & 0xFF),
+    ("LDAI", 0x00),                         # clear A: a dead LDAX must not
+                                            # report the sentinel it planted
+    ("LDAX",),                              # A <- [B:C] = 0x11 if correct
+    # read cell 2 by ABSOLUTE address -- this path cannot inherit a pointer
+    # fault, which is the whole reason it is here rather than a second LDAX
+    ("LDB", *_addr(PTR_BASE + 2)),          # B <- 0x33 if the plant walked
+    ("BSUB",),                              # B - A
+    ("OUT",), ("HALT",),
+]
+
+# ---- PROG_shl: the four TMP-shadow instructions in one OB ------------
+# SHL/INR/DCR/NOT all lean on the same mechanism -- LE_TMP_B =
+# NOR(~{REG_B_LOAD}, CLK), so the shadow follows the LOAD STROBE and not the
+# opcode -- and all four clobber B.
+#
+# THE SEQUENCE IS CHOSEN SO NO TWO FAULTS CANCEL. Two INRs and one DCR, not
+# one of each: INR followed by DCR would return the same byte whether both
+# worked or neither did, which is the round-trip blindness that made
+# PROG_sp1 useless.
+#
+#   0xA4   PASS
+#   0xD0   SHL dead   (0x2C -> 0x2D -> 0x2E -> NOT 0xD1 -> DCR 0xD0)
+#   0xA6   both INRs dead
+#   0x59   NOT dead
+#   0xA5   DCR dead
+#   0xFF   never reached the OUT
+SHL_START = 0x2C
+SHL_PROGRAM = [
+    ("LDAI", POISON), ("OUT",),
+    ("LDAI", SHL_START),
+    ("SHL",),                               # 0x2C + 0x2C = 0x58
+    ("INR",), ("INR",),                     # 0x5A
+    ("NOT",),                               # 0xA5
+    ("DCR",),                               # 0xA4
+    ("OUT",), ("HALT",),
+]
+
+
+# ---- PROG_ind / PROG_indst / PROG_indj: MEMORY-INDIRECT ---------------
+# THE ONLY NEW ADDRESSING MODE PHASE F+ ADDS, and the only family in it that
+# earns its own images. Everything else phase F+ adds is an existing row with
+# one field changed; this is the RET park generalised, it is the only use of
+# misc=MDR_OUT outside RET, and its operand shape -- the address written
+# TWICE, as `addr` then `addr+1` -- is unlike anything else in the ISA.
+#
+# The pointer lives in RAM. The instruction names WHERE THE POINTER IS, not
+# where the data is, so a machine that ignores the indirection reads the
+# POINTER BYTE and says so.
+IND_PTR   = RAM_BASE + 0xA00        # where the pointer lives
+IND_DATA  = RAM_BASE + 0xABC        # where it points. Low byte 0xBC is NOT a
+                                    # plausible sentinel, so "read the pointer
+                                    # instead of the data" is visible
+IND_SENT  = 0x39                    # the byte at IND_DATA
+IND_B     = 0x9C                    # B, which LDAM must NOT touch
+IND_EXPECT = (IND_B - IND_SENT) & 0xFF          # 0x63
+
+def _ind_operand(p):
+    """LDAM/STAM/JMPM take the pointer's address TWICE. MAR loads only from W
+    and has no increment, so the second half must be addressed explicitly --
+    the assembler is what hides that from the programmer."""
+    return (*_addr(p), *_addr(p + 1))
+
+IND_PROGRAM = [
+    ("LDAI", POISON), ("OUT",),
+    ("MVI", *_addr(IND_PTR), IND_DATA & 0xFF),
+    ("MVI", *_addr(IND_PTR + 1), IND_DATA >> 8),
+    ("MVI", *_addr(IND_DATA), IND_SENT),
+    ("LDBI", IND_B),                        # must survive the indirection
+    ("LDAI", 0x00),                         # a dead LDAM must not report a
+                                            # byte some earlier row left in A
+    ("LDAM", *_ind_operand(IND_PTR)),
+    ("BSUB",),                              # B - A: wrong in EITHER operand
+    ("OUT",), ("HALT",),
+]
+#   0x63  PASS
+#   0x9C  LDAM read an unwritten cell (A stayed 0x00)
+#   0xE0  LDAM read the POINTER's low byte 0xBC -- no indirection happened
+#   0x00  B was clobbered and happens to equal A
+#   0xFF  never reached the OUT
+
+IND_ST_SENT = 0x5B
+INDST_PROGRAM = [
+    ("LDAI", POISON), ("OUT",),
+    ("MVI", *_addr(IND_PTR), IND_DATA & 0xFF),
+    ("MVI", *_addr(IND_PTR + 1), IND_DATA >> 8),
+    ("MVI", *_addr(IND_DATA), 0x00),        # clear the target FIRST, so a
+                                            # STAM that never fired reads 0x00
+                                            # rather than a leftover
+    ("LDAI", IND_ST_SENT),
+    ("STAM", *_ind_operand(IND_PTR)),
+    ("LDAI", 0x00),
+    ("OUTM", *_addr(IND_DATA)),             # read back by ABSOLUTE address --
+                                            # the readback cannot inherit the
+                                            # fault under test
+    ("HALT",),
+]
+#   0x5B  PASS      0x00  STAM never reached IND_DATA      0xFF  no OUT
+
+# The JMPM landing site is COMPUTED, not counted by hand. `pads` is the image
+# that made this a rule: when the PC's LANDING ADDRESS is the observable, a
+# hand-counted offset is a second thing that can be wrong, and the two
+# failures are indistinguishable at OB.
+INDJ_MISS = 0xE7                            # fall-through: JMPM did not jump
+INDJ_HIT  = 0x6C                            # mirror 0x36
+
+
+def _indj(land):
+    return [
+        ("LDAI", POISON), ("OUT",),
+        ("MVI", *_addr(IND_PTR), land & 0xFF),
+        ("MVI", *_addr(IND_PTR + 1), land >> 8),
+        ("JMPM", *_ind_operand(IND_PTR)),
+        ("LDAI", INDJ_MISS), ("OUT",), ("HALT",),
+        "landing",
+        ("LDAI", INDJ_HIT), ("OUT",), ("HALT",),
+    ]
+
+
+# size the prologue with a placeholder, then rebuild with the real target
+INDJ_LAND = len(assemble(_indj(0x0000)[:-4]))
+INDJ_PROGRAM = _indj(INDJ_LAND)
+#   0x6C  PASS -- the PC landed where the RAM pointer said
+#   0xE7  JMPM fell through: the indirection or the PC_LOAD did not happen
+#   0xFF  never reached either OUT
+
 COVERAGE_SW = {"dip": DIP_SW}
 
 COVERAGE = {
@@ -1349,6 +1674,15 @@ COVERAGE = {
     "call": CALL_PROGRAM,
     "stack": STACK_PROGRAM,
     "ramexec": RAMEXEC_PROGRAM,
+    # phase F, 2026-08-27
+    "jnc": JNC_PROGRAM,
+    "jncswap": JNCSWAP_PROGRAM,
+    "mov": MOV_PROGRAM,
+    "ptr": PTR_PROGRAM,
+    "shl": SHL_PROGRAM,
+    "ind": IND_PROGRAM,
+    "indst": INDST_PROGRAM,
+    "indj": INDJ_PROGRAM,
 }
 
 
@@ -1422,6 +1756,23 @@ def build_suite(tests=SUITE_TESTS):
                 f"report one slot away from its cause")
         img[base:base + len(code)] = code
     return bytes(img)
+
+
+def build_image_from_bytes(code, origin=0):
+    """Already-assembled bytes -> a full ROM image.
+
+    The .asm path (asm.py) produces bytes directly, so it needs the padding
+    and the two guards without going back through `assemble()`. Everything
+    below build_image() shares this, so a rule added here reaches both paths.
+    """
+    code = bytes(code)
+    if origin:
+        code = bytes([SAFE_FILL]) * origin + code
+    if len(code) > ROM_WINDOW:
+        raise BuildError("program larger than the ROM WINDOW (0x0000-0x3FFF)")
+    if code and code[0] == DIAG_ZERO:
+        raise BuildError("program byte 0 collides with the diag signature")
+    return code + bytes([SAFE_FILL]) * (ROM_IMAGE - len(code))
 
 
 def build_image(program):

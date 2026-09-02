@@ -43,7 +43,9 @@ for op in range(256):
     assert low(real[op * 16 + 0]) == 0x600E, f"T0 of opcode {op:#04x} not fetch"
 # unused rows = safe-fill END
 assert low(real[0x0F5]) == 0x1000, "safe-fill missing (opcode 0x0F, T5)"
-assert low(real[0xE31]) == 0x1000, "safe-fill missing (opcode 0xE3, T1)"
+# 0xF5 is unassigned and stays that way: 0xFx holds only HALT. Phase F+
+# filled 0xE3, which this line used to name.
+assert low(real[0xF51]) == 0x1000, "safe-fill missing (opcode 0xF5, T1)"
 # NOP
 assert low(real[g.OPCODES["NOP"] * 16 + 1]) == 0x1000
 # loads immediate (LDAI anchored at 0x11 by the addressing spec)
@@ -180,49 +182,6 @@ for name in ("MC_CRC_U9_REAL", "MC_CRC_U15_REAL", "MC_CRC_U23_REAL",
 
 
 
-def test_IN_reads_the_switches_into_B():
-    """IN is the first instruction that makes the machine INTERACTIVE: it puts
-    the SW1 byte on W and latches it into B, so an operand comes off the bench
-    rather than out of the ROM.
-
-    NETLIST-VERIFIED BEFORE ENCODING (2026-08-02), because a field that agrees
-    with its own table and not with the wiring is exactly what the SA bug was:
-
-      input_output.kicad_sch
-        SWITCH-GATE1 is a plain buffer, IS0-7 -> W0-7 with NO permutation
-        (1A1.2->1Y1.18, 1A2.4->1Y2.16, 1A3.6->1Y3.14, 1A4.8->1Y4.12,
-         2A1.11->2Y1.9, 2A2.13->2Y2.7, 2A3.15->2Y3.5, 2A4.17->2Y4.3)
-        both halves enabled together: 1~G.1 and 2~G.19 are the SAME net,
-        ~{SW_OUT}, so src=SW drives all eight bits or none
-        R17-R24 pull IS0-7 to +5V and SW1 pulls them down, so a CLOSED
-        switch reads 0 — the byte is ACTIVE LOW at the bench
-
-      alu.kicad_sch
-        U46 (TMP_B shadow) D0-7 = W0-7, LE = LE_TMP_B
-        U50 is a 74LS02: LE_TMP_B = NOR(~{REG_B_LOAD}, CLK)
-        THE SHADOW LATCHES ON ~{REG_B_LOAD}, NOT ON THE LDBI OPCODE, so any
-        instruction with dst=REG_B fills TMP_B and ADD will see it.
-
-    IN is therefore one microword and no hardware."""
-    assert "IN" in INSTRUCTIONS, "IN is not in the instruction table"
-    length, rows = INSTRUCTIONS["IN"]
-    assert length == 1, f"IN is one byte, not {length}"
-    assert len(rows) == 1, "IN is a single T1 row"
-    w = rows[0]
-    misc, src, dst = (w >> 6) & 7, (w >> 3) & 7, w & 7
-    assert src == SRC["SW"], f"IN must source the switches, not {src}"
-    assert dst == DST["REG_B"], f"IN must land in B (TMP_B shadow), not {dst}"
-    assert w & (1 << 12), "IN needs END — one T1 row and the block must retire"
-    assert not w & (1 << 13), "IN is one byte: no PC_UP beyond the fetch"
-    assert not w & (1 << 15), "IN must not set HALT"
-    assert misc == 0, f"IN needs no misc strobe, got {misc}"
-    real = build_real()
-    op = OPCODES["IN"]
-    assert real[op * 16 + 1] == w, "IN's T1 row is not in the built table"
-    assert low(real[op * 16 + 2]) == 0x1000, "IN's block must safe-fill after T1"
-    check_word(op * 16 + 1, w)          # the police must accept it
-
-
 def test_sa_field_reaches_the_382_uninverted():
     """THE BUG THIS EXISTS FOR: the SA field arrived at the '382s BIT-REVERSED,
     so ADD (011) was executed as AND (110). Three bench images agreed —
@@ -293,16 +252,44 @@ assert g.INERT_THIRD == 0xFF << 16
 assert third(g.FETCH) == 0xFF, "the universal fetch must not touch CW16-23"
 assert third(g.FILL) == 0xFF, "safe-fill must not touch CW16-23"
 
-# Every row that predates the stack must still read 0xFF in the third byte.
-# Named explicitly rather than derived, so adding an instruction that quietly
-# starts using a reserved bit shows up here.
-_STACK_OPS = {g.OPCODES[n] for n in
-              ("LXISP", "CALL", "RET", "PUSHA", "POPA", "PUSHB", "POPB")}
+# Every OTHER row must still read 0xFF in the third byte. Named explicitly
+# rather than derived, so an instruction that quietly starts using a reserved
+# bit shows up HERE rather than on the bench. Each group names WHICH field it
+# spends and why -- a bare list of opcodes would not survive the next phase.
+# THE RULE, NOT A NAME LIST. At 66 instructions the allowed set could be
+# enumerated by hand; at 174 a hand list rots on the next addition and stops
+# being read. So: an opcode may touch CW16-23 if and only if one of its rows
+# names a BANK-1 src/dst code or carries a `cond`. Anything else touching the
+# third ROM means a reserved bit got spent by accident.
+#
+# The COUNT is the tripwire. The rule alone would accept a new instruction
+# silently; the count makes every addition that spends a third-ROM bit a
+# deliberate edit here.
+def _may_touch_third(rows):
+    for w in rows:
+        if not (w & g.SRC_BANK_N) or not (w & g.DST_BANK_N):
+            return True                      # bank 1 selected
+        if not (w & g.MISC_BANK_N):
+            return True
+        if ((w >> 6) & 7) == g.MISC["COND"]:
+            return True                      # FLAG_SEL0/1 + FLAG_POL
+    return False
+
+
+_THIRD_ROM_OPS = {g.OPCODES[n] for n, (_, rows) in g.INSTRUCTIONS.items()
+                  if _may_touch_third(rows)}
+assert len(_THIRD_ROM_OPS) == 68, (
+    f"the third-ROM group is {len(_THIRD_ROM_OPS)}, not 68 -- an instruction "
+    f"started or stopped spending a CW16-23 bit. Deliberate?")
+_actually = {a >> 4 for a in range(4096) if third(real[a]) != 0xFF}
+assert _actually == _THIRD_ROM_OPS, (
+    f"rows touch the third ROM that the rule does not allow: "
+    f"{sorted(hex(o) for o in _actually - _THIRD_ROM_OPS)}")
 for a in range(4096):
-    if (a >> 4) not in _STACK_OPS:
+    if (a >> 4) not in _THIRD_ROM_OPS:
         assert third(real[a]) == 0xFF, (
-            f"row {a:#05x} (opcode {a >> 4:#04x}) uses a third-ROM field, but "
-            f"only the stack instructions should")
+            f"row {a:#05x} (opcode {a >> 4:#04x}) uses a third-ROM field but "
+            f"names no bank-1 code and no cond")
 
 # ---- bank bits are DERIVED from the code, never passed by hand ----
 # word() computes them, so a caller cannot select SP_LO and forget to switch
@@ -421,9 +408,349 @@ except g.BuildError:
 # means to reburn. All three moved on 2026-08-10 because adding an
 # instruction writes rows in EVERY byte of the word -- U9/U15 stay untouched
 # only for changes confined to CW16-23.
-assert g.crc16(bins["U9.bin"][:4096]) == 0xB5B7, "U9 changed -- reburn intended?"
-assert g.crc16(bins["U15.bin"][:4096]) == 0x5174, "U15 changed -- reburn intended?"
-assert g.crc16(bins["U23.bin"][:4096]) == 0x2329, "U23 changed -- reburn intended?"
+# PHASE F, 2026-08-27. All three moved and all three were EXPECTED to move:
+# forty-one new opcodes write rows in every byte of the word, IN's row left,
+# and JNZ gained cond=("Z",1) which clears CW22. U23 would have moved on the
+# JNZ cure alone.
+#
+#   before phase F   U9 0xB5B7   U15 0x5174   U23 0x2329
+#   phase F (66)     U9 0xB111   U15 0xFE5E   U23 0xD8F4   never burned
+#   phase F+ (174)   below. The 66-instruction set was superseded before it
+#                    reached a programmer, so 0xB111/0xFE5E/0xD8F4 name a ROM
+#                    that never existed in silicon. Say so rather than
+#                    leaving three orphan CRCs in the log.
+#   phase F+ (174)   U9 0x99A0   U15 0xBFEF   U23 0xCB8E   MVI was BROKEN
+#   MVI fixed        below. U23 DID NOT MOVE: the fix is confined to CW0-15,
+#                    so only U9 and U15 need reburning.
+#   MVI fixed        U9 0xC64E   U15 0x61BF   U23 0xCB8E
+#   settling states  below. U23 UNCHANGED again: the pad rows spend no
+#                    third-ROM field, so only U9 and U15 need reburning.
+assert g.crc16(bins["U9.bin"][:4096]) == 0xE991, "U9 changed -- reburn intended?"
+assert g.crc16(bins["U15.bin"][:4096]) == 0x33EA, "U15 changed -- reburn intended?"
+assert g.crc16(bins["U23.bin"][:4096]) == 0xCB8E, "U23 changed -- reburn intended?"
+
+
+def test_no_row_asks_the_address_bus_for_two_things():
+    """THE DEFECT THIS EXISTS FOR, found on the bench 2026-08-27.
+
+    There is one address bus. CW14 points M at the PC or at MAR. A ROM fetch
+    needs the PC; a RAM access needs MAR. MVI/MVIX/MVIS were encoded as
+    src=ROM dst=RAM in a single state, which asks for both -- so the mux
+    stayed on the PC and the immediate was written to a ROM address, where
+    it evaporated.
+
+    IT DID NOT FAIL LOUDLY. It failed as a program whose answer CHANGED ON
+    EVERY RESET, because the loop counter MVI was supposed to initialise came
+    from uninitialised RAM instead. Nothing in check_word looked at CW14 at
+    all, so 174 instructions passed the police with three of them unable to
+    work, and the oracle agreed with them because it wrote to `mar` without
+    consulting the mux either."""
+    real = build_real()
+    for a, w in enumerate(real):
+        misc, src, dst = g._fields(w)
+        mux = bool(w & g.MUX_PC)
+        assert not (src == SRC["ROM"] and dst == DST["RAM"]), \
+            f"row {a:#05x}: src=ROM with dst=RAM"
+        assert not (mux and (src == SRC["RAM"] or dst == DST["RAM"])), \
+            f"row {a:#05x}: RAM accessed with the mux on the PC"
+        assert not (src == SRC["ROM"] and not mux), \
+            f"row {a:#05x}: src=ROM with the mux on MAR"
+    for bad, why in (
+            (g.word(end=True, src="ROM", dst="RAM", mux_pc=True, pc_up=True),
+             "src=ROM dst=RAM"),
+            (g.word(end=True, src="RAM", dst="REG_A", mux_pc=True),
+             "src=RAM with mux_pc"),
+            (g.word(end=True, src="REG_A", dst="RAM", mux_pc=True),
+             "dst=RAM with mux_pc")):
+        try:
+            check_word(0x111, bad)
+            raise AssertionError(f"check_word accepted {why}")
+        except g.BuildError:
+            pass
+
+
+def test_MVI_parks_the_byte_in_MDR_and_replays_it():
+    """The cure, and it costs one T-state. Fetch with the mux on the PC and
+    NO destination -- which parks the byte in MDR for free -- then replay it
+    with the mux back on MAR. The replay must be the IMMEDIATELY next state,
+    because MDR holds for exactly one."""
+    for name, nbytes in (("MVI", 4), ("MVIX", 2), ("MVIS", 2)):
+        length, rows = INSTRUCTIONS[name]
+        assert length == nbytes, f"{name} is {length} bytes, want {nbytes}"
+        park, replay = rows[-2], rows[-1]
+        assert (park >> 3) & 7 == SRC["ROM"] and park & 7 == DST["NONE"], \
+            f"{name}: the park row must fetch with no destination"
+        assert park & g.MUX_PC, f"{name}: the fetch needs the mux on the PC"
+        assert (replay >> 6) & 7 == g.MISC["MDR_OUT"], \
+            f"{name}: the next row must replay out of MDR"
+        assert replay & 7 == DST["RAM"], f"{name}: the replay writes RAM"
+        assert not replay & g.MUX_PC, \
+            f"{name}: the write needs the mux back on MAR"
+
+
+# ---- PHASE F, step 2: the free set ---------------------------------------
+# Every test below was written BEFORE the rows existed (RED first, working
+# rule 2). They encode SECTION 2's table and SECTION 6's opcode map from
+# `.git/sdd/PHASE_F.md`, which are themselves netlist-derived.
+
+
+def test_IN_is_retired_from_the_isa():
+    """IN IS GONE, and it left in three stages, each a different KIND of gone.
+
+    PHASE E, 2026-08-25 -- retired in COPPER. `U28.7` unlanded, `~{SW_OUT}`
+    deleted, SW1 answers at an ADDRESS instead (card zero, 0x4000-0x47FF) and
+    `LDA` replaces it. The microcode row survived that step because phase E
+    burned no microcode ROM and deleting a row would have cost a three-ROM
+    burn for nothing.
+
+    PHASE F, 2026-08-27 (Rico) -- retired in the ISA. This burn writes all
+    three ROMs anyway, so the row now costs nothing to remove and 0x52 comes
+    back. Executing `IN` on today's copper reads an UNDEFINED byte, not the
+    park: `src=SW` asserts `SRC_ACTIVE` so `U25` is enabled, but SW asserts
+    neither `~{ROM_OUT}` nor `~{RAM_OUT}`, so `READS_IDLE` stays high and
+    `U25` drives W from a floating MDR. A decodable opcode that reads garbage
+    is worse than no opcode at all.
+
+    So this is the test that stops it coming back."""
+    assert "IN" not in INSTRUCTIONS, "IN's microcode row survived the phase-F burn"
+    assert "IN" not in OPCODES, "IN still owns an opcode"
+    # 0x52 IS REUSED, as OUTB, and that is safe ONLY because the same burn
+    # frees it and reassigns it. No ROM ever exists in which 0x52 means IN
+    # while something else decodes it. Reusing a freed opcode ACROSS burns is
+    # the hazard; within one burn there is no window.
+    assert OPCODES["OUTB"] == 0x52, "0x52 was freed by IN and taken by OUTB"
+    assert not any(g.SRC["SW"] == ((w >> 3) & 7) and not (w & g.SRC_BANK_N) == 0
+                   for _, rows in INSTRUCTIONS.values() for w in rows), \
+        "some row still sources SW"
+
+
+# SECTION 6's map, retyped ONCE here so the encoder and the document cannot
+# drift apart silently. A collision is a BuildError below, not a comment.
+_PHASE_F_OPCODES = {
+    "RST": 0x01,
+    "LDB": 0x23, "LDC": 0x24, "STB": 0x25, "STC": 0x26,
+    "LDAS": 0x27, "STAS": 0x28,
+    "JMPX": 0x35, "JMPSP": 0x36, "JNC": 0x37,
+    "CMP": 0x49, "CMPB": 0x4A, "TST": 0x4B,
+    "SHL": 0x4C, "INR": 0x4D, "DCR": 0x4E, "NOT": 0x4F,
+    "PUSHC": 0x65, "POPC": 0x66,
+    "INXSP": 0x67, "DCXSP": 0x68, "SPHL": 0x69, "HLSP": 0x6A,
+    "LDAX": 0x71, "STAX": 0x72, "LDBX": 0x73, "STBX": 0x74,
+    "LDCX": 0x75, "STCX": 0x76,
+    "MOVAB": 0x81, "MOVAC": 0x82, "MOVBA": 0x83,
+    "MOVBC": 0x84, "MOVCA": 0x85, "MOVCB": 0x86,
+    "MOVASPL": 0x87, "MOVASPH": 0x88, "MOVSPLA": 0x89, "MOVSPHA": 0x8A,
+    "MOVAPCL": 0x8B, "MOVAPCH": 0x8C,
+}
+
+
+def test_phase_f_opcode_map_matches_the_spec():
+    """41 new opcodes, none colliding with the 25 that survive."""
+    for name, op in _PHASE_F_OPCODES.items():
+        assert name in OPCODES, f"{name} has no opcode"
+        assert OPCODES[name] == op, \
+            f"{name} is {OPCODES[name]:#04x}, SECTION 6 says {op:#04x}"
+        assert name in INSTRUCTIONS, f"{name} has an opcode but no rows"
+    assert len(set(OPCODES.values())) == len(OPCODES), \
+        "two mnemonics share an opcode"
+    assert len(_PHASE_F_OPCODES) == 41, "SECTION 2 counts 40 free + JNC"
+
+
+def test_0x00_stays_NOP():
+    """RULED BY RICO 2026-08-27, at the burn, exactly as SECTION 8 scheduled.
+
+    The OPEN was: blank RAM is 0x00 and 0x00 is NOP, so since phase D a PC
+    that lands in unwritten RAM NOP-slides through 28KB and wraps silently --
+    a failed STORE presenting as a failed FETCH. The ruling is KEEP: 0x00 =
+    NOP is what every other 8-bit machine does, a NOP slide is a legitimate
+    idiom, and HALT at 0x00 would make a mistyped immediate stop the machine
+    instead of stepping over it. Recorded here so the question is CLOSED and
+    not re-opened by the next reader of PHASE_F SECTION 8."""
+    assert OPCODES["NOP"] == 0x00
+    assert OPCODES["HALT"] == 0xFF
+
+
+def test_cond_refuses_a_flag_the_mux_cannot_select():
+    """THE TRAP THIS EXISTS FOR, and it is invisible unless something computes.
+
+    `U77` is a 2:1 on `CW21` alone. `CW22` is a NO-CONNECT. `FLAG_SEL` is
+    {C:0b00, Z:0b01, V:0b10, N:0b11}, so `V` and `N` both have bit 0 CLEAR --
+    encoding either would drive `CW21` LOW and hand `U62.3` `FLAG_C`. It
+    would assemble, pass check_word, burn, and branch on the wrong flag with
+    nothing to say so. Refuse it at the encoder until `CW22` is landed."""
+    for flag in ("V", "N"):
+        try:
+            word(end=True, misc="COND", cond=(flag, 1))
+            raise AssertionError(f"cond={flag} encoded with CW22 unlanded")
+        except g.BuildError:
+            pass
+    for flag in ("C", "Z"):
+        word(end=True, misc="COND", cond=(flag, 1))    # must NOT raise
+
+
+def test_cond_refuses_pol_zero():
+    """`word()` documents `taken = flag XOR pol`. The BUILT hardware is
+    `COND_TAKEN = NOR(~{COND}, flag)` -- i.e. `flag XOR 1` -- because there
+    is no '86 in this machine at all. Encoder and copper agree only at
+    `pol=1`, and `pol=0` encodes cleanly today, clears CW23, and would invert
+    every branch the day polarity lands."""
+    try:
+        word(end=True, misc="COND", cond=("Z", 0))
+        raise AssertionError("cond with pol=0 encoded")
+    except g.BuildError:
+        pass
+
+
+def test_jnz_now_names_its_flag_and_clears_cw22():
+    """THE CURE, and it must ride this burn.
+
+    Today's JNZ is a bare `misc="COND"`, which leaves the third ROM's default
+    word: CW21=1, CW22=1, CW23=1. Under FLAG_SEL, {CW22,CW21} = 0b11 is `N`,
+    not `Z`. It behaves as Z only because FLAG_Z was hardwired to U62.3.
+    Land a 4:1 on {CW22,CW21} later without a reburn and every JNZ in the
+    machine becomes JNN. Writing it as cond=("Z",1) drives CW22 to 0 now, so
+    the second mux stage is itself inert when it lands."""
+    w = INSTRUCTIONS["JNZ"][1][-1]
+    assert (w >> 21) & 1, "JNZ must leave CW21 HIGH -- U77 selects I1 = FLAG_Z"
+    assert not (w >> 22) & 1, "JNZ still carries CW22=1: it would become JNN"
+    assert (w >> 23) & 1, "JNZ must leave CW23 (FLAG_POL) HIGH"
+    assert (w >> 6) & 7 == g.MISC["COND"]
+
+
+def test_jnc_is_jnz_but_for_cw21():
+    """JNC is the ONLY instruction in the whole free set that needs the '157,
+    and it differs from JNZ in exactly one bit."""
+    jnz, jnc = INSTRUCTIONS["JNZ"], INSTRUCTIONS["JNC"]
+    assert jnz[0] == jnc[0] == 3, "both are three bytes"
+    assert len(jnz[1]) == len(jnc[1]) == 3
+    assert jnz[1][:2] == jnc[1][:2], "both open with _MARFILL"
+    a, b = jnz[1][-1], jnc[1][-1]
+    assert a ^ b == (1 << 21), \
+        f"JNZ and JNC differ in {a ^ b:#08x}, must be CW21 alone"
+    assert not (b >> 21) & 1, "JNC must drive CW21 LOW to select I0 = FLAG_C"
+
+
+def test_cw21_is_high_on_every_row_that_is_not_a_branch():
+    """The INERT PROOF, still true after the burn.
+
+    `U77`'s select is CW21 and `I1` is FLAG_Z, so every non-branch row must
+    leave CW21 high or the mux would hand U62.3 the carry during rows that
+    have no business touching the condition path. Only JNC may drive it low."""
+    low = sorted((name, t) for name, (_, rows) in INSTRUCTIONS.items()
+                 for t, w in enumerate(rows, 1) if not (w >> 21) & 1)
+    assert low == [("JCM", 9), ("JCX", 3), ("JNC", 3)], \
+        f"CW21 driven low outside the carry branches: {low}"
+    assert (g.FILL >> 21) & 1, "SAFE_FILL must leave CW21 high"
+    assert (g.FETCH >> 21) & 1, "FETCH must leave CW21 high"
+
+
+def test_mov_a_c_retires_the_ldci_gap():
+    """LDCI and NOP are CLAUDE.md's two never-executed instructions, and LDCI
+    is unreachable BY DESIGN: C is RET's return-address scratch and nothing
+    can read it back. That is a MICROCODE-SOFT gap and this is the one row
+    that closes it."""
+    length, rows = INSTRUCTIONS["MOVAC"]
+    assert length == 1 and len(rows) == 1, "MOV A,C is one byte, one row"
+    w = rows[0]
+    assert (w >> 3) & 7 == SRC["REG_C"], "MOV A,C must source C"
+    assert w & 7 == DST["REG_A"], "MOV A,C must land in A"
+    assert w & (1 << 12), "MOV A,C needs END"
+    assert not w & (1 << 13), "one byte: no PC_UP beyond the fetch"
+    check_word(OPCODES["MOVAC"] * 16 + 1, w)
+
+
+def test_no_instruction_reads_the_ALU_the_state_after_loading_it():
+    """THE TIMING FAULT THIS EXISTS FOR, 2026-08-27.
+
+    An instruction that loads an ALU operand and reads the ALU in the VERY
+    NEXT state gives the '382 pair no settling time. At 500kHz all 147
+    subtests of PROG_isa pass; at 1.024MHz the same image returns varying
+    subtest numbers from identical resets. Subtract loses margin first --
+    a '382 complements B before the adder starts, and ADI passed in the same
+    run that SUI failed.
+
+    Every such instruction now carries a SETTLE state. This is the check
+    that a new one cannot be added without it."""
+    bad = []
+    for name, (_, rows) in INSTRUCTIONS.items():
+        for i in range(len(rows) - 1):
+            _, _, d0 = g._fields(rows[i])
+            _, s1, _ = g._fields(rows[i + 1])
+            if d0 in (DST["REG_A"], DST["REG_B"]) and s1 == SRC["ALU"]:
+                bad.append(f"{name} T{i+1}->T{i+2}")
+    assert bad == [], \
+        f"these load an ALU operand and read the ALU in the next state, " \
+        f"with no settling row: {bad}"
+
+
+def test_the_tmp_shadow_instructions_are_two_rows():
+    """SHL/INR/DCR/NOT lean on the shadow:
+    `LE_TMP_B = NOR(~{REG_B_LOAD}, CLK)` follows the LOAD STROBE, not the
+    opcode, so any row with dst=REG_B fills TMP_B and the NEXT row's ALU op
+    sees it. All four CLOBBER B, which is the price and is not hidden."""
+    want = {"SHL": ("ADD", SRC["REG_A"]), "INR": ("SUB", SRC["ALU"]),
+            "DCR": ("ADD", SRC["ALU"]), "NOT": ("XOR", SRC["ALU"])}
+    for name, (sa_name, first_src) in want.items():
+        length, rows = INSTRUCTIONS[name]
+        assert length == 1, f"{name} is one byte"
+        assert len(rows) == 3, f"{name} is three rows, got {len(rows)}"
+        assert (rows[0] >> 3) & 7 == first_src, f"{name} row 1 source"
+        assert rows[0] & 7 == DST["REG_B"], f"{name} row 1 must fill TMP_B"
+        assert rows[1] == g.SETTLE, (
+            f"{name} row 2 must be the SETTLING state -- the '382 pair "
+            f"needs a state between the operand latch closing and the "
+            f"ALU being read")
+        assert (rows[2] >> 3) & 7 == SRC["ALU"], f"{name} row 3 is the ALU op"
+        assert rows[2] & 7 == DST["REG_A"], f"{name} row 3 lands in A"
+        assert g.SA[sa_name] == g._sa_bits((rows[2] >> 9) & 7), \
+            f"{name} row 3 must be sa={sa_name}"
+        assert rows[2] & (1 << 12), f"{name} must END"
+
+
+def test_the_compares_write_no_destination():
+    """CMP/CMPB/TST exist because `U49` has NO CLOCK ENABLE -- it re-clocks
+    every T-state and `U48`'s select is `~{ALU_OUT}`, so an ALU row sets the
+    flags whether or not anything latches the result. DST 0 is `U30.O0`, the
+    NONE slot, a no-connect by design."""
+    for name, sa_name in (("CMP", "SUB"), ("CMPB", "BSUB"), ("TST", "OR")):
+        length, rows = INSTRUCTIONS[name]
+        assert length == 1 and len(rows) == 1, f"{name} is one byte, one row"
+        w = rows[0]
+        assert (w >> 3) & 7 == SRC["ALU"], f"{name} sources the ALU"
+        assert w & 7 == DST["NONE"], f"{name} must have NO destination"
+        assert g.SA[sa_name] == g._sa_bits((w >> 9) & 7), f"{name} sa"
+        assert w & (1 << 12), f"{name} must END"
+
+
+def test_the_pointer_instructions_load_both_mar_halves_first():
+    """`_check_mar_before_ram` polices this globally; this names the shape.
+    B:C is the index pair -- C is the LOW byte because MAR_LO is loaded
+    first, and a swapped pair is an off-by-256 that a same-pointer round
+    trip cannot see (the PROG_sp1 lesson)."""
+    for name in ("LDAX", "LDBX", "LDCX", "STAX", "STBX", "STCX"):
+        length, rows = INSTRUCTIONS[name]
+        assert length == 1, f"{name} is one byte -- the pointer is in B:C"
+        assert len(rows) == 3, f"{name} is three rows"
+        assert (rows[0] >> 3) & 7 == SRC["REG_C"] and rows[0] & 7 == DST["MAR_LO"]
+        assert (rows[1] >> 3) & 7 == SRC["REG_B"] and rows[1] & 7 == DST["MAR_HI"]
+    for name in ("LDAS", "STAS", "JMPSP"):
+        rows = INSTRUCTIONS[name][1]
+        assert rows[:2] == g._SP_TO_MAR, f"{name} must open with the SP->MAR prefix"
+
+
+def test_every_new_row_survives_the_police():
+    """check_word + check_table over the built image is the real gate; this
+    fails NAMING THE INSTRUCTION rather than the row address, because a bare
+    row number in a 4096-entry table is a blind counter."""
+    for name, (_, rows) in INSTRUCTIONS.items():
+        base = OPCODES[name] * 16
+        for t, w in enumerate(rows, 1):
+            try:
+                check_word(base + t, w)
+            except g.BuildError as e:
+                raise AssertionError(f"{name} T{t}: {e}")
+    build_real()
+
 
 # ---- runner -------------------------------------------------------------
 # ENUMERATED, not a hand-written list. A tuple of names is a step someone has

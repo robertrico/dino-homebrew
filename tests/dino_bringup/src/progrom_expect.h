@@ -61,7 +61,7 @@ static const uint8_t PR_PROGRAM[PR_PROGRAM_LEN] PROGMEM = {
    because OB is the only datapath observable on the block
    ladder. Burn as needed; PROG.bin (the milestone) is never
    regenerated under another name. */
-#define PR_COV_COUNT 19u
+#define PR_COV_COUNT 27u
 typedef struct { const char *name; uint16_t crc;
                  uint8_t expect_ob; uint8_t expect_ends;
                  uint8_t sw; uint8_t needs_sw; } prcov_t;
@@ -85,4 +85,12 @@ static const prcov_t PR_COVERAGE[PR_COV_COUNT] = {
     {"call", 0x14C9u, 0x4Bu, 8u, 0x00u, 0u},
     {"stack", 0x1A77u, 0x27u, 13u, 0x00u, 0u},
     {"ramexec", 0x9BC7u, 0x6Eu, 21u, 0x00u, 0u},
+    {"jnc", 0x64C0u, 0x6Cu, 8u, 0x00u, 0u},
+    {"jncswap", 0x3841u, 0xEEu, 8u, 0x00u, 0u},
+    {"mov", 0x234Bu, 0x9Cu, 6u, 0x00u, 0u},
+    {"ptr", 0x8F67u, 0x22u, 21u, 0x00u, 0u},
+    {"shl", 0x0E11u, 0xA4u, 9u, 0x00u, 0u},
+    {"ind", 0x9B7Eu, 0x63u, 10u, 0x00u, 0u},
+    {"indst", 0xAB5Bu, 0x5Bu, 9u, 0x00u, 0u},
+    {"indj", 0x81A8u, 0x6Cu, 7u, 0x00u, 0u},
 };

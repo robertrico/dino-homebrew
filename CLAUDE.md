@@ -78,9 +78,74 @@ HALT` → `OB = 0x4D`. The leading `LDAI 0xFF; OUT` poisons OB deliberately:
 the previous answer. `PROG_in` substitutes SW1 for the second addend;
 confirmed at SW1=0x01 → 0x30 and SW1=0x1E → 0x4D.
 
-**FACT — timing is not a concern at 1.024MHz.** Blocks 4 and 5 free-run with
-Y1 seated. "Works single-stepped, fails free-run" was watched for and never
-appeared.
+**FACT — 147 INSTRUCTIONS PASS ON HARDWARE AT 1.024MHz, 2026-09-01.**
+`PROG_isa` reads `0xB4`. The ISA is bench-proven at full speed. What
+unblocked it was replacing `U56` — a damaged `74HC14`, now an `SN7414` —
+and rewiring its reset chain through a second inverter section. Before
+that the machine reset itself roughly every 200ms and no program of any
+kind could run longer.
+
+**OPEN — a ~0.3% residual, 2026-09-01.** `PROG_isasoak` (64 passes, 9408
+subtest executions) reports 27-34 failures, plus about one non-completion
+in eight runs. A single 147-subtest pass is clean most of the time, which
+is why `PROG_isa` reads `0xB4` while the soak does not. `PROG_isasoak` at
+500kHz is the free discriminator between timing margin and marginal
+connections.
+
+**FACT — THE RANDOM HALT WAS THE GROUND RETURN, 2026-09-01, later the same
+day.** `PROG_isalive` died at pass 3..52 (`0C 24 21 34 03`) on a bare board
+and completed 20/20 as `PROG_isawhere`; a DMM on the ground pins, DC,
+black lead on the supply terminal, machine running, read `U27.7 142mV`,
+`U6.8 342mV`, `U15.14 460mV`. Two chips on one board 200mV apart, and the
+microcode ROM's LOW arriving at `U61` with 80mV of DC margin. Rico starred
+GND and VCC to each board; isalive now reads `0xB4` every run, and
+**`PROG_isasoak` reads `0x00` on 50 consecutive runs** — 470,400 subtest
+executions, zero miscompares. **The ~0.3% residual above is CLOSED; the
+ISA is clear on the record.** Post-fix rails: worst board 180mV, best 5mV,
+table in `.git/sdd/HANDOFF_HALT.md`. Seven boards still sit at 124-180mV
+and are the first suspects if anything analog returns. The 22pF that was
+tried on `U61.5` must be confirmed OUT.
+
+**FACT — timing WAS believed to be a concern at 1.024MHz for the EXTENDED
+ISA, 2026-08-27, AND THAT READING IS SUSPECT.**
+The old sentence here read "timing is not a concern at 1.024MHz", and it was
+true of the 25-instruction machine it was written for. It is not true of the
+174-instruction one.
+
+**AT 500kHz `PROG_isa` READS `0xB4`: ALL 147 SUBTESTS PASS.** Every
+instruction is functionally correct and no microcode row is wrong. At
+1.024MHz the same image returns varying subtest numbers from identical
+resets, which is a timing margin, not a logic fault.
+
+**23 instructions load an ALU operand and consume it in the VERY NEXT
+T-state**, with no settling state between the latch closing and the '382
+pair being read:
+
+    src=ROM   -> REG_B, then ALU   19   the whole 0xCx immediate family
+                                        ADI/SUI/BSUI/ANI/ORI/XRI x {A,B,C}
+                                        plus CPI
+    src=ALU   -> REG_B, then ALU    3   INR, DCR, NOT
+    src=REG_A -> REG_B, then ALU    1   SHL
+
+Every other instruction loads its ALU operand in a PREVIOUS instruction, so
+the operand latch has a whole fetch state to settle. That is why the
+25-instruction machine never saw this and why the sentence above was true
+when it was written.
+
+**Inference, not yet measured: the critical path is the microcode ROM access
+plus the '382 pair's RIPPLE CARRY** (U38's `CN+4` into U40's `CN`) plus the
+U47/U25 return to `REG_A`, all inside one T-state. A scope on `U40`'s
+outputs against `CLK` would settle it; nobody has done that.
+
+**THE SETTLING STATES WENT IN, AND WHETHER THEY WERE NEEDED IS OPEN.** The
+`SUI` failure that motivated them was deterministic across boot-vs-reset —
+but that is exactly the axis a randomly-resetting machine corrupts, and
+`U56` was dying at the time. The pads cost one T-state on 23 instructions
+and are harmless. **Removing them and re-running `PROG_isa` is the honest
+test, and it has not been done.**
+
+Blocks 4 and 5 free-run with Y1 seated. "Works single-stepped, fails
+free-run" was watched for and never appeared on the old ISA.
 
 **FACT — PHASE B IS ON SILICON as of 2026-08-24.** The stack pointer, both
 bank-1 decoders and the third EEPROM are bench-proven. `PROG_sp` returns
@@ -307,15 +372,112 @@ land it when the first write-capable card exists.
 
 Read `.git/sdd/PHASE_E.md` for the spec and the RESULT sections.
 
+**FACT — PHASE F STEP 1 IS IN COPPER, 2026-08-27 (Rico).** `U77` is wired:
+`FLAG_C`→`U77.2`, `FLAG_Z`→`U77.3`, `CW21`→`U77.1`, `U77.4`→`U62.3`, `~G` to
+GND. What remains for step 1 is its WITNESS, not its build: `PROG_suite`
+SW1=1..12 must read `6B 40 C5 39 39 15 27 53 2C 4B 27 6E` bit-identical
+against the CURRENT ROMs, before any reburn. The mux is inert by
+construction, so a moved value names a broken wire on a three-wire change.
+
+**FACT — THE ISA IS 174 INSTRUCTIONS, 2026-08-27, AND NONE OF IT IS BURNED.**
+Phase F wrote 41; phase F+ added 108 more the same day. **Zero packages, zero
+new decoder outputs, zero wires.** An exhaustive enumeration over the landed
+SRC/DST/MISC codes found 227 distinct legal row sequences, 55 of which were
+already the ISA; 108 of the remaining 172 survived curation. 82 opcodes free.
+
+**The binding constraint is now the 256-entry opcode map, not the hardware.**
+All 172 would have left 18 free, and family 9 (`SHR`/`MOV A,FLAGS`/`ADC`/
+`SBB`) plus the `CW22`/`CW23` branch families already claim 10 of those.
+`0x9x` is RESERVED for hardware-gated opcodes and high-nibble-is-family still
+holds, because that is what makes a byte hand-disassemblable at the bench.
+
+**FACT — OB LATCHES MDR, NOT THE ACCUMULATOR**, netlist-extracted from
+`registers_a_b.kicad_sch` 2026-08-27: `U44` is a `'245` with `DIR` tied
+`+5V`, its A side on `MDR0-7` and `~CE = ~{REG_OUT_LOAD}`, feeding `U35.D0-7`;
+`U35.LE` is `~{REG_OUT_LE}`. **`src=REG_A` on `OUT` was a microcode
+convention and never a wire**, so `OUT` from B, C, either pointer half, an
+immediate, memory in three addressing modes or an ALU result costs nothing
+and always could have. The oracle modelled `out = A` and was silently wrong
+the moment the source varied.
+
+**FACT — the machine has MEMORY-INDIRECT addressing.** `LDAM`/`LDBM`/`STAM`/
+`JMPM`/`JZM`/`JCM`, five bytes, `RET`'s MDR park generalised. `src=RAM`
+cannot write MAR, so the pointer's LO byte parks in C, MAR is re-pointed at
+the HI byte, and that byte is parked in MDR and **replayed immediately**.
+**The assembler emits the address twice** (`addr`, `addr+1`) because MAR
+loads only from W and has no increment. Clobbers C; **B survives**, which is
+what makes it beat `LDC addr; LDB addr+1; LDAX`.
+
+**FACT — PHASE F STEP 2 IS WRITTEN AND HOST-GREEN, AND NOTHING IS BURNED.**
+`U77` (`74LS157`) and `C82` are drawn on the ALU sheet, `COND_FLAG` is
+labelled on both sheets and `U62.3` has moved off `FLAG_Z`. All four checks
+are clean — `--continuity U77` lists exactly four new pins, `--since` shows
+the ONE predicted copper change (`U62.3 FLAG_Z -> COND_FLAG`), and the ERC
+delta leaves `net_not_bus_member` at 4. **What remains is three wires and one
+pin lift, and then `PROG_suite` SW1=1..12 must read `6B 40 C5 39 39 15 27 53
+2C 4B 27 6E` bit-identical** — the mux is inert by construction, so a moved
+value names a broken wire on a three-wire change.
+
+**FACT — PHASE F STEP 2 IS WRITTEN AND HOST-GREEN, AND NOTHING IS BURNED.**
+One hundred and forty-nine instructions are in `microcode_gen.INSTRUCTIONS`
+and in the oracle. **`LDCI` and `NOP` are still the two never-executed
+instructions on SILICON** — `MOV A,C` retires `LDCI` the
+moment `U9`/`U15`/`U23` are burned, and not before. Say which side of the
+burn a claim is on.
+
+    U9   0xB5B7 -> 0x99A0        re-pinned in test_microcode_gen.py, so a
+    U15  0x5174 -> 0xBFEF        reburn is deliberate and a surprise CRC
+    U23  0x2329 -> 0xCB8E        move is a failing host test
+
+    PROG_jnc 0x6C   PROG_jncswap 0xEE   PROG_mov   0x9C
+    PROG_ptr 0x22   PROG_shl     0xA4
+    PROG_ind 0x63   PROG_indst   0x5B   PROG_indj  0x6C
+
+The 66-instruction CRCs `0xB111`/`0xFE5E`/`0xD8F4` name a ROM that never
+existed in silicon: phase F+ superseded it the same day, before it reached a
+programmer. Recorded so three orphan numbers in the session log mean
+something.
+
+`PROG_suite` is UNCHANGED at crc `0x8A1C`: the regression that proves the mux
+inert must not move while it is proving it.
+
+**DECISION 2026-08-27 (Rico), taken at the burn exactly as `PHASE_F.md`
+SECTION 8 scheduled: `0x00` STAYS `NOP`.** The OPEN is closed. The
+diagnostic argument for moving it — since phase D a PC landing in unwritten
+RAM NOP-slides through 28KB and wraps, so a failed STORE presents as a failed
+FETCH — was heard and rejected: a NOP slide is a legitimate idiom and `HALT`
+at `0x00` would make a mistyped immediate stop the machine instead of
+stepping over it.
+
+**DECISION 2026-08-27 (Rico): `IN` IS RETIRED FROM THE ISA, not merely from
+copper, and `0x52` is free.** Phase E retired it in copper (`U28.7`
+unlanded, `~{SW_OUT}` deleted, SW1 is memory at card zero) but kept the
+microcode row because phase E burned no microcode ROM. This burn writes all
+three anyway. Keeping it would have left a decodable opcode that reads
+GARBAGE: `src=SW` asserts `SRC_ACTIVE` so `U25` is enabled, but SW asserts
+neither `~{ROM_OUT}` nor `~{RAM_OUT}`, so `U25` drives `W` from a floating
+MDR.
+
+**FACT — the oracle now models `FLAG_C`, and it REFUSES to invent one.**
+`ALU_CIN = NAND(SA1,SA0)`, so `SUB`/`BSUB` get `CIN=1` and the '382's `CN+4`
+is a NOT-borrow: `FLAG_C = 1` means `A >= B` unsigned. **OPEN — `CN+4` after
+a LOGIC function code has never been measured**, and the '382 does not define
+it, so `simulate()` raises on a `JNC` that reads a carry no arithmetic op
+produced rather than answering 0. One scope reading on `U40.14` after an
+`AND` closes it. A stand-in better than the hardware hides defects.
+
 **FACT — all four flags are latched TODAY**, netlist-extracted from
 `dino_v0_0_2/alu.kicad_sch` on 2026-08-25. `U49` is a `'273` clocked on
 `~{CLK}` holding `FLAG_C`/`FLAG_Z`/`FLAG_V`/`FLAG_N`, and `U48` is a `'157`
 whose select is `~{ALU_OUT}` — so the flags UPDATE when the ALU is the source
 and HOLD otherwise. That hold is why a `Z` set by `AND` survives to a `JNZ`
 two instructions later, which every poll loop leans on. **The only thing
-missing is the branch SELECT:** `U62` g1 hardwires
-`COND_TAKEN = NOR(~{COND}, FLAG_Z)`, and `CW21`/`CW22`/`CW23` on `U23` are
-no-connects. One `'157` section closes it — see `.git/sdd/PHASE_F.md`.
+missing was the branch SELECT**, and it is drawn: `U62` g1 computes
+`COND_TAKEN = NOR(~{COND}, COND_FLAG)`, `COND_FLAG` comes off `U77.4`, and
+`CW21` is a real crossing. `CW22`/`CW23` on `U23` are still no-connects, and
+`word()` now REFUSES to encode a flag or a polarity they would be needed for
+— `V` and `N` both have `FLAG_SEL` bit 0 clear, so either would drive `CW21`
+low and silently branch on the carry. See `.git/sdd/PHASE_F.md`.
 
 **FACT — `ALU_CIN = NAND(SA1, SA0)`.** `U53` is a `74LS08` (pins 12,13 -> 11
 = `AND(SA1, SA0)`) and `U50` g4 is a `74LS02` section wired as an inverter,
@@ -560,6 +722,79 @@ not because they are principles.
   off-by-one names its direction. **Any new pointer needs an image that reads
   a cell only a MOVED pointer reaches, and reads it by a path that cannot
   inherit the fault under test.**
+- **A FAULT THAT IS INDEPENDENT OF WHAT THE MACHINE IS EXECUTING IS NOT IN
+  THE DATAPATH.** 2026-09-01, and it cost fifteen diagnostic ROM images.
+  Nine different loops -- no RAM, one read, one write, conditional branch,
+  unconditional branch, only-original-instructions, and each new
+  instruction on its own -- ALL died at the same ~200ms wall clock. That
+  uniformity WAS the answer and it was visible after the third
+  measurement: when changing the program changes nothing, the program is
+  not the variable. The cause was the reset circuit asserting itself
+  ~90ms after power-up. **Before writing an instruction-level test, check
+  that instruction-level differences move the result at all.**
+- **START WITH THE RAILS. 2026-09-01, ROOT CAUSE OF THE RANDOM HALT.** A
+  fault that is program-dependent, random, probe-sensitive and answers to
+  a 22pF on a logic input is not a logic fault. DMM, DC, black lead on the
+  SUPPLY terminal, red on one GND pin and one VCC pin per board, machine
+  running. Thirty seconds. The day this was finally done it read `U27.7
+  142mV, U6.8 342mV, U15.14 460mV`: LS LOWs from the microcode board were
+  arriving at the clock board's NOR with 80mV of DC margin, and every CLK
+  edge's ground bounce ate it. `HALT` and `END` both glitched into `U6`.
+  Bulk caps do nothing for DC drop — the fix is copper: supply entry at
+  the centre boards, GND and VCC starred to every board. **Rico's rule:
+  computers are analog; when a fault is not in the program, measure the
+  rails before building a single logic model.** For the PCB: ground
+  plane, star or per-board power entry, and this is why. Sister rule
+  below found the same class of fault on a single node; this one is the
+  whole machine.
+- **A VOLTAGE INSIDE A SCHMITT'S HYSTERESIS BAND IS A RANDOM-EVENT
+  GENERATOR. 2026-09-01, ROOT CAUSE OF A THREE-DAY HUNT.** The reset RC
+  node sat at **2.45V** -- ~255uA being sunk against `R1`'s 10k. A
+  `74HC14` at 5V has `VT+ ~2.9V` and `VT- ~2.0V`, so the node sat squarely
+  BETWEEN the thresholds: the Schmitt held its last state and any noise
+  flipped it. The machine reset itself at random, roughly every 200ms.
+  **The sink was `U56` ITSELF -- the '14's input was damaged**, not `C1`.
+  C1 was suspected first because a leaky electrolytic is the usual answer
+  to that measurement; lifting it settled the question in one step, which
+  is why lifting is worth doing before replacing.
+  **`U56` IS NOT ONLY THE RESET SCHMITT.** Its section 1 inverts `T3` for
+  the T-state decoders -- `U8.6` takes `T3`, `U7.6` takes its complement --
+  so a damaged part there corrupts T-STATE DECODING, which is program-
+  independent random misexecution. Suspect the whole package, not the one
+  section whose symptom you noticed.
+  **The signature: the fault was independent of the program, worse with
+  handling, and vanished entirely while the reset button was HELD** --
+  because holding it pulls the node to a clean 0V. Measured with a DMM in
+  thirty seconds once anyone looked at the node instead of the datapath.
+- **THE RESET CIRCUIT IS ALSO INVERTED AS DRAWN, 2026-09-01.** `U56` is a
+  `74HC14` -- an INVERTING Schmitt -- with `R1` 10k pulling the node UP and
+  `C1` 10uF to ground, so `RST_SIG` starts HIGH (reset released, machine
+  runs) and falls LOW after `10k x 10uF ~= 90ms` (reset asserted, and it
+  stays asserted because C1 stays charged). Holding the button discharges
+  C1 and the machine runs; releasing it kills the machine ~90ms later.
+  The symptom is a machine that runs for a fifth of a second and stops,
+  regardless of program. **Fix: route `RST_SIG` through a second `'14`
+  section -- `U56` has four spare -- which also gives the machine the
+  power-on reset it has never had.** The reset circuit was changed after
+  the 81-minute `PROG_flow` soak, which is why that result and this one do
+  not contradict each other.
+- **A LOOSELY SEATED DECOUPLING CAP IS WORSE THAN NO CAP.** Rico,
+  2026-08-27, after a full day lost to it. A cap on a marginal contact is
+  an inductive stub across the rail, not a bypass. The signature is
+  behaviour that depends on POWER-UP HISTORY rather than on inputs: the
+  same ROM returning a correct answer on power-up and a wrong one after
+  RESET, the same program drifting between sessions, and a fault that
+  worsens monotonically as the boards are handled. **Combinational logic
+  cannot depend on what ran before it.** When a reading does, stop
+  building logic models and go press on the passives -- five successive
+  models were fitted to that noise before the caps were reseated, and
+  every one of them was wrong. Reseating restored it. Corollary: after
+  ANY session of repeated chip swaps, re-seat the decoupling before
+  trusting a single reading, because every pull flexes the board.
+- **A single-shot test on a marginal board reports noise with a straight
+  face.** Repeat the operation N times inside one image and pass only on
+  unanimity. `PROG_sui16` is the pattern -- sixteen identical subtests,
+  one verdict.
 - **The instrument can BE the cure.** Probing `CLK` at `U63.2` added ~10-15pF,
   damped a ringing edge, and made the fault vanish — so every attempt to
   observe it suppressed it, and at 20MS/s the runt was under one sample
@@ -685,18 +920,24 @@ LIVE — read these:
 
     .git/sdd/PHASE_E_PLAN.md                 the eight-task implementation plan
                                              for phase E. START HERE
+    .git/sdd/PHASE_F_STEP_1_LANDING.md       U77's landing list: the four pins,
+                                             the one lift, and the inert proof
     .git/sdd/PHASE_E.md                      the phase E SPEC: a 16K I/O window
                                              carved out of ROM space at
                                              0x4000-0x7FFF, eight 2K card slots
                                              decoded on M11-M13, the published
                                              bus, IN retires, the DIP switch
-                                             becomes card zero. SPECCED
-                                             2026-08-25, NOT on silicon
+                                             becomes card zero. ON SILICON
+                                             AND COMPLETE 2026-08-26
     .git/sdd/PHASE_F.md                      ISA extension: one '157, then
                                              everything soft. Independent of E
                                              and G in both directions. Carries
                                              the collision-free opcode map
-                                             (SECTION 6). SPECCED, not built
+                                             (SECTION 6). STEP 1 DRAWN, STEP 2
+                                             WRITTEN AND HOST-GREEN, NOTHING
+                                             BURNED. Read its RESULTS section
+                                             FIRST -- the spec above it
+                                             predates the rulings
     .git/sdd/PHASE_G.md                      the serial card: '138 + '245 +
                                              PC16550D. Follows E; does NOT
                                              depend on F. SPECCED, not built

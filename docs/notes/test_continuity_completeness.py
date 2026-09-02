@@ -202,14 +202,35 @@ def test_refs_list_includes_a_new_chips_own_on_board_wiring():
 def test_single_pin_stubs_are_bucketed_not_listed_as_work():
     rows = continuity_checklist(ROOT, ["U23"])
     listed = {net for net, _, _ in rows}
-    assert "CW16" not in listed, (
+    assert "CW16/~{CIN_SEL}" not in listed, (
         "CW16 is a U23 output wired to nothing — it must not appear as a wire "
         "to land. Unwired CW bits are correct, not a failed label.")
 
+    # RESERVE_BITS, not a second hand-written list. A tuple someone has to
+    # remember to update is the failure test_suite_reachability.py exists for,
+    # and this test drifted from the ledger once already when the aliases
+    # landed on 2026-08-27.
     stubs = kicad_contracts.unlanded_stubs(ROOT, ["U23"])
-    assert set(stubs) >= {"CW16", "CW19", "CW20", "CW21", "CW22", "CW23"}, (
-        f"the six unwired U23 outputs must be reported as no-connects so they "
+    assert set(stubs) >= RESERVE_BITS, (
+        f"the unwired U23 outputs must be reported as no-connects so they "
         f"are accounted for rather than silently missing; got {sorted(stubs)}")
+
+
+def test_cw21_is_a_real_crossing_now_that_the_flag_mux_consumes_it():
+    """PHASE F, 2026-08-27. U77.1 is CW21's first consumer in the machine's
+    life, so it must appear as WORK TO LAND and not in the no-connect bucket.
+
+    This is the regression for the fault the stub bucket caught on the day:
+    the ALU sheet carried FLAG_SEL0 alone while U23.17 carried CW21 alone,
+    which is two nets and a floating select input. A floating LS input reads
+    HIGH, which is the value that makes the mux look correct and JNC dead."""
+    rows = continuity_checklist(ROOT, ["U77"])
+    listed = {net for net, _, _ in rows}
+    assert "CW21/FLAG_SEL0" in listed, (
+        "CW21 must be a crossing now — U77.1 consumes it. Got: "
+        f"{sorted(listed)}")
+    assert "CW21/FLAG_SEL0" not in set(kicad_contracts.unlanded_stubs(
+        ROOT, ["U77"])), "CW21 has a consumer; it is not a stub any more"
 
 
 def test_default_report_is_unchanged_by_the_refs_relaxation():
@@ -251,7 +272,19 @@ def test_default_report_is_unchanged_by_the_refs_relaxation():
 # Until then this test pins the exact set. A NEW stub fails immediately, which
 # is the whole point -- a tool's silence is not coverage.
 
-RESERVE_BITS = {"CW16", "CW19", "CW20", "CW21", "CW22", "CW23"}
+# RENAMED 2026-08-27, PHASE F. The five remaining reserve bits gained their
+# function aliases on the microcode sheet when CW21 got FLAG_SEL0 -- the whole
+# CW16-CW23 group was labelled in one pass rather than one at a time. Every
+# alias sorts AFTER its CWnn (a leading "~{" or an F), so CWnn keeps the net
+# name and stays on the CW[0..23] bus.
+#
+# CW21 LEFT THIS LEDGER the same day: U77.1 (the flag mux '157's S input) is
+# its first consumer ever, so it is a genuine crossing now and appears on the
+# checklist proper as CW21/FLAG_SEL0 against U23.17. That is what an alias
+# binding for the first time looks like -- "an alias binds only when its
+# consumer pin exists".
+RESERVE_BITS = {"CW16/~{CIN_SEL}", "CW19/~{MISC_BANK}", "CW20/~{ADDR_SEL1}",
+                "CW22/FLAG_SEL1", "CW23/FLAG_POL"}
 
 # PHASE E, 2026-08-25. U75's three published strobes have no consumer in the
 # CORE and are not supposed to have one: they are the bus DINO publishes, and

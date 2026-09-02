@@ -86,23 +86,46 @@ def test_memory_addresses_stay_in_ram():
                     f"seed {seed}: {step} out of the pinned RAM window"
 
 
-def test_uses_in_matches_program():
+def test_the_fuzzer_cannot_emit_a_retired_opcode():
+    """IN left the ISA on 2026-08-27. A generator that still names it would
+    hand simulate() a src=SW it has no model for -- which is exactly how this
+    module went red the day phase E retired IN in copper."""
     for seed in range(50):
-        prog, meta = fuzz_gen.gen(seed)
-        assert meta["uses_in"] == any(step[0] == "IN" for step in prog)
+        prog, _ = fuzz_gen.gen(seed)
+        for step in prog:
+            assert step[0] in progrom_gen.INSTRUCTIONS, \
+                f"seed {seed}: {step[0]} is not in the ISA"
+
+
+def test_jnc_is_always_preceded_by_an_ARITHMETIC_op():
+    """STRICTER THAN JNZ'S RULE, and the difference is the '382's datasheet:
+    CN+4 is only meaningful for the arithmetic function codes. An AND before
+    a JNC is not a flag producer, and simulate() refuses it rather than
+    guessing a carry."""
+    for seed in range(50):
+        prog, _ = fuzz_gen.gen(seed)
+        for i, step in enumerate(prog):
+            if step[0] == "JNC":
+                assert i > 0, f"seed {seed}: JNC with nothing before it"
+                assert prog[i - 1][0] in ("ADD", "SUB", "BSUB"), \
+                    f"seed {seed}: JNC at {i} follows {prog[i - 1][0]}, " \
+                    f"which leaves CN+4 undefined"
 
 
 def test_switches_are_seed_derived_reproducible_and_vary():
     """FUZZ-03's actual claim: the differential harness drives a RANDOM
-    dip_sw value per seed on IN-using programs, not one hardcoded
-    constant. Pins three things: `switches` is in range, reproducible
+    dip_sw value per seed, not one hardcoded constant. Pins three things: `switches` is in range, reproducible
     from the seed alone (same seed -> same value, matching every other
     seed-derived field this generator produces), and the values seen
     across a seed range are not all identical -- the exact regression
-    this test exists to catch (a hardcoded `0x1E if uses_in else 0x00`
-    in the harness would make every seed's expected switches value
-    collapse to one of two constants, which this test would catch by
-    finding fewer than 2 distinct values among IN-using seeds)."""
+    this test exists to catch (a hardcoded constant in the harness would
+    collapse every seed's expected switches value to one value, which this
+    test catches by finding fewer than 2 distinct ones).
+
+    THE FIELD OUTLIVED ITS OPCODE. IN retired on 2026-08-27, but SW1 did
+    not: card zero makes it MEMORY at 0x4000-0x47FF and LDA reads it, so a
+    differential run still needs a switch value. The draw is unconditional
+    and always was, which is why removing IN did not perturb any seed."""
     seen = set()
     for seed in range(200):
         prog, meta = fuzz_gen.gen(seed)
@@ -111,11 +134,10 @@ def test_switches_are_seed_derived_reproducible_and_vary():
         prog2, meta2 = fuzz_gen.gen(seed)
         assert meta2["switches"] == sw, \
             f"seed {seed}: switches not reproducible ({sw} != {meta2['switches']})"
-        if meta["uses_in"]:
-            seen.add(sw)
+        seen.add(sw)
     assert len(seen) >= 2, \
-        f"only {len(seen)} distinct switches value(s) across 200 seeds' " \
-        f"IN-using programs ({seen}) -- looks hardcoded, not random-per-seed"
+        f"only {len(seen)} distinct switches value(s) across 200 seeds " \
+        f"({seen}) -- looks hardcoded, not random-per-seed"
 
 
 # ---- runner -------------------------------------------------------------

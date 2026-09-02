@@ -106,6 +106,21 @@ verify-prog-diag: read-prog
 verify-prog: read-prog
 	cmp $(BUILD)/prog_read.bin $(ROMS)/PROG.bin && echo "PROG REAL verified"
 
+# verify-prog-<tag>: read the chip in the socket and compare it against the
+# image that was supposed to be burned there. ONE PATTERN RULE, matching
+# burn-prog-%, so every image is verifiable the moment it exists.
+#
+# This gap cost a whole debugging session on 2026-08-27: seven diagnostic
+# images were burned and read, each one narrowing a fault, and the ONE
+# assumption none of them tested was that the chip contained what the file
+# said. A read-back is one command and it is the cheapest thing in the loop.
+verify-prog-%: read-prog
+	@cmp $(BUILD)/prog_read.bin $(ROMS)/PROG_$*.bin \
+	  && echo "PROG_$* verified: the chip matches the file" \
+	  || { echo "PROG_$* DOES NOT MATCH -- the burn is not the file"; \
+	       cmp -l $(BUILD)/prog_read.bin $(ROMS)/PROG_$*.bin | head -20; \
+	       exit 1; }
+
 read-rom: | $(BUILD)
 	$(MINIPRO) -p $(ROM_CHIP) -r $(BUILD)/rom_read.bin
 

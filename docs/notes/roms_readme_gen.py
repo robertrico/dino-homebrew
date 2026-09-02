@@ -23,7 +23,9 @@ import microcode_gen as mc                                    # noqa: E402
 import progrom_gen as pr                                      # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.normpath(os.path.join(HERE, "..", "..", "roms", "README.md"))
+ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
+ROMS = os.path.join(ROOT, "roms")
+OUT = os.path.join(ROMS, "README.md")
 
 # What each coverage image is FOR. One line each; the full rationale lives in
 # progrom_gen.py beside the program itself.
@@ -98,6 +100,40 @@ NOTES = {
                "would NOP-slide 28KB and look like a fetch fault), then "
                "JMPs across 0x8000 and the answer is computed in RAM. "
                "PHASE D.",
+    # ---- PHASE F, 2026-08-27 -----------------------------------------
+    "jnc": "THE ONLY IMAGE WHOSE ANSWER DEPENDS ON U77, the '157 flag "
+           "mux. CMP sets FLAG_C, JNC selects it through CW21, and the "
+           "taken arm is the only path to 0x6C. Run it WITH jncswap: a "
+           "one-sided branch test is passed by a branch wired "
+           "permanently taken. PHASE F.",
+    "jncswap": "jnc's other direction, same code, swapped operands. "
+               "0xEE is the pass here. PHASE F.",
+    "mov": "LDCI EXECUTES FOR THE FIRST TIME. C was write-only by "
+           "design -- RET's return-address scratch, with no way to read "
+           "it back -- and MOV A,C is the one microcode row that closes "
+           "it. A is cleared first so a dead MOV cannot report LDAI's "
+           "byte. PHASE F.",
+    "ptr": "B:C AS AN INDEX PAIR, with PROG_sp3's discipline. Three "
+           "cells, a different sentinel in each, planted through the "
+           "pointer with STAX -- then read back down TWO paths, one "
+           "through the pointer (LDAX) and one by ABSOLUTE address "
+           "(LDB), and the answer is their difference. The absolute "
+           "path cannot inherit a pointer fault. PHASE F.",
+    "shl": "the TMP_B shadow doing arithmetic: SHL, INR, INR, NOT, DCR. "
+           "Two INRs and one DCR on purpose -- INR then DCR returns the "
+           "same byte whether both worked or neither did. PHASE F.",
+    "ind": "MEMORY-INDIRECT, the third addressing mode. The pointer is in "
+           "RAM and the operand names WHERE THE POINTER IS. 0x63 passes; "
+           "0xE0 means it read the pointer byte instead of following it; "
+           "0x9C means it read an unwritten cell. B must survive. "
+           "PHASE F+.",
+    "indst": "memory-indirect STORE, read back by absolute address so the "
+             "readback cannot inherit the fault. 0x5B passes, 0x00 means "
+             "the store never reached the target. PHASE F+.",
+    "indj": "memory-indirect JUMP, landing site as the observable. 0x6C "
+            "passes, 0xE7 is the fall-through. The target address is "
+            "computed from the assembled prologue, never counted. "
+            "PHASE F+.",
 }
 
 PROSE_HEAD = """# roms/ — what is physically in the sockets
@@ -217,6 +253,32 @@ def coverage_rows():
     return rows
 
 
+def handwritten_rows():
+    """Every PROG_*.bin in roms/ that has a matching source in asm/.
+
+    THE README MUST ACCOUNT FOR EVERY IMAGE AT THE BURNER, and a hand-written
+    program is still an image at the burner. Exempting them from the listing
+    would put the one class of ROM nobody can regenerate from a table outside
+    the only document read at the programmer.
+    """
+    import glob
+    import asm as asmmod
+    rows = []
+    for src in sorted(glob.glob(os.path.join(ROOT, "asm", "*.asm"))):
+        name = os.path.splitext(os.path.basename(src))[0]
+        fn = f"PROG_{name}.bin"
+        if not os.path.exists(os.path.join(ROMS, fn)):
+            continue
+        r = asmmod.assemble_text(open(src).read())
+        img = pr.build_image_from_bytes(r.code, r.origin)
+        st = pr.simulate(None, image=img)
+        ob = "none" if st["out"] is None else f"0x{st['out']:02X}"
+        if not st["halted"]:
+            ob += "*"
+        rows.append((fn, pr.crc16(img), ob, os.path.relpath(src, ROOT)))
+    return rows
+
+
 def build():
     L = [PROSE_HEAD.rstrip(), PROSE_MICROCODE.rstrip(), ""]
     L.append("    IMAGE            BITS      SET    CRC16")
@@ -331,6 +393,119 @@ def build():
           "        The BEFORE reading cannot be retaken once the window",
           "        exists -- take it first.",
           PROSE_SW1.rstrip(), PROSE_TAIL.rstrip()]
+    import isatest_gen as isa
+    _prog, _ids, _skip = isa.build()
+    _img = pr.build_image(_prog)
+    L += ["", "### PROG_isa \u2014 the self-checking ISA test", "",
+          f"    PROG_isa.bin     0x{pr.crc16(_img):04X}  "
+          f"{len(_ids)} subtests, {len(pr.assemble(_prog))} bytes",
+          "",
+          f"    Burn it, press RESET, read OB. 0x{isa.PASS:02X} means every",
+          "    subtest passed. ANY OTHER VALUE IS THE NUMBER OF THE FIRST",
+          "    INSTRUCTION THAT MISBEHAVED, and the table below names it.",
+          f"    0x{pr.POISON:02X} means the program halted without reaching an",
+          "    OUT at all -- a jump went somewhere it should not have.",
+          "",
+          "    Every expected value in it was computed by the oracle, and",
+          "    every subtest is mutation-tested: breaking an instruction's",
+          "    microcode makes the program report that instruction. A",
+          "    subtest that survives its own instruction being broken is",
+          "    not counted as coverage.",
+          ""]
+    _cnt = os.path.join(ROMS, "PROG_isacount.bin")
+    if os.path.exists(_cnt):
+        _c = open(_cnt, "rb").read()
+        L += [f"    PROG_isacount.bin  0x{pr.crc16(_c):04X}  "
+              f"the SAME 147 subtests, COUNTED",
+              "",
+              "    Identical tests, but a failure bumps a counter and",
+              "    execution CONTINUES. OB is then the NUMBER of subtests",
+              "    that failed, 0x00 for a clean run. Use it when the",
+              "    machine is marginal rather than broken: PROG_isa stops",
+              "    at the first failure and cannot tell one bad",
+              "    instruction from forty, and a wild jump into its stub",
+              "    table reports a subtest number that nothing failed.",
+              ""]
+    _idf = os.path.join(ROMS, "PROG_isaid.bin")
+    if os.path.exists(_idf):
+        _i = open(_idf, "rb").read()
+        L += [f"    PROG_isaid.bin     0x{pr.crc16(_i):04X}  "
+              f"the SAME 147, reporting WHICH one failed",
+              "",
+              "    Execution continues past a failure, as in isacount, so",
+              "    a wild jump cannot fabricate an answer -- but the cell",
+              "    holds the ID of the last failing subtest instead of a",
+              "    tally. When the count is reliably 0 or 1, last-failing",
+              "    IS the-one-failing. 0x00 is still clean, because ids",
+              "    start at 1.",
+              ""]
+    _sk = os.path.join(ROMS, "PROG_isasoak.bin")
+    if os.path.exists(_sk):
+        _s = open(_sk, "rb").read()
+        L += [f"    PROG_isasoak.bin   0x{pr.crc16(_s):04X}  "
+              f"the 147, run 255 TIMES, failures totalled",
+              "",
+              "    ~9,400 subtest executions in under a tenth of a second.",
+              "    OB is the total failure count, 0x00 for a clean soak.",
+              "    Use it when the failure rate is low enough that",
+              "    resetting is not a measurement: at 1-in-60 you cannot",
+              "    tell whether a repair helped, and this turns that into a",
+              "    number that moves. 0x00 clean, 0xFE saturated,",
+              "    0xFF means it never finished.",
+              ""]
+    _lv = os.path.join(ROMS, "PROG_isalive.bin")
+    if os.path.exists(_lv):
+        _l = open(_lv, "rb").read()
+        L += [f"    PROG_isalive.bin   0x{pr.crc16(_l):04X}  "
+              f"HOW FAR does it get before it dies",
+              "",
+              "    Every pass OUTs its own number, so OB holds the last",
+              "    pass the machine actually reached. 0xB4 means it",
+              "    survived all 64. Anything else is where it died.",
+              "",
+              "    A HANG cannot report anything at the end, because there",
+              "    is no end. This reports as it goes, which turns 'it",
+              "    usually does not finish' into a mean time to failure in",
+              "    passes -- a number that moves when a repair helps.",
+              "    Miscompares are deliberately ignored: this measures how",
+              "    FAR, not whether it AGREES.",
+              ""]
+    _wh = os.path.join(ROMS, "PROG_isawhere.bin")
+    if os.path.exists(_wh):
+        _w = open(_wh, "rb").read()
+        L += [f"    PROG_isawhere.bin  0x{pr.crc16(_w):04X}  "
+              f"WHICH subtest was running when it died",
+              "",
+              "    OB is updated with the subtest id before each subtest",
+              "    runs, so a machine that hangs leaves the id of the one",
+              "    it was in. 0xB4 means it survived all 64 passes. Use",
+              "    the id table below to name it.",
+              "",
+              "    isalive says HOW FAR (a rate); this says WHERE (a place).",
+              ""]
+    L += isa.id_map_lines(_ids)
+    L += ["",
+          f"    NOT covered by PROG_isa ({len(_skip)}): "
+          + ", ".join(_skip),
+          "    The OUT family cannot be tested this way at all -- OB is",
+          "    write-only, so an OUT's result cannot be read back and",
+          "    compared inside the program. It needs its own image.",
+          ""]
+
+    hand = handwritten_rows()
+    if hand:
+        L += ["", "### Hand-written programs \u2014 assembled from .asm", "",
+              "    Written by hand in `asm/`, assembled with",
+              "    `python3 docs/notes/asm.py <src> -o roms/<image>`.",
+              "    These are NOT part of the regression: the coverage images",
+              "    above are generated and CRC-pinned, these are yours. The",
+              "    expected OB below is what the oracle computes by",
+              "    interpreting the same microcode the machine will run.",
+              "",
+              "    IMAGE            CRC16   OB    SOURCE"]
+        for fn, crc, ob, src in hand:
+            L.append(f"    {fn:<16} 0x{crc:04X}  {ob:<5} {src}")
+
     return "\n".join(L).rstrip() + "\n"
 
 
