@@ -793,7 +793,9 @@ not because they are principles.
   trusting a single reading, because every pull flexes the board.
 - **A single-shot test on a marginal board reports noise with a straight
   face.** Repeat the operation N times inside one image and pass only on
-  unanimity. `PROG_sui16` is the pattern -- sixteen identical subtests,
+  unanimity. `PROG_sui16` was the pattern (image deleted 2026-09-01 with
+  the rest of that day's diagnostics; the shape is what matters) -- sixteen
+  identical subtests,
   one verdict.
 - **The instrument can BE the cure.** Probing `CLK` at `U63.2` added ~10-15pF,
   damped a ringing edge, and made the fault vanish — so every attempt to

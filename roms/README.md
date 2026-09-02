@@ -316,57 +316,6 @@ time the DIAG image is reburned — no reason to reburn just for this.
     subtest that survives its own instruction being broken is
     not counted as coverage.
 
-    PROG_isacount.bin  0xA2D0  the SAME 147 subtests, COUNTED
-
-    Identical tests, but a failure bumps a counter and
-    execution CONTINUES. OB is then the NUMBER of subtests
-    that failed, 0x00 for a clean run. Use it when the
-    machine is marginal rather than broken: PROG_isa stops
-    at the first failure and cannot tell one bad
-    instruction from forty, and a wild jump into its stub
-    table reports a subtest number that nothing failed.
-
-    PROG_isaid.bin     0x019B  the SAME 147, reporting WHICH one failed
-
-    Execution continues past a failure, as in isacount, so
-    a wild jump cannot fabricate an answer -- but the cell
-    holds the ID of the last failing subtest instead of a
-    tally. When the count is reliably 0 or 1, last-failing
-    IS the-one-failing. 0x00 is still clean, because ids
-    start at 1.
-
-    PROG_isasoak.bin   0x9554  the 147, run 255 TIMES, failures totalled
-
-    ~9,400 subtest executions in under a tenth of a second.
-    OB is the total failure count, 0x00 for a clean soak.
-    Use it when the failure rate is low enough that
-    resetting is not a measurement: at 1-in-60 you cannot
-    tell whether a repair helped, and this turns that into a
-    number that moves. 0x00 clean, 0xFE saturated,
-    0xFF means it never finished.
-
-    PROG_isalive.bin   0x504A  HOW FAR does it get before it dies
-
-    Every pass OUTs its own number, so OB holds the last
-    pass the machine actually reached. 0xB4 means it
-    survived all 64. Anything else is where it died.
-
-    A HANG cannot report anything at the end, because there
-    is no end. This reports as it goes, which turns 'it
-    usually does not finish' into a mean time to failure in
-    passes -- a number that moves when a repair helps.
-    Miscompares are deliberately ignored: this measures how
-    FAR, not whether it AGREES.
-
-    PROG_isawhere.bin  0xF87F  WHICH subtest was running when it died
-
-    OB is updated with the subtest id before each subtest
-    runs, so a machine that hangs leaves the id of the one
-    it was in. 0xB4 means it survived all 64 passes. Use
-    the id table below to name it.
-
-    isalive says HOW FAR (a rate); this says WHERE (a place).
-
       1 LDAI       2 LDBI       3 LDCI       4 LXISP      5 LXIL       6 LXIH     
       7 LDA        8 STA        9 LDB       10 LDC       11 STB       12 STC      
      13 LDAS      14 STAS      15 LDBS      16 STBS      17 LDCS      18 STCS     
@@ -409,37 +358,4 @@ time the DIAG image is reburned — no reason to reburn just for this.
     interpreting the same microcode the machine will run.
 
     IMAGE            CRC16   OB    SOURCE
-    PROG_a47.bin     0x272D  0x47  asm/a47.asm
-    PROG_addcheck.bin 0x25E3  0x0F  asm/addcheck.asm
-    PROG_alub.bin    0x4848  0x47  asm/alub.asm
-    PROG_aluecho.bin 0x6E93  0x00  asm/aluecho.asm
-    PROG_b40.bin     0x2176  0x40  asm/b40.asm
-    PROG_cpisoak.bin 0xAF9A  0x41* asm/cpisoak.asm
-    PROG_dcrsoak.bin 0xE6A9  0x41* asm/dcrsoak.asm
-    PROG_echo.bin    0x2139  0x00* asm/echo.asm
     PROG_hello.bin   0x9C68  0x96  asm/hello.asm
-    PROG_jmpmsoak.bin 0x6FF4  0x4F* asm/jmpmsoak.asm
-    PROG_jmpsoak.bin 0xFEAC  0x4F* asm/jmpsoak.asm
-    PROG_jnzctl.bin  0x8C31  0x37* asm/jnzctl.asm
-    PROG_jnzsoak.bin 0x3179  0x37* asm/jnzsoak.asm
-    PROG_make47.bin  0x62B5  0x47  asm/make47.asm
-    PROG_mvisoak.bin 0x8324  0x4E* asm/mvisoak.asm
-    PROG_ob6.bin     0xB0D2  0x15  asm/ob6.asm
-    PROG_origsoak.bin 0xAB52  0x4E* asm/origsoak.asm
-    PROG_ramsoak.bin 0x8BFB  0x45* asm/ramsoak.asm
-    PROG_readsoak.bin 0xBA67  0x4E* asm/readsoak.asm
-    PROG_regb.bin    0x68D6  0x47  asm/regb.asm
-    PROG_soak.bin    0x0E7D  0x00  asm/soak.asm
-    PROG_soakbasic.bin 0xE12F  0x00  asm/soakbasic.asm
-    PROG_spin.bin    0xD40A  0x61* asm/spin.asm
-    PROG_sub2.bin    0x5213  0x15  asm/sub2.asm
-    PROG_sub40.bin   0xDA74  0x0F  asm/sub40.asm
-    PROG_subflag.bin 0x6859  0x0F  asm/subflag.asm
-    PROG_subok.bin   0xB3C4  0x6C  asm/subok.asm
-    PROG_subtwice.bin 0x0148  0x0F  asm/subtwice.asm
-    PROG_subwhat.bin 0x06D9  0x0F  asm/subwhat.asm
-    PROG_sui16.bin   0xF3F9  0x0F  asm/sui16.asm
-    PROG_suiraw.bin  0x9918  0x15  asm/suiraw.asm
-    PROG_suitwice.bin 0x2969  0x0F  asm/suitwice.asm
-    PROG_test.bin    0x1059  0x00* asm/test.asm
-    PROG_writesoak.bin 0x1CCD  0x4E* asm/writesoak.asm
