@@ -399,9 +399,18 @@ def main(argv):
             print(f"  {a:04X}  {b.hex(' '):<14}  {text[ln - 1].rstrip()}")
     if run:
         import progrom_gen as pg
-        st = pg.simulate(None, image=pg.build_image_from_bytes(r.code, r.origin))
-        ob = "never reached an OUT" if st["out"] is None else f"{st['out']:#04x}"
-        print(f"  OB = {ob}   halted={st['halted']}   steps={st['steps']}")
+        try:
+            st = pg.simulate(None,
+                             image=pg.build_image_from_bytes(r.code, r.origin))
+        except pg.Unoracled as e:
+            # By design, not a fault: the oracle has no answer key for this
+            # image (PHASE_G.md SECTION 5). Say so and keep building; the
+            # expected value is datasheet-sourced and lives in roms/README.md.
+            print(f"  OB = UNORACLED -- {e}")
+        else:
+            ob = ("never reached an OUT" if st["out"] is None
+                  else f"{st['out']:#04x}")
+            print(f"  OB = {ob}   halted={st['halted']}   steps={st['steps']}")
     if out:
         import progrom_gen as pg
         img = pg.build_image_from_bytes(r.code, r.origin)

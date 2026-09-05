@@ -228,13 +228,25 @@ def test_coverage_is_progressive():
                 "COMPUTED from the assembled prologue, not counted by hand: "
                 "when the landing site IS the answer, a miscounted offset "
                 "and a broken jump look identical at OB",
+        # phase G, 2026-09-04
+        "serid": "the FIRST WRITE to the I/O window that anything consumes: "
+                 "~{IO_WR} was a no-connect on U75.6 until the serial card. "
+                 "STA/LDA round trip through the 16550's scratch register at "
+                 "0x4807 -- decode, both strobes, both directions of U102, "
+                 "~CS2 and the UART bus interface, in one byte. RAW REPORT: "
+                 "0x54 names D0, 0x51 D2, 0x15 D6; 0xFF means the card never "
+                 "drove W. Permutation-blind, and says so",
+        "serid_aa": "the complement arm. 0x55 and 0xAA between them put a 1 "
+                    "and a 0 on every data line; a line stuck at either rail "
+                    "passes one arm and fails the other",
     }
     seen = set()
     order = ["probe", "adda", "addb", "real", "dip", "alu", "mem", "flow",
              "loop", "mardisc", "pads", "sp1", "sp2", "sp3", "sp", "calladdr",
              "callraw", "call", "stack", "ramexec",
              "jnc", "jncswap", "mov", "ptr", "shl",
-             "ind", "indst", "indj"]
+             "ind", "indst", "indj",
+             "serid", "serid_aa"]
     check_eq(list(pg.COVERAGE), order, "images in ladder order")
     for tag in order:
         used = {s[0] for s in pg.COVERAGE[tag] if not isinstance(s, str)}

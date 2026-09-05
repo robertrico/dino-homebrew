@@ -337,16 +337,18 @@ class TestIoRegionModel(unittest.TestCase):
 
     def test_unclaimed_io_address_reads_the_park(self):
         # NOT pg.IO_BASE -- phase E step B gave slot 0 to card zero, so
-        # 0x4000-0x47FF now answers. 0x4800 is slot 1 and is empty; 0x7FFF
-        # is the last address in the window and is in slot 7.
-        self.assertEqual(pg.io_read(pg.IO_BASE + 0x800, 0x00), pg.IO_PARK)
+        # 0x4000-0x47FF now answers. NOT 0x4800 either -- phase G gave slot 1
+        # to the serial card. 0x5000 is slot 2 and is empty; 0x7FFF is the
+        # last address in the window and is in slot 7.
+        self.assertEqual(pg.io_read(pg.IO_BASE + 0x1000, 0x00), pg.IO_PARK)
         self.assertEqual(pg.io_read(pg.RAM_BASE - 1, 0xFF), pg.IO_PARK)
 
     def test_lda_from_the_window_returns_the_park(self):
-        # slot 1, empty. Reading slot 0 reaches card zero -- that is
-        # TestDipCard's job, and it is the whole point of the window.
+        # slot 2, empty. Reading slot 0 reaches card zero -- that is
+        # TestDipCard's job -- and slot 1 reaches the serial card, which is
+        # TestSerialCard's. The window's whole point is that both answer.
         prog = [("LDAI", 0x11), ("OUT",),
-                ("LDA", *pg._addr(pg.IO_BASE + 0x800)), ("OUT",), ("HALT",)]
+                ("LDA", *pg._addr(pg.IO_BASE + 0x1000)), ("OUT",), ("HALT",)]
         self.assertEqual(pg.simulate(prog)["out"], pg.IO_PARK)
 
     def test_rom_reads_below_the_window_are_unchanged(self):
@@ -368,10 +370,27 @@ class TestIoRegionModel(unittest.TestCase):
         img[pg.IO_BASE:pg.IO_BASE + len(hi)] = hi
         img = bytes(img)
 
-        opened = pg.simulate(None, image=img, rom_window=pg.ROM_IMAGE)
-        closed = pg.simulate(None, image=img, rom_window=pg.ROM_WINDOW)
+        # serial=False: slot 1 EMPTY, as it was when this reading was taken.
+        # The closed fetch NOP-slides through card zero (switches=0x00 is
+        # NOP) and must find the park at 0x4800; with the serial card fitted
+        # it would fetch UART registers as opcodes instead (GOTCHA 2).
+        opened = pg.simulate(None, image=img, rom_window=pg.ROM_IMAGE,
+                             serial=False)
+        closed = pg.simulate(None, image=img, rom_window=pg.ROM_WINDOW,
+                             serial=False)
         self.assertEqual(opened["out"], 0xA5)   # U24 answers 0x0000-0x7FFF
         self.assertEqual(closed["out"], 0x5A)   # fetch at 0x4000 hits the park
+
+    def test_window_after_reading_is_undefined_with_the_serial_card(self):
+        """PHASE G. The NOP slide through card zero now ends at a UART, and
+        the oracle refuses to say what happens next. PROG_window's AFTER
+        reading cannot be retaken with the serial card in slot 1."""
+        lo = pg.assemble([("LDAI", 0x5A), ("OUT",),
+                          ("JMP", *pg._addr(pg.IO_BASE))])
+        img = bytearray([pg.SAFE_FILL]) * pg.ROM_IMAGE
+        img[:len(lo)] = lo
+        with self.assertRaises(pg.BuildError):
+            pg.simulate(None, image=bytes(img), rom_window=pg.ROM_WINDOW)
 
 
 class TestWindowWitness(unittest.TestCase):
@@ -400,9 +419,11 @@ class TestWindowWitness(unittest.TestCase):
         self.assertEqual(r["out"], pg.WINDOW_SENTINEL)
 
     def test_AFTER_the_mod_it_reads_the_poison(self):
-        """the fetch at 0x4000 finds the park, 0xFF = HALT, OB keeps 0x5A"""
+        """the fetch at 0x4000 finds the park, 0xFF = HALT, OB keeps 0x5A.
+        Slot 1 EMPTY (serial=False): this reading predates the serial card
+        and is not retakeable with it fitted -- see TestIoRegionModel."""
         r = pg.simulate(pg.WINDOW_PROGRAM, image=pg.build_window(),
-                        rom_window=pg.ROM_WINDOW)
+                        rom_window=pg.ROM_WINDOW, serial=False)
         self.assertEqual(r["out"], pg.WINDOW_POISON)
 
     def test_the_two_answers_differ(self):
@@ -431,8 +452,9 @@ class TestDipCard(unittest.TestCase):
             self.assertEqual(pg.io_read(pg.DIP_BASE + off, 0x3C), 0x3C)
 
     def test_other_slots_still_park(self):
-        # 0x4800 is slot 1, unoccupied. NOT 0x4100 -- that is inside slot 0
-        self.assertEqual(pg.io_read(pg.DIP_BASE + 0x800, 0x1E), pg.IO_PARK)
+        # 0x5000 is slot 2, unoccupied. NOT 0x4100 -- that is inside slot 0
+        # -- and NOT 0x4800, which is the serial card since phase G.
+        self.assertEqual(pg.io_read(pg.DIP_BASE + 0x1000, 0x1E), pg.IO_PARK)
         self.assertEqual(pg.io_read(0x7FFF, 0x1E), pg.IO_PARK)
 
     def test_dip_image_replaces_the_in_image(self):
@@ -854,6 +876,198 @@ class TestPhaseFPlus(unittest.TestCase):
                 ("STAM", *pg._addr(ptr), *pg._addr(ptr + 1)),
                 ("OUTM", *pg._addr(data)), ("HALT",)]
         self.assertEqual(self._run(prog)["out"], 0x5B)
+
+
+class TestSerialCard(unittest.TestCase):
+    """PHASE G -- the serial card at slot 1, and the ONE byte of it the
+    oracle models.
+
+    .git/sdd/PHASE_G.md SECTION 5 is explicit: MODEL the scratch register
+    at base+7 and NOTHING ELSE. THR, RBR, the FIFOs, the baud generator and
+    loopback are TEMPORAL -- THRE and DR change on bit boundaries -- and
+    simulate() has no clock. A model of them would be a second UART written
+    by the same hand as the spec, agreeing with itself while both were
+    wrong. So a program touching any other register gets a BuildError, not
+    a number: the oracle refuses to invent, exactly as it refuses to invent
+    a carry after a logic op.
+
+    Six of the eight witness images therefore have NO answer key. They are
+    generated, they are burnable, and their expected bytes are DATASHEET-
+    SOURCED, UNORACLED -- reported as such every time."""
+
+    def setUp(self):
+        self.SCR = pg.SER_BASE + 7
+
+    def test_slot_one_is_the_serial_card(self):
+        # U101 O1. Slot 1 of eight 2K slots decoded on M11-M13.
+        self.assertEqual(pg.SER_BASE, 0x4800)
+        self.assertEqual(pg.SER_SCR, 0x4807)
+
+    def test_scr_round_trips_through_sta_and_lda(self):
+        prog = [("LDAI", 0x55), ("STA", *pg._addr(self.SCR)),
+                ("LDA", *pg._addr(self.SCR)), ("OUT",), ("HALT",)]
+        self.assertEqual(pg.simulate(prog)["out"], 0x55)
+
+    def test_scr_reads_zero_after_master_reset(self):
+        # FACT, datasheet section 6.0, MR: "clears all the registers (except
+        # the Receiver Buffer, Transmitter Holding, and Divisor Latches)".
+        # SCR is none of the three, so it is 0x00 at the first fetch.
+        prog = [("LDA", *pg._addr(self.SCR)), ("OUT",), ("HALT",)]
+        self.assertEqual(pg.simulate(prog)["out"], 0x00)
+
+    def test_scr_mirrors_inside_the_slot_only(self):
+        # GOTCHA 3: M3-M10 are undecoded, so the eight registers repeat every
+        # 8 bytes through 0x4800-0x4FFF. 0x480F and 0x4FFF are both SCR.
+        for mirror in (self.SCR + 8, pg.SER_BASE + 0x7FF):
+            prog = [("LDAI", 0x3C), ("STA", *pg._addr(self.SCR)),
+                    ("LDA", *pg._addr(mirror)), ("OUT",), ("HALT",)]
+            self.assertEqual(pg.simulate(prog)["out"], 0x3C, hex(mirror))
+
+    def test_a_scr_write_is_not_a_lost_write(self):
+        # Until phase G every write below RAM_BASE was "lost" -- nothing
+        # consumed ~{IO_WR}. The serial card is the first thing that does.
+        prog = [("LDAI", 0x55), ("STA", *pg._addr(self.SCR)), ("HALT",)]
+        self.assertEqual(pg.simulate(prog).get("lost_writes", 0), 0)
+        # card zero is read-only; a write there is still lost
+        prog = [("LDAI", 0x55), ("STA", *pg._addr(pg.DIP_BASE)), ("HALT",)]
+        self.assertEqual(pg.simulate(prog).get("lost_writes", 0), 1)
+
+    def test_every_other_uart_register_refuses(self):
+        # LSR read, LCR write, RBR read, FCR write: all temporal or stateful
+        # beyond the one byte SECTION 5 allows. The oracle must not answer.
+        for reg, prog in (
+            (5, [("LDA", *pg._addr(pg.SER_BASE + 5)), ("OUT",), ("HALT",)]),
+            (3, [("LDAI", 0x83), ("STA", *pg._addr(pg.SER_BASE + 3)), ("HALT",)]),
+            (0, [("LDA", *pg._addr(pg.SER_BASE + 0)), ("OUT",), ("HALT",)]),
+            (2, [("LDAI", 0x07), ("STA", *pg._addr(pg.SER_BASE + 2)), ("HALT",)]),
+        ):
+            with self.assertRaises(pg.BuildError, msg=f"register {reg}"):
+                pg.simulate(prog)
+
+    def test_slot_two_and_up_still_park(self):
+        u = pg.uart_reset()
+        self.assertEqual(pg.io_read(pg.SER_BASE + 0x800 + 7, 0x00, u), pg.IO_PARK)
+        self.assertEqual(pg.io_read(0x7FFF, 0x00, u), pg.IO_PARK)
+
+    def test_card_absent_parks(self):
+        # uart=None is "no card in slot 1", the phase-E world. The park.
+        self.assertEqual(pg.io_read(pg.SER_SCR, 0x00, None), pg.IO_PARK)
+
+    def test_card_zero_is_untouched(self):
+        self.assertEqual(pg.simulate(pg.COVERAGE["dip"],
+                                     switches=pg.COVERAGE_SW["dip"])["out"], 0x4D)
+
+    # ---- the two ORACLED images --------------------------------------
+    def test_serid_images_are_in_coverage_with_complementary_bytes(self):
+        self.assertIn("serid", pg.COVERAGE)
+        self.assertIn("serid_aa", pg.COVERAGE)
+        self.assertEqual(pg.simulate(pg.COVERAGE["serid"])["out"], 0x55)
+        self.assertEqual(pg.simulate(pg.COVERAGE["serid_aa"])["out"], 0xAA)
+        # between them every data line carries both a 1 and a 0
+        self.assertEqual(0x55 ^ 0xAA, 0xFF)
+
+    def test_serid_poisons_ob_first(self):
+        # U35 has no reset; the first two steps must be LDAI POISON; OUT
+        for tag in ("serid", "serid_aa"):
+            prog = pg.COVERAGE[tag]
+            self.assertEqual(prog[0], ("LDAI", pg.POISON), tag)
+            self.assertEqual(prog[1], ("OUT",), tag)
+
+    # ---- the UNORACLED witnesses -------------------------------------
+    UNORACLED = {"serprobe", "serlsr", "seriir", "serbaud",
+                 "serloop", "sertx", "serrx"}
+
+    def test_serial_witness_registry(self):
+        self.assertEqual(set(pg.SERIAL_WITNESS), self.UNORACLED)
+        for tag, (prog, ob, source) in pg.SERIAL_WITNESS.items():
+            code = pg.assemble(prog)
+            self.assertLessEqual(len(code), pg.ROM_WINDOW, tag)
+            self.assertTrue(source, f"{tag}: names its datasheet source")
+            self.assertNotIn(tag, pg.COVERAGE, f"{tag} has no oracle")
+
+    def test_datasheet_sourced_expectations(self):
+        want = {"serprobe": 0xFF,   # the park; U103 NOT seated (step 2)
+                "serlsr": 0x60,     # TABLE I, LSR after MR
+                "seriir": 0xC1,     # section 8.6, FCR0=1, nothing pending
+                "serbaud": None,    # scope witness, 153.6 kHz on U103.15
+                "serloop": 0x53,    # the byte, back through loopback
+                "sertx": 0x53,      # OB only says it finished; host reads
+                "serrx": None}      # never halts
+        got = {tag: ob for tag, (_p, ob, _s) in pg.SERIAL_WITNESS.items()}
+        self.assertEqual(got, want)
+
+    def test_every_witness_is_refused_by_the_oracle(self):
+        # THE HONEST HOLE. If any of these ever simulates to a number, a
+        # UART model crept in, and SECTION 5 says it must not.
+        for tag, (prog, _ob, _s) in pg.SERIAL_WITNESS.items():
+            with self.assertRaises(pg.BuildError, msg=tag):
+                pg.simulate(prog)
+
+    def test_witness_values_are_not_palindromes(self):
+        # LSB-first on the wire: a bus reversed end to end returns a
+        # palindrome unchanged. 0x53 -> 0xCA, so a reversal is readable.
+        def rev(b):
+            return int(f"{b:08b}"[::-1], 2)
+        for tag in ("serloop", "sertx", "serlsr", "seriir"):
+            ob = pg.SERIAL_WITNESS[tag][1]
+            self.assertNotEqual(ob, rev(ob), tag)
+
+    def test_init_order_clears_dlab_before_ier(self):
+        # GOTCHA 1. With DLAB set, 0x4801 is DLM: an IER write there changes
+        # the baud rate silently. LCR=0x03 must precede the IER write.
+        init = pg.ser_init(mcr=0x00)
+        vals = [x[1] for x in init if x[0] == "LDAI"]
+        stas = [x[1] | (x[2] << 8) for x in init if x[0] == "STA"]
+        stores = list(zip(stas, vals))
+        self.assertEqual(stores[0], (0x4803, 0x83), "DLAB set first")
+        self.assertEqual(stores[1], (0x4800, 0x18), "DLL = 24 -> 9600")
+        self.assertEqual(stores[2], (0x4801, 0x00), "DLM = 0")
+        self.assertEqual(stores[3], (0x4803, 0x03), "8N1, DLAB clear")
+        self.assertEqual(stores[4], (0x4802, 0x07), "FIFO on, both cleared")
+        self.assertEqual(stores[5], (0x4801, 0x00), "IER = 0, AFTER DLAB clear")
+        self.assertEqual(stores[6], (0x4804, 0x00), "MCR last")
+        self.assertEqual(pg.ser_init(mcr=0x10)[-2:],
+                         [("LDAI", 0x10), ("STA", *pg._addr(0x4804))])
+
+    def test_init_is_seven_pairs_thirty_five_bytes(self):
+        # SECTION 4: 14 instructions, 35 bytes, 42 T-states.
+        init = pg.ser_init(mcr=0x00)
+        self.assertEqual(len(init), 14)
+        self.assertEqual(len(pg.assemble(init)), 35)
+
+    def test_serloop_sets_loopback_and_polls_dr(self):
+        prog = pg.SERIAL_WITNESS["serloop"][0]
+        steps = [s for s in prog if not isinstance(s, str)]
+        self.assertIn(("LDAI", 0x10), steps, "MCR = 0x10")
+        self.assertIn(("LDBI", 0x01), steps, "DR is LSR bit 0")
+        self.assertNotIn(("LDBI", 0x20), steps, "TX poll is not needed")
+
+    def test_sertx_sends_DINO_crlf_polling_thre(self):
+        prog = pg.SERIAL_WITNESS["sertx"][0]
+        steps = [s for s in prog if not isinstance(s, str)]
+        thr = ("STA", *pg._addr(0x4800))
+        # every THR store past the init (whose DLL write is also at 0x4800)
+        sent = bytes(steps[i - 1][1] for i, s in enumerate(steps)
+                     if s == thr and i > 16)
+        self.assertEqual(sent, b"DINO\r\n")
+        self.assertEqual(steps.count(("LDBI", 0x20)), 6, "one THRE poll per byte")
+        self.assertEqual(steps[-3:], [("LDAI", 0x53), ("OUT",), ("HALT",)])
+
+    def test_serrx_never_halts_and_echoes(self):
+        prog = pg.SERIAL_WITNESS["serrx"][0]
+        steps = [s for s in prog if not isinstance(s, str)]
+        self.assertNotIn(("HALT",), steps, "soak image: never halts")
+        self.assertIn(("LDBI", 0x01), steps, "polls DR")
+        self.assertIn(("LDBI", 0x20), steps, "polls THRE before the echo")
+        # GOTCHA 2: RBR is read EXACTLY ONCE per character
+        self.assertEqual(steps.count(("LDA", *pg._addr(0x4800))), 1)
+
+    def test_serbaud_is_the_divisor_dance_then_halt(self):
+        prog = pg.SERIAL_WITNESS["serbaud"][0]
+        steps = [s for s in prog if not isinstance(s, str)]
+        self.assertEqual(steps[-1], ("HALT",))
+        self.assertIn(("LDAI", 0x18), steps, "DLL = 24")
+        self.assertNotIn(("LDAI", 0x07), steps, "no FCR: nothing but the divisor")
 
 
 if __name__ == "__main__":

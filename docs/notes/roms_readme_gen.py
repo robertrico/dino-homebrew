@@ -134,6 +134,13 @@ NOTES = {
             "passes, 0xE7 is the fall-through. The target address is "
             "computed from the assembled prologue, never counted. "
             "PHASE F+.",
+    "serid": "PHASE G, step 4b. STA/LDA round trip through the 16550's "
+             "scratch register at 0x4807: the first write in this machine's "
+             "life that anything consumed (~{IO_WR}, U75.6). RAW REPORT -- "
+             "0x54 names D0, 0x51 D2, 0x15 D6; 0xFF means the card never "
+             "drove W. Permutation-blind: a crossed U102 passes it.",
+    "serid_aa": "the complement arm. 0x55 and 0xAA between them put a 1 and "
+                "a 0 on every data line.",
 }
 
 PROSE_HEAD = """# roms/ — what is physically in the sockets
@@ -271,10 +278,17 @@ def handwritten_rows():
             continue
         r = asmmod.assemble_text(open(src).read())
         img = pr.build_image_from_bytes(r.code, r.origin)
-        st = pr.simulate(None, image=img)
-        ob = "none" if st["out"] is None else f"0x{st['out']:02X}"
-        if not st["halted"]:
-            ob += "*"
+        try:
+            st = pr.simulate(None, image=img)
+        except pr.Unoracled:
+            # By design (PHASE_G.md SECTION 5): the oracle has no answer key
+            # for images that touch temporal UART registers. Listed, not
+            # scored -- the expected value lives in the .asm header.
+            ob = "UNORACLED"
+        else:
+            ob = "none" if st["out"] is None else f"0x{st['out']:02X}"
+            if not st["halted"]:
+                ob += "*"
         rows.append((fn, pr.crc16(img), ob, os.path.relpath(src, ROOT)))
     return rows
 
@@ -391,7 +405,28 @@ def build():
           "        Not in PR_COVERAGE: two correct answers, so there is no",
           "        single (OB, END) fingerprint for the ladder to match.",
           "        The BEFORE reading cannot be retaken once the window",
-          "        exists -- take it first.",
+          "        exists -- take it first. Since phase G the AFTER reading",
+          "        needs slot 1 EMPTY too: a PC crossing 0x4000 NOP-slides",
+          "        through card zero and, with the serial card fitted, fetches",
+          "        UART registers as opcodes at 0x4800 (PHASE_G.md GOTCHA 2).",
+          "", "### Phase G — the serial card's witnesses, UNORACLED", "",
+          "    simulate() REFUSES every one of these: they touch 16550",
+          "    registers that are TEMPORAL (THRE and DR move on bit",
+          "    boundaries) and the oracle has no clock. The expected byte",
+          "    is DATASHEET-SOURCED, its table or section named beside it,",
+          "    and a human compares OB against it. That is not the same",
+          "    thing as --expected checking it. PHASE_G.md SECTION 5.",
+          "", "    IMAGE              CRC16   BYTES  OB    SOURCE"]
+    for tag, (prog, ob, source) in pr.SERIAL_WITNESS.items():
+        img = pr.build_image(prog)
+        ob_s = f"0x{ob:02X}" if ob is not None else "-   "
+        L.append(f"    PROG_{tag+'.bin':<13} 0x{pr.crc16(img):04X}  "
+                 f"{len(pr.assemble(prog)):4d}   {ob_s}  {source}")
+    L += ["", "    Order: serid/serid_aa, serlsr, seriir (step 4), serbaud",
+          "    on the scope (step 5), serloop (step 6), sertx on a host",
+          "    terminal at 9600 8N1 (step 7), serrx (step 8, never halts).",
+          "    The data bus is NARROWED after step 4 and PROVEN only after",
+          "    step 7, when a receiver DINO does not control decodes it.",
           PROSE_SW1.rstrip(), PROSE_TAIL.rstrip()]
     import isatest_gen as isa
     _prog, _ids, _skip = isa.build()

@@ -182,6 +182,41 @@ def test_a_real_program_runs_in_the_oracle():
     check(st["halted"], "it halts")
 
 
+def test_unoracled_image_still_assembles_under_run():
+    """PHASE_G.md SECTION 5: the oracle models ONLY the scratch register and
+    REFUSES every other UART register on purpose. `make burn-prog-serlsr`
+    died in that refusal on 2026-09-04 with the chip in the programmer. A
+    refusal is 'no answer key', not 'bad program': --run must SAY SO and
+    still write the image. A real oracle fault must still be fatal."""
+    print("--run on an UNORACLED image")
+    import io
+    import contextlib
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        src = os.path.join(d, "lsr.asm")
+        out = os.path.join(d, "PROG_lsr.bin")
+        open(src, "w").write("LDAI 0xFF\nOUT\nLDA 0x4805\nOUT\nHALT\n")
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = asm.main([src, "--run", "-o", out])
+        check_eq(rc, 0, "an unoracled image is not an error")
+        check(os.path.exists(out), "the image was written")
+        check("UNORACLED" in buf.getvalue(), "the refusal is printed, not hidden")
+        check("LSR" in buf.getvalue(), "and names the register")
+
+        # A byte the machine cannot decode is a real fault, not a refusal.
+        src2 = os.path.join(d, "bad.asm")
+        out2 = os.path.join(d, "PROG_bad.bin")
+        open(src2, "w").write("LDAI 0xFF\nOUT\n.db 0x9F\nHALT\n")
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                asm.main([src2, "--run", "-o", out2])
+            check(False, "an undecodable opcode still raises")
+        except pg.BuildError:
+            check(True, "an undecodable opcode still raises")
+        check(not os.path.exists(out2), "and writes nothing")
+
+
 def test_every_coverage_image_round_trips():
     """THE EQUIVALENCE TEST. Every image in progrom_gen.COVERAGE is rendered
     to .asm text and reassembled, and the bytes must be IDENTICAL to what

@@ -105,6 +105,13 @@ class BuildError(Exception):
     pass
 
 
+class Unoracled(BuildError):
+    """The oracle DECLINES to answer, by design -- PHASE_G.md SECTION 5.
+    The program is legal and the image is buildable; there is no number
+    to compare OB against. asm.py --run reports it and still writes.
+    Every other BuildError is a fault and stays fatal."""
+
+
 class Ref:
     """A forward/backward label reference. Expands to two operand bytes,
     LO then HI, so it satisfies the microcode's declared length for the
@@ -253,16 +260,87 @@ DIP_BASE = IO_BASE + 0x0000     # '138 output O0 -- slot 0
 DIP_SLOT = 0x7FF                # 2K of low bits the card does not decode
 
 
-def io_read(addr, switches):
-    """One byte from the I/O window, 0x4000-0x7FFF."""
+# ---- card one: the serial card (PHASE G) --------------------------------
+# U101 O1 -- slot 1, 0x4800-0x4FFF. A0-A2 come off M0-M2, so the eight
+# 16550 registers sit at base+0..7 and, M3-M10 being undecoded, repeat every
+# 8 bytes through the whole slot (PHASE_G.md GOTCHA 3). Nothing outside the
+# slot answers.
+#
+# THE ORACLE MODELS EXACTLY ONE BYTE OF THIS CARD, and that is a ruling, not
+# an omission (PHASE_G.md SECTION 5). The scratch register at base+7 is
+# inert -- datasheet 8.10, "does not control the UART in anyway" -- so it is
+# one byte of state with no clock behind it. THR, RBR, the FIFOs, the baud
+# generator and loopback are TEMPORAL: THRE and DR move on bit boundaries,
+# and simulate() interprets microcode rows and has no notion of a bit time.
+# A model of those would be a second UART written by the same hand as the
+# spec, agreeing with itself while both were wrong. So every other register
+# RAISES. The images that touch them are generated and burnable, and their
+# expected bytes are DATASHEET-SOURCED, UNORACLED -- say so every time.
+SER_BASE = IO_BASE + 0x0800     # '138 output O1 -- slot 1
+SER_SLOT = 0x7FF
+SER_REG  = 0x7                  # A0-A2 <- M0-M2; the rest of the slot mirrors
+SER_RBR = SER_THR = SER_DLL = SER_BASE + 0   # DLAB banks 0 and 1
+SER_IER = SER_DLM = SER_BASE + 1
+SER_IIR = SER_FCR = SER_BASE + 2
+SER_LCR = SER_BASE + 3
+SER_MCR = SER_BASE + 4
+SER_LSR = SER_BASE + 5
+SER_MSR = SER_BASE + 6
+SER_SCR = SER_BASE + 7
+_SER_REG_NAME = {0: "RBR/THR/DLL", 1: "IER/DLM", 2: "IIR/FCR", 3: "LCR",
+                 4: "MCR", 5: "LSR", 6: "MSR", 7: "SCR"}
+
+
+def uart_reset():
+    """The card's state after Master Reset. FACT, datasheet section 6.0,
+    MR: "clears all the registers (except the Receiver Buffer, Transmitter
+    Holding, and Divisor Latches)". SCR is none of the three."""
+    return {"scr": 0x00}
+
+
+def _ser_reg(addr, uart, verb):
+    reg = addr & SER_REG
+    if reg != SER_REG:
+        raise Unoracled(
+            f"{verb} of UART register {_SER_REG_NAME[reg]} at 0x{addr:04X}: "
+            f"the oracle models ONLY the scratch register (base+7). The rest "
+            f"are temporal and have no answer key -- PHASE_G.md SECTION 5. "
+            f"This image is DATASHEET-SOURCED, UNORACLED; do not expect a "
+            f"number from simulate().")
+    return uart
+
+
+def io_read(addr, switches, uart=None):
+    """One byte from the I/O window, 0x4000-0x7FFF.
+
+    `uart` is the serial card's state from uart_reset(); None means no card
+    in slot 1 -- the phase-E machine -- and the slot reads the park."""
     if (addr & ~DIP_SLOT) == DIP_BASE:
         return switches & 0xFF
+    if (addr & ~SER_SLOT) == SER_BASE and uart is not None:
+        return _ser_reg(addr, uart, "read")["scr"]
     return IO_PARK
 
 
+def io_write(addr, val, uart):
+    """A write into the I/O window. True if something took it. Card zero is
+    a bare '244 and takes nothing; the serial card is the first consumer of
+    ~{IO_WR} in this machine's life."""
+    if (addr & ~SER_SLOT) == SER_BASE and uart is not None:
+        _ser_reg(addr, uart, "write")["scr"] = val & 0xFF
+        return True
+    return False
+
+
 def simulate(program, max_steps=100000, switches=0x00,
-             image=None, rom_window=None):
+             image=None, rom_window=None, serial=True):
     """Execute an assembled image by interpreting its microcode rows.
+
+    `serial=False` pulls the serial card out of slot 1 -- the phase-E
+    machine. PROG_window's AFTER reading depends on it: a PC that crosses
+    0x4000 NOP-slides through card zero and, with the card fitted, fetches
+    UART registers as opcodes at 0x4800 (PHASE_G.md GOTCHA 2), which is
+    undefined. With the slot empty it finds the park and halts.
 
     Returns a dict of observables. `out` is what OB would read — the only
     datapath observable the block ladder has, which is why every coverage
@@ -283,6 +361,7 @@ def simulate(program, max_steps=100000, switches=0x00,
     sp = SP_POISON
     mdr = 0
     out = None
+    uart = uart_reset() if serial else None   # slot 1 after MR, or empty
     # THE FLAG MODEL. U49 is a '273 with NO clock enable -- it re-clocks every
     # T-state -- and U48 is a '157 whose select is ~{ALU_OUT}. So the flags
     # UPDATE on any row that sources the ALU and HOLD on every other row.
@@ -308,7 +387,7 @@ def simulate(program, max_steps=100000, switches=0x00,
         if a < window:
             return code[a] if a < len(code) else SAFE_FILL
         if a < RAM_BASE:
-            return io_read(a, switches)
+            return io_read(a, switches, uart)
         return ram.get(a, 0)
 
     while st["steps"] < max_steps:
@@ -422,10 +501,10 @@ def simulate(program, max_steps=100000, switches=0x00,
                 # them working. check_word refuses those rows now, but the
                 # oracle must not be the thing that would have missed it.
                 a = _addr_bus()
-                if a < RAM_BASE:
-                    st["lost_writes"] = st.get("lost_writes", 0) + 1
-                else:
+                if a >= RAM_BASE:
                     ram[a] = val
+                elif not (a >= IO_BASE and io_write(a, val, uart)):
+                    st["lost_writes"] = st.get("lost_writes", 0) + 1
                 st["ram_writes"] += 1
                 st["stored"] = val
             elif dst == "SP_LO":
@@ -453,7 +532,7 @@ def simulate(program, max_steps=100000, switches=0x00,
                     # not 0, it is unknown: the '382 does not specify CN+4 for
                     # its logic function codes. Refuse rather than guess.
                     if not flag_c_defined:
-                        raise BuildError(
+                        raise Unoracled(
                             f"pc=0x{pc:04X}: JNC reads a carry that no "
                             f"arithmetic op defined -- the last ALU row was a "
                             f"LOGIC function code and the '382 does not "
@@ -1651,6 +1730,162 @@ INDJ_PROGRAM = _indj(INDJ_LAND)
 #   0xE7  JMPM fell through: the indirection or the PC_LOAD did not happen
 #   0xFF  never reached either OUT
 
+# ---- PHASE G -- the serial card's witnesses ------------------------------
+# Eight images, PHASE_G.md SECTION 3, plus serprobe from step 2. Every one
+# starts with the poison: U35 has no reset, so OB holds the previous answer
+# until something overwrites it, and 0xFF is what a program that never
+# reached its OUT leaves behind.
+#
+# TWO have an oracle (serid, serid_aa): they touch only SCR. The other
+# SEVEN are in SERIAL_WITNESS, not COVERAGE, and simulate() REFUSES them --
+# see the ruling above io_read(). Their expected bytes are copied from the
+# datasheet with the table or section named beside each. A human compares
+# a byte on the LEDs against a sourced constant; that is not the same thing
+# as --expected checking it, and it is reported as "datasheet-sourced,
+# unoracled" every time.
+SER_POISON = [("LDAI", POISON), ("OUT",)]
+
+# 4b -- the scratch register. RAW REPORT: the byte names its own broken line.
+# 0x54 = D0 stuck, 0x51 = D2, 0x15 = D6; 0xFF = the card never drove W;
+# 0x00 = something drove W low but not with the byte. The two arms between
+# them put both a 1 and a 0 on every data line.
+SERID_VALUE = 0x55
+SERID_AA_VALUE = 0xAA
+
+
+def _serid(value):
+    return SER_POISON + [
+        ("LDAI", value), ("STA", *_addr(SER_SCR)),
+        ("LDA", *_addr(SER_SCR)), ("OUT",), ("HALT",),
+    ]
+
+
+SERID_PROGRAM = _serid(SERID_VALUE)
+SERID_AA_PROGRAM = _serid(SERID_AA_VALUE)
+
+
+def ser_init(mcr=0x00):
+    """SECTION 4 -- 9600 8N1, FIFO on, polled. 14 instructions, 35 bytes.
+
+    ORDER IS LOAD-BEARING (GOTCHA 1): LCR bit 7 is DLAB, which banks base+0
+    and base+1 to the divisor latches. IER lives at base+1 and is written
+    AFTER the LCR write that clears DLAB; written before it, the byte lands
+    in DLM and changes the baud rate silently. MCR is last so the loopback
+    arm (0x10) and the real arm (0x00) differ in exactly one byte."""
+    return [
+        ("LDAI", 0x83), ("STA", *_addr(SER_LCR)),   # DLAB | 8N1
+        ("LDAI", 0x18), ("STA", *_addr(SER_DLL)),   # 3686400/(16*9600) = 24
+        ("LDAI", 0x00), ("STA", *_addr(SER_DLM)),
+        ("LDAI", 0x03), ("STA", *_addr(SER_LCR)),   # 8N1, DLAB clear
+        ("LDAI", 0x07), ("STA", *_addr(SER_FCR)),   # FIFO on, both cleared
+        ("LDAI", 0x00), ("STA", *_addr(SER_IER)),   # polled mode, 8.12
+        ("LDAI", mcr),  ("STA", *_addr(SER_MCR)),
+    ]
+
+
+SER_MASK_DR = 0x01              # LSR bit 0: a byte is in the RCVR FIFO
+SER_MASK_THRE = 0x20            # LSR bit 5: the XMIT FIFO is empty
+
+
+def _ser_poll(tag, mask):
+    """SECTION 4's poll loop, 16 T-states per non-taken pass. AND sets Z and
+    Z HOLDS through LDA/LDBI/JNZ (none is an ALU source), so the taken arm
+    is "the masked bit is SET". The ISA has JNZ and no JZ, so the back edge
+    is a JMP and cannot fall through."""
+    return [
+        f"wait_{tag}",
+        ("LDA", *_addr(SER_LSR)), ("LDBI", mask), ("AND",),
+        ("JNZ", Ref(f"ready_{tag}")),
+        ("JMP", Ref(f"wait_{tag}")),
+        f"ready_{tag}",
+    ]
+
+
+# step 2 -- U101 only, U102/U103 NOT fitted. Nothing on the card drives W,
+# so 0x4800 reads the park. With U103 seated this reads RBR and means nothing.
+SERPROBE_PROGRAM = SER_POISON + [
+    ("LDA", *_addr(SER_BASE)), ("OUT",), ("HALT",),
+]
+
+# 4c -- bytes the UART GENERATED and DINO never wrote. Narrows the
+# permutation-blind scratch round trip; step 7 closes it.
+SERLSR_PROGRAM = SER_POISON + [
+    ("LDA", *_addr(SER_LSR)), ("OUT",), ("HALT",),
+]
+SERIIR_PROGRAM = SER_POISON + [
+    ("LDAI", 0x07), ("STA", *_addr(SER_FCR)),
+    ("LDA", *_addr(SER_IIR)), ("OUT",), ("HALT",),
+]
+
+# step 5 -- the divisor dance and nothing else. Witness is a scope on
+# U103.15: 153.6 kHz = 3686400 / 24. Wrong frequency names which latch
+# took the wrong byte; nothing at all means DLAB never banked the latches.
+SERBAUD_PROGRAM = SER_POISON + [
+    ("LDAI", 0x83), ("STA", *_addr(SER_LCR)),
+    ("LDAI", 0x18), ("STA", *_addr(SER_DLL)),
+    ("LDAI", 0x00), ("STA", *_addr(SER_DLM)),
+    ("LDAI", 0x03), ("STA", *_addr(SER_LCR)),
+    ("HALT",),
+]
+
+# step 6 -- internal loopback. MCR bit 4 ties SOUT to SIN inside the part;
+# no wire leaves the card. 0x53 and not 0x3C: a byte goes LSB-first and a
+# bus reversed end to end returns a palindrome unchanged. 0x53 -> 0xCA.
+SERLOOP_BYTE = 0x53
+SERLOOP_PROGRAM = SER_POISON + ser_init(mcr=0x10) + [
+    ("LDAI", SERLOOP_BYTE), ("STA", *_addr(SER_THR)),
+] + _ser_poll("dr", SER_MASK_DR) + [
+    ("LDA", *_addr(SER_RBR)), ("OUT",), ("HALT",),
+]
+
+# step 7 -- real TX. THE MIRROR-WITNESS: the host terminal decodes the bits
+# by a convention DINO cannot influence, so no permutation of the card's
+# data bus survives it. OB = 0x53 only says the program finished.
+SERTX_TEXT = b"DINO\r\n"
+SERTX_DONE = 0x53
+
+
+def _sertx():
+    prog = SER_POISON + ser_init(mcr=0x00)
+    for i, ch in enumerate(SERTX_TEXT):
+        prog += _ser_poll(f"tx{i}", SER_MASK_THRE)
+        prog += [("LDAI", ch), ("STA", *_addr(SER_THR))]
+    prog += [("LDAI", SERTX_DONE), ("OUT",), ("HALT",)]
+    return prog
+
+
+SERTX_PROGRAM = _sertx()
+
+# step 8 -- real RX, echoed. NEVER HALTS. Type a character: it lands on OB
+# in binary AND comes back to the terminal, two observables per keystroke.
+# THRE is polled BEFORE the RBR read so the byte goes A -> OB -> THR with
+# nothing clobbering A in between; RBR is read EXACTLY ONCE (GOTCHA 2: the
+# read pops the FIFO and cannot be repeated).
+SERRX_PROGRAM = SER_POISON + ser_init(mcr=0x00) + [
+    "top",
+] + _ser_poll("rx", SER_MASK_DR) + _ser_poll("echo", SER_MASK_THRE) + [
+    ("LDA", *_addr(SER_RBR)), ("OUT",), ("STA", *_addr(SER_THR)),
+    ("JMP", Ref("top")),
+]
+
+# tag -> (program, expected OB or None, where the expectation comes from)
+SERIAL_WITNESS = {
+    "serprobe": (SERPROBE_PROGRAM, IO_PARK,
+                 "step 2 only, U103 NOT seated: the park. Meaningless after"),
+    "serlsr":   (SERLSR_PROGRAM, 0x60,
+                 "datasheet TABLE I, LSR after Master Reset = THRE|TEMT"),
+    "seriir":   (SERIIR_PROGRAM, 0xC1,
+                 "datasheet 8.6: bits 7:6 = FCR0, bit 0 = nothing pending"),
+    "serbaud":  (SERBAUD_PROGRAM, None,
+                 "scope U103.15 ~BAUDOUT: 153.6 kHz = 3686400/24"),
+    "serloop":  (SERLOOP_PROGRAM, SERLOOP_BYTE,
+                 "the byte itself, back through MCR bit 4 loopback"),
+    "sertx":    (SERTX_PROGRAM, SERTX_DONE,
+                 "HOST TERMINAL shows DINO at 9600 8N1; OB only says done"),
+    "serrx":    (SERRX_PROGRAM, None,
+                 "never halts: typed char on OB AND echoed to the host"),
+}
+
 COVERAGE_SW = {"dip": DIP_SW}
 
 COVERAGE = {
@@ -1683,6 +1918,9 @@ COVERAGE = {
     "ind": IND_PROGRAM,
     "indst": INDST_PROGRAM,
     "indj": INDJ_PROGRAM,
+    # phase G, 2026-09-04 -- the two serial images the oracle CAN check
+    "serid": SERID_PROGRAM,
+    "serid_aa": SERID_AA_PROGRAM,
 }
 
 
@@ -1936,6 +2174,11 @@ def print_expected():
         ob_s = f"0x{ob:02X}" if ob is not None else "NEVER-HALTS"
         sw_s = f"0x{sw:02X}" if needs else "-"
         print(f"{tag:<12s} {ob_s:<11s} {ends:<5d} {sw_s}")
+    print("# phase G, DATASHEET-SOURCED, UNORACLED -- simulate() refuses these.")
+    print("# A human reads OB against the constant; --expected did not check it.")
+    for tag, (_prog, ob, source) in SERIAL_WITNESS.items():
+        ob_s = f"0x{ob:02X}" if ob is not None else "-"
+        print(f"{tag:<12s} {ob_s:<11s} {source}")
 
 
 def main():
@@ -2001,6 +2244,15 @@ def main():
     with open(os.path.join(ROMS, "PROG_window.bin"), "wb") as f:
         f.write(win)
     win_crc = crc16(win)
+    # phase G -- the seven UNORACLED serial witnesses. Written, burnable,
+    # NOT in PR_COVERAGE and NOT in cov: simulate() refuses them, so there
+    # is no (OB, END) fingerprint and no --expected row with a number in it.
+    ser = {}
+    for tag, (prog, ob, source) in SERIAL_WITNESS.items():
+        img = build_image(prog)
+        with open(os.path.join(ROMS, f"PROG_{tag}.bin"), "wb") as f:
+            f.write(img)
+        ser[tag] = (crc16(img), len(assemble(prog)), ob, source)
     emit_header(real, crcs, HDR, cov)
     print(f"wrote {6 + len(cov)}x {ROM_IMAGE}B bins -> {ROMS}")
     print(f"wrote expect header -> {HDR}")
@@ -2034,6 +2286,11 @@ def main():
     print(f"    PROG_window.bin  crc=0x{win_crc:04X}  "
           f"BEFORE the mod OB 0x{WINDOW_SENTINEL:02X}, "
           f"AFTER OB 0x{WINDOW_POISON:02X}")
+    print("  phase G serial witnesses -- DATASHEET-SOURCED, UNORACLED:")
+    for tag, (crc, n, ob, source) in ser.items():
+        ob_s = f"OB 0x{ob:02X}" if ob is not None else "no OB  "
+        print(f"    PROG_{tag}.bin  crc=0x{crc:04X}  {n:4d} bytes  {ob_s}  "
+              f"{source}")
     print("      ONE burn, read TWICE, with ~{ROM_SEL} landed on U24.20")
     print("      between the readings. The BEFORE reading cannot be retaken.")
     print(f"  program: {' '.join(s[0] for s in PROGRAM)}"

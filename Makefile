@@ -10,6 +10,9 @@
 #     make list-prog             what can be burned, straight off disk
 #     make id-rom                name whatever chip is in the socket
 #
+#     make monitor               minicom on the serial card, 9600 8N1
+#     make kill-monitor          kill minicom, free the port
+#
 # The burn targets carry the SAME NAMES as tests/dino_bringup/Makefile on
 # purpose. Two vocabularies for one action is how `make burn-prog-window` died
 # at the bench with the chip already in the programmer -- a name that works in
@@ -114,8 +117,39 @@ expected:
 test:
 	$(PY) -m pytest docs/notes -q
 
+# ---- serial ------------------------------------------------------------
+# Copied from intel-8008-vhdl/projects/b8008_monitor 2026-09-04. The serial
+# card (phase G) runs 9600 8N1: divisor 24 at 3.6864MHz, see asm/serbaud.asm.
+#
+#     make monitor               open minicom on the card
+#     make kill-monitor          kill minicom, free the port
+#     SERIAL_PORT=/dev/tty.xxx make monitor
+SERIAL_PORT ?= /dev/tty.usbserial-AB0JK5WC
+SERIAL_BAUD ?= 9600
+MINICOM     ?= minicom
+
+monitor:
+	@test -e $(SERIAL_PORT) || { echo "ERROR: $(SERIAL_PORT) not present (ls /dev/tty.usbserial*)"; exit 1; }
+	$(MINICOM) -D $(SERIAL_PORT) -b $(SERIAL_BAUD) -c on -w
+
+# minicom does not die on the spot: on SIGTERM it "hangs up" (drops DTR,
+# restores the tty) and only then exits. Opening the port during that window
+# corrupts the first bytes of a send. So: wait for the process to actually be
+# gone, then give the driver SERIAL_SETTLE seconds to release the device.
+SERIAL_SETTLE ?= 2
+
+kill-monitor:
+	@if pkill -x minicom; then \
+	    n=0; while pgrep -x minicom >/dev/null && [ $$n -lt 50 ]; do sleep 0.1; n=$$((n+1)); done; \
+	    if pgrep -x minicom >/dev/null; then echo "minicom still running after 5 s - pkill -9 -x minicom"; exit 1; fi; \
+	    echo "minicom killed; settling $(SERIAL_SETTLE)s for $(SERIAL_PORT)"; sleep $(SERIAL_SETTLE); \
+	else \
+	    echo "minicom not running"; \
+	fi
+
 .PHONY: list-asm assemble-all gen-microcode gen-progrom expected test \
         burn-real-u9 burn-real-u15 burn-real-u23 burn-prog burn-prog-diag \
         list-prog read-prog id-rom verify-prog verify-prog-diag \
-        verify-real-u9 verify-real-u15 verify-real-u23
+        verify-real-u9 verify-real-u15 verify-real-u23 \
+        monitor kill-monitor
 .PRECIOUS: $(ROMS)/PROG_%.bin

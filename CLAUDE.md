@@ -367,29 +367,71 @@ published TO cards as an input; nothing on the edge lets a card assert an
 address or a write enable, and DMA is removed entirely, not deferred. Card
 code that runs on the CPU is software like any other and has the same reach —
 conflicts there are a convention problem, the Apple/IBM slot-scratch problem,
-and no hardware guards it. **`~{IO_WR}` (`U75.6`) is still a no-connect**;
-land it when the first write-capable card exists.
+and no hardware guards it. **`~{IO_WR}` (`U75.6`) is LANDED as of 2026-09-04**,
+feeding the serial card's `~WR` (`U103.18`); `PROG_serid` reads `0x55`. Its
+first landing was one hole off, on `U75.5`, and read `0xFF` -- see
+`.git/sdd/PHASE_G.md` RESULT 4b.
 
 Read `.git/sdd/PHASE_E.md` for the spec and the RESULT sections.
 
-**FACT — PHASE F STEP 1 IS IN COPPER, 2026-08-27 (Rico).** `U77` is wired:
-`FLAG_C`→`U77.2`, `FLAG_Z`→`U77.3`, `CW21`→`U77.1`, `U77.4`→`U62.3`, `~G` to
-GND. What remains for step 1 is its WITNESS, not its build: `PROG_suite`
-SW1=1..12 must read `6B 40 C5 39 39 15 27 53 2C 4B 27 6E` bit-identical
-against the CURRENT ROMs, before any reburn. The mux is inert by
-construction, so a moved value names a broken wire on a three-wire change.
+**FACT — PHASE G IS ON SILICON AND COMPLETE, 2026-09-04.** The serial
+card (`U101` '138, `U102` '245, `U103` PC16550D, `dino_serial/`) runs at
+9600 8N1. Every step-4..8 witness passed on the bench in one evening:
 
-**FACT — THE ISA IS 174 INSTRUCTIONS, 2026-08-27, AND NONE OF IT IS BURNED.**
-Phase F wrote 41; phase F+ added 108 more the same day. **Zero packages, zero
-new decoder outputs, zero wires.** An exhaustive enumeration over the landed
-SRC/DST/MISC codes found 227 distinct legal row sequences, 55 of which were
-already the ISA; 108 of the remaining 172 survived curation. 82 opcodes free.
+    serid 0x55   serid_aa 0xAA   serlsr 0x60   seriir 0xC1
+    serbaud 153.6 kHz on U103.15   serloop 0x53
+    sertx  "DINO" on the host terminal      <- the data bus is PROVEN
+    serrx  typed char on OB AND echoed      <- phase G's exit condition
+
+One wiring fault on the way: the card's `~WR` landed on `U75.5` (an input)
+instead of `U75.6`; `PROG_serid` read `0xFF` until it moved. `~{IO_WR}`
+is now landed and proven. Tooling: `asm.py --run` reports `Unoracled`
+instead of dying on images the oracle refuses by design.
+
+**FACT — THE MACHINE HAD NO POWER-ON RESET UNTIL 2026-09-04. `C1` WAS 1uF
+IN COPPER, 10uF IN THE DRAWING.** With `10k x 1uF = 10ms`, reset released
+~1ms into a ~10ms rail ramp (scope `U103.35`: one 0.8ms pulse at ~2.5V,
+then 0V for 140ms). The core survived because HC/LS logic runs at 2.5V
+and the PC/T-counter clears landed inside that runt. The PC16550D did not:
+it has no internal POR, needs `MR` >= 5us on a valid rail, and started in
+a random state -- LCR bits 1:0 and FCR did not hold, so it framed 5-BIT
+characters both ways (bit 5 always set, trailing `0xFF` frame, RBR `0x1D`
+for `[`). The RESET button was the first real MR of its life, which is why
+warm was always clean. **Rico fitted 10uF; cold boot is clean.** Copper now
+matches the drawing. Two theories were written and retracted on the way
+(phantom power via SIN; a parked RC node) -- `.git/sdd/PHASE_G.md` RESULT 8
+has the whole chase. Diagnostics from it: `PROG_serrx0`, `serlcr`,
+`serlive`, `serrxlcr`, `serrxlive`; host probe `docs/notes/serprobe_host.py`.
+
+**FACT — PHASE F IS ON SILICON AND CLOSED, 2026-09-01 (Rico).** `U77`
+(`74LS157`) is in copper since 2026-08-27; the 174-instruction microcode is
+BURNED and in the sockets:
+
+    U9  0xE991    U15 0x33EA    U23 0xCB8E     pinned in test_microcode_gen.py
+
+The witness is the self-test, not the eight standalone images: `PROG_isa`
+reads `0xB4` (147 subtests, including `JNC`, `MOV A,C`, `LDAX`, `LDAM` —
+none of which the pre-F ROMs decode), `PROG_isalive` `0xB4` every run, and
+`PROG_isasoak` `0x00` on 50 consecutive runs, all at 1.024 MHz after the
+GND/VCC starring of the same day. `LDCI` has now executed on silicon via
+`MOV A,C`; `NOP` remains the one never-executed opcode by design.
+
+Deferred to PHASE H (cleanup), listed in `.git/sdd/PHASE_F.md` RESULT 7:
+the 23 `SETTLE` rows (added for a fault that was ground), the 15-opcode
+`OUT_` family (write-only, so the self-test cannot witness it), 22
+instructions never executed on silicon, and two scope OPENs (`CN+4` after
+a logic op; the branch path timing).
+
+**Phase F+ was 108 instructions for zero packages, zero decoder outputs,
+zero wires.** An exhaustive enumeration over the landed SRC/DST/MISC codes
+found 227 legal row sequences; 108 of the 172 not already in the ISA
+survived curation. 82 opcodes free.
 
 **The binding constraint is now the 256-entry opcode map, not the hardware.**
-All 172 would have left 18 free, and family 9 (`SHR`/`MOV A,FLAGS`/`ADC`/
-`SBB`) plus the `CW22`/`CW23` branch families already claim 10 of those.
-`0x9x` is RESERVED for hardware-gated opcodes and high-nibble-is-family still
-holds, because that is what makes a byte hand-disassemblable at the bench.
+Family 9 (`SHR`/`MOV A,FLAGS`/`ADC`/`SBB`) plus the `CW22`/`CW23` branch
+families already claim 10 of the free slots. `0x9x` is RESERVED for
+hardware-gated opcodes and high-nibble-is-family still holds, because that
+is what makes a byte hand-disassemblable at the bench.
 
 **FACT — OB LATCHES MDR, NOT THE ACCUMULATOR**, netlist-extracted from
 `registers_a_b.kicad_sch` 2026-08-27: `U44` is a `'245` with `DIR` tied
@@ -407,39 +449,6 @@ the HI byte, and that byte is parked in MDR and **replayed immediately**.
 **The assembler emits the address twice** (`addr`, `addr+1`) because MAR
 loads only from W and has no increment. Clobbers C; **B survives**, which is
 what makes it beat `LDC addr; LDB addr+1; LDAX`.
-
-**FACT — PHASE F STEP 2 IS WRITTEN AND HOST-GREEN, AND NOTHING IS BURNED.**
-`U77` (`74LS157`) and `C82` are drawn on the ALU sheet, `COND_FLAG` is
-labelled on both sheets and `U62.3` has moved off `FLAG_Z`. All four checks
-are clean — `--continuity U77` lists exactly four new pins, `--since` shows
-the ONE predicted copper change (`U62.3 FLAG_Z -> COND_FLAG`), and the ERC
-delta leaves `net_not_bus_member` at 4. **What remains is three wires and one
-pin lift, and then `PROG_suite` SW1=1..12 must read `6B 40 C5 39 39 15 27 53
-2C 4B 27 6E` bit-identical** — the mux is inert by construction, so a moved
-value names a broken wire on a three-wire change.
-
-**FACT — PHASE F STEP 2 IS WRITTEN AND HOST-GREEN, AND NOTHING IS BURNED.**
-One hundred and forty-nine instructions are in `microcode_gen.INSTRUCTIONS`
-and in the oracle. **`LDCI` and `NOP` are still the two never-executed
-instructions on SILICON** — `MOV A,C` retires `LDCI` the
-moment `U9`/`U15`/`U23` are burned, and not before. Say which side of the
-burn a claim is on.
-
-    U9   0xB5B7 -> 0x99A0        re-pinned in test_microcode_gen.py, so a
-    U15  0x5174 -> 0xBFEF        reburn is deliberate and a surprise CRC
-    U23  0x2329 -> 0xCB8E        move is a failing host test
-
-    PROG_jnc 0x6C   PROG_jncswap 0xEE   PROG_mov   0x9C
-    PROG_ptr 0x22   PROG_shl     0xA4
-    PROG_ind 0x63   PROG_indst   0x5B   PROG_indj  0x6C
-
-The 66-instruction CRCs `0xB111`/`0xFE5E`/`0xD8F4` name a ROM that never
-existed in silicon: phase F+ superseded it the same day, before it reached a
-programmer. Recorded so three orphan numbers in the session log mean
-something.
-
-`PROG_suite` is UNCHANGED at crc `0x8A1C`: the regression that proves the mux
-inert must not move while it is proving it.
 
 **DECISION 2026-08-27 (Rico), taken at the burn exactly as `PHASE_F.md`
 SECTION 8 scheduled: `0x00` STAYS `NOP`.** The OPEN is closed. The
@@ -791,6 +800,15 @@ not because they are principles.
   every one of them was wrong. Reseating restored it. Corollary: after
   ANY session of repeated chip swaps, re-seat the decoupling before
   trusting a single reading, because every pull flexes the board.
+- **A COMPONENT VALUE IS COPPER TOO. 2026-09-04, the cold-boot UART fault.**
+  Rule 4 verifies WIRING; a beep cannot tell 1uF from 10uF. `C1` was 1uF
+  in the socket against 10uF in the drawing, the power-on reset was a
+  0.8ms runt at half rail, and an evening went to two wrong theories about
+  the parts AROUND the RC while the RC itself was never measured. The
+  0.8ms release against a 40ms expectation WAS the measurement -- a 10k RC
+  that lets go that fast is 1uF. When a timing is 10x off, suspect the
+  passive's value before the silicon's threshold. Scope the node on a
+  button release: the tail is tau, in one capture.
 - **A single-shot test on a marginal board reports noise with a straight
   face.** Repeat the operation N times inside one image and pass only on
   unanimity. `PROG_sui16` was the pattern (image deleted 2026-09-01 with

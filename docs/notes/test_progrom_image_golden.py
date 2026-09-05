@@ -47,6 +47,9 @@ GOLDEN_CRC = {
     "ind":       0x9B7E,
     "indst":     0xAB5B,
     "indj":      0x81A8,
+    # PHASE G -- the two serial images the oracle can check, 2026-09-04
+    "serid":     0xEE88,
+    "serid_aa":  0x74B4,
 }
 GOLDEN_DIAG_CRC = 0xDFE7
 # PROG_window is NOT in COVERAGE -- it has two correct answers, one per

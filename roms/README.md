@@ -176,6 +176,15 @@ construction — no eleventh table.
         memory-indirect JUMP, landing site as the observable. 0x6C passes,
         0xE7 is the fall-through. The target address is computed from the
         assembled prologue, never counted. PHASE F+.
+    PROG_serid.bin   0xEE88  0x55  6
+        PHASE G, step 4b. STA/LDA round trip through the 16550's scratch
+        register at 0x4807: the first write in this machine's life that
+        anything consumed (~{IO_WR}, U75.6). RAW REPORT -- 0x54 names D0,
+        0x51 D2, 0x15 D6; 0xFF means the card never drove W. Permutation-
+        blind: a crossed U102 passes it.
+    PROG_serid_aa.bin 0x74B4  0xAA  6
+        the complement arm. 0x55 and 0xAA between them put a 1 and a 0 on
+        every data line.
 
 ### Soak images — not coverage images
 
@@ -259,7 +268,34 @@ construction — no eleventh table.
         Not in PR_COVERAGE: two correct answers, so there is no
         single (OB, END) fingerprint for the ladder to match.
         The BEFORE reading cannot be retaken once the window
-        exists -- take it first.
+        exists -- take it first. Since phase G the AFTER reading
+        needs slot 1 EMPTY too: a PC crossing 0x4000 NOP-slides
+        through card zero and, with the serial card fitted, fetches
+        UART registers as opcodes at 0x4800 (PHASE_G.md GOTCHA 2).
+
+### Phase G — the serial card's witnesses, UNORACLED
+
+    simulate() REFUSES every one of these: they touch 16550
+    registers that are TEMPORAL (THRE and DR move on bit
+    boundaries) and the oracle has no clock. The expected byte
+    is DATASHEET-SOURCED, its table or section named beside it,
+    and a human compares OB against it. That is not the same
+    thing as --expected checking it. PHASE_G.md SECTION 5.
+
+    IMAGE              CRC16   BYTES  OB    SOURCE
+    PROG_serprobe.bin  0x1FDF     8   0xFF  step 2 only, U103 NOT seated: the park. Meaningless after
+    PROG_serlsr.bin    0xD728     8   0x60  datasheet TABLE I, LSR after Master Reset = THRE|TEMT
+    PROG_seriir.bin    0x4312    13   0xC1  datasheet 8.6: bits 7:6 = FCR0, bit 0 = nothing pending
+    PROG_serbaud.bin   0x2C77    24   -     scope U103.15 ~BAUDOUT: 153.6 kHz = 3686400/24
+    PROG_serloop.bin   0xF995    60   0x53  the byte itself, back through MCR bit 4 loopback
+    PROG_sertx.bin     0x1DC8   144   0x53  HOST TERMINAL shows DINO at 9600 8N1; OB only says done
+    PROG_serrx.bin     0x64CE    72   -     never halts: typed char on OB AND echoed to the host
+
+    Order: serid/serid_aa, serlsr, seriir (step 4), serbaud
+    on the scope (step 5), serloop (step 6), sertx on a host
+    terminal at 9600 8N1 (step 7), serrx (step 8, never halts).
+    The data bus is NARROWED after step 4 and PROVEN only after
+    step 7, when a receiver DINO does not control decodes it.
 
 ### SW1 is active low, and the DIP label reads backwards from the bus
 
@@ -359,3 +395,18 @@ time the DIAG image is reburned — no reason to reburn just for this.
 
     IMAGE            CRC16   OB    SOURCE
     PROG_hello.bin   0x9C68  0x96  asm/hello.asm
+    PROG_serbaud.bin 0x2C77  UNORACLED asm/serbaud.asm
+    PROG_serid.bin   0x8888  0x55  asm/serid.asm
+    PROG_serid_aa.bin 0x74B4  0xAA  asm/serid_aa.asm
+    PROG_seriir.bin  0x4312  UNORACLED asm/seriir.asm
+    PROG_serlcr.bin  0x5F30  UNORACLED asm/serlcr.asm
+    PROG_serlive.bin 0x3057  UNORACLED asm/serlive.asm
+    PROG_serloop.bin 0xF995  UNORACLED asm/serloop.asm
+    PROG_serlsr.bin  0xD728  UNORACLED asm/serlsr.asm
+    PROG_serprobe.bin 0x1FDF  UNORACLED asm/serprobe.asm
+    PROG_serrx.bin   0x64CE  UNORACLED asm/serrx.asm
+    PROG_serrx0.bin  0xA1C4  UNORACLED asm/serrx0.asm
+    PROG_serrxlcr.bin 0xF746  UNORACLED asm/serrxlcr.asm
+    PROG_serrxlive.bin 0xA673  UNORACLED asm/serrxlive.asm
+    PROG_sertx.bin   0x1DC8  UNORACLED asm/sertx.asm
+    PROG_test.bin    0x1059  0x00* asm/test.asm
