@@ -402,6 +402,7 @@ time the DIAG image is reburned — no reason to reburn just for this.
     PROG_hello.bin   0x9C68  0x96  asm/hello.asm
     PROG_monitor.bin 0xA22B  UNORACLED asm/monitor.asm
     PROG_romsoak.bin 0xF919  SW1   asm/romsoak.asm   ROM-as-data soak, 65536 passes, OB = misses; docs/notes/test_romsoak.py
+    PROG_txsoak.bin  0x5903  SW1   asm/txsoak.asm   four routes into STA THR, streams forever; docs/notes/test_txsoak.py
     PROG_serbaud.bin 0x2C77  UNORACLED asm/serbaud.asm
     PROG_serid.bin   0x8888  0x55  asm/serid.asm
     PROG_serid_aa.bin 0x74B4  0xAA  asm/serid_aa.asm

@@ -217,7 +217,7 @@ gates faster, which turned a marginal `MVI` into a broken one; it is
 BACK on `RAM_OE_ON`. As built: `ROM_BUF_ON = NOR(READS_IDLE, ~ROM_SEL)`,
 `~ROM_BUF_EN -> U19.19 AND U24.22`, `LE_MDR = NAND(+5V, READS_IDLE)`.
 `.git/sdd/PHASE_G_0.md` RESULTS has the four faults the first image on
-it exposed: a pulsing `U15` (chip, replaced), `MVI`'s park (microcode,
+it exposed: a pulsing `U15` (chip, replaced -- RETRACTED the same evening: a fresh `U9` pulses too, driven to 4V with a static address; the EEPROMs are being handed a bad address for ns, suspects are the '244 enables and the shared ground strap, OPEN), `MVI`'s park (microcode,
 settle row, `U9 0xC52B / U15 0xDCD1`), `LE_MDR` opening during the replay
 (copper, `U39.4` strapped +5V), and that wire. The paragraph below is the
 2026-09-04 reading that started it, kept for the shape of the mistake.**
