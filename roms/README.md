@@ -23,8 +23,8 @@ writes rows in every byte of the word. `U9`/`U15` stay untouched only for
 changes confined to `CW16-23`.
 
     IMAGE            BITS      SET    CRC16
-    U9.bin           CW0-7     REAL   0xE991
-    U15.bin          CW8-15    REAL   0x33EA
+    U9.bin           CW0-7     REAL   0xC52B
+    U15.bin          CW8-15    REAL   0xDCD1
     U23.bin          CW16-23   REAL   0xCB8E
     U9_diag.bin      CW0-7     DIAG   0x0F69
     U15_diag.bin     CW8-15    DIAG   0xF1B9
@@ -176,7 +176,7 @@ construction — no eleventh table.
         memory-indirect JUMP, landing site as the observable. 0x6C passes,
         0xE7 is the fall-through. The target address is computed from the
         assembled prologue, never counted. PHASE F+.
-    PROG_serid.bin   0xEE88  0x55  6
+    PROG_serid.bin   0x8888  0x55  6   asm/serid.asm owns this file; the Python copy feeds the oracle only
         PHASE G, step 4b. STA/LDA round trip through the 16550's scratch
         register at 0x4807: the first write in this machine's life that
         anything consumed (~{IO_WR}, U75.6). RAW REPORT -- 0x54 names D0,
@@ -340,6 +340,11 @@ time the DIAG image is reburned — no reason to reburn just for this.
 
     PROG_isa.bin     0xB96F  147 subtests, 3250 bytes
 
+    make gen-isa          writes all six: isa, isacount, isaid, isasoak,
+                          isalive, isawhere (docs/notes/isatest_gen.py --write)
+    make burn-prog-isa    regenerates, then burns. Same for the other five.
+    All six are committed as of 2026-09-05; `make gen-isa` regenerates them.
+
     Burn it, press RESET, read OB. 0xB4 means every
     subtest passed. ANY OTHER VALUE IS THE NUMBER OF THE FIRST
     INSTRUCTION THAT MISBEHAVED, and the table below names it.
@@ -395,6 +400,8 @@ time the DIAG image is reburned — no reason to reburn just for this.
 
     IMAGE            CRC16   OB    SOURCE
     PROG_hello.bin   0x9C68  0x96  asm/hello.asm
+    PROG_monitor.bin 0xA22B  UNORACLED asm/monitor.asm
+    PROG_romsoak.bin 0xF919  SW1   asm/romsoak.asm   ROM-as-data soak, 65536 passes, OB = misses; docs/notes/test_romsoak.py
     PROG_serbaud.bin 0x2C77  UNORACLED asm/serbaud.asm
     PROG_serid.bin   0x8888  0x55  asm/serid.asm
     PROG_serid_aa.bin 0x74B4  0xAA  asm/serid_aa.asm
@@ -410,3 +417,8 @@ time the DIAG image is reburned — no reason to reburn just for this.
     PROG_serrxlive.bin 0xA673  UNORACLED asm/serrxlive.asm
     PROG_sertx.bin   0x1DC8  UNORACLED asm/sertx.asm
     PROG_test.bin    0x1059  0x00* asm/test.asm
+    PROG_test2.bin   0x3FAA  0x4D  asm/test2.asm
+    PROG_test3.bin   0xB56A  0x4D  asm/test3.asm
+    PROG_test4.bin   0x5841  0x5A  asm/test4.asm   the monitor's puts read path, no UART
+    PROG_test5.bin   0xA464  SW1   asm/test5.asm   test4 bisected, six slots; docs/notes/test_test5.py
+    PROG_wander.bin  0x95FD  SW1   asm/wander.asm   0x11-0x1A per slot; docs/notes/test_wander.py

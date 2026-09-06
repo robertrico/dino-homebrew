@@ -755,9 +755,28 @@ def _f_plus():
         # byte in MDR for free (LE_MDR follows every memory read), then replay
         # it out of MDR with the mux back on MAR.
         #
-        # The replay MUST be the very next state. MDR holds for exactly one.
+        # And a SETTLE between them, 2026-09-05, found on silicon by
+        # PROG_test5. CW14 comes straight off the ROM and flips M to MAR
+        # ~30ns before the source decode retires ~{ROM_OUT}; in that window
+        # FETCH_RAM = NOR(~{ROM_OUT}, ~{RAM_EN}) fires, the RAM drives the
+        # cell's OLD byte onto MDR, and U18 is still transparent (LE_MDR
+        # closes on READS_IDLE, three gates after the decode). The park shut
+        # on a fight: MVI 0x9E read back 0x90/0x9F. A src=NONE row with the
+        # mux STILL on the PC lets READ drop with M in ROM, so nothing can
+        # turn on and the latch closes on a bus U19 released. Only then does
+        # M flip. PROG_isa never saw it: PLANT rewrites the same byte.
+        #
+        # AND THE PC STEPS IN THE SETTLE, NOT IN THE PARK. First cut of the
+        # settle (2026-09-05, burned, U9 0xC52B / U15 0xAE3F) left pc_up on
+        # the park row: PC stepped at the boundary, the ROM's address moved
+        # at once, and ~150ns later the ROM was putting the NEXT byte on U19
+        # while U18 was still transparent. test5 slots 2/3 read 0x00/0xFF.
+        # A ROM park is only safe while the ROM's ADDRESS stays put, so the
+        # park reads without stepping and the settle steps: the PC moves at
+        # the END of the settle, after U18 has shut on the immediate.
         I["MVI" + p] = (nbytes + 1, list(pre) + [
-            word(mux_pc=True, pc_up=True, src="ROM"),
+            word(mux_pc=True, src="ROM"),
+            word(mux_pc=True, pc_up=True),
             word(end=True, misc="MDR_OUT", dst="RAM")])
         for name, sa in zip(("STADD", "STSUB", "STBSUB", "STAND", "STOR",
                              "STXOR"), _REAL_SA):
@@ -978,13 +997,23 @@ def _check_mdr_replay_is_immediate(op, states):
         if t < 2:
             raise BuildError(f"opcode {op:#04x} T{t}: MDR_OUT with no prior "
                              f"state to have parked a byte")
-        prev_misc, prev_src, _ = _fields(states[t - 2])
+        prev_misc, prev_src, prev_dst = _fields(states[t - 2])
+        # One src=NONE settle between the park and the replay is allowed,
+        # and for a ROM-side park it is REQUIRED (see the MVI family): it
+        # drives nothing and loads nothing, so the latch has nothing new to
+        # capture, and it keeps the mux where the park left it so no
+        # address-keyed enable can fire. 2026-09-05.
+        if (prev_src == SRC["NONE"] and prev_dst == DST["NONE"]
+                and prev_misc == MISC["NONE"] and t >= 3
+                and (states[t - 2] & MUX_PC) == (states[t - 3] & MUX_PC)):
+            prev_misc, prev_src, prev_dst = _fields(states[t - 3])
         if prev_src not in (SRC["ROM"], SRC["RAM"]):
             raise BuildError(
                 f"opcode {op:#04x} T{t}: MDR_OUT replays a byte that was not "
-                f"parked by the IMMEDIATELY preceding state (T{t-1} has "
-                f"src={prev_src}, needs ROM or RAM) -- MDR holds for exactly "
-                f"one state, see _check_mdr_replay_is_immediate")
+                f"parked by the preceding state (T{t-1} has src={prev_src}, "
+                f"needs ROM or RAM, or one src=NONE settle after one) -- MDR "
+                f"holds only until another source turns on, see "
+                f"_check_mdr_replay_is_immediate")
 
 
 def _check_mar_before_ram(op, states):

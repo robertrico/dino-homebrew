@@ -197,8 +197,46 @@ already there feeding `READS_IDLE`. Only `~{RAM_EN}` had to be brought in.
 Two pin lifts on the memory board, eleven wires. **`U24.22` stays on
 `~{ROM_OUT}`** — `U24`'s own `~CE = M15` deselects the ROM chip already.
 
-**The MDR board now has ZERO free gate sections.** `U22`, `U37` and `U39`
-are full. The next change needing a gate there needs a package.
+**The MDR board has ONE free gate section, `U37` i5**, freed by phase E.
+`U22`, `U39` and the rest of `U37` are in use; `U39` g2 now computes
+`LE_MDR` from `READS_IDLE` alone with its other input strapped +5V
+(2026-09-05). The next change needing a gate there needs a package.
+
+**The table above is the phase D drawing; phase E re-sourced two of those
+pins and the netlist now reads** `ROM_BUF_ON = NOR(~ROM_OUT, ~ROM_SEL)` on
+`U22 g4` (`U22.12 <- ~{ROM_SEL}`) and `~{RAM_OE_G} = NAND(RAM_OE_ON, M15)`
+on `U74 g3`, with `U37 inv5` freed. Netlist-extracted 2026-09-04;
+`.git/sdd/PHASE_G_0.md` SECTION 2 has the whole path.
+
+**FACT — ROM IS READABLE AS DATA, 2026-09-05. `PROG_test3` reads `0x4D`,
+`PROG_romsoak` reads `0x00` (65536 reads, three shapes, zero misses) and
+the monitor runs its session: `D 0000 -> 0x11`, `W FF00,99 -> 0x99`,
+`O FF00`. Three re-sourced pins as specified, minus one: the RAM-side
+wire (`U74.9 <- READ`) was logically identical to `RAM_OE_ON` and three
+gates faster, which turned a marginal `MVI` into a broken one; it is
+BACK on `RAM_OE_ON`. As built: `ROM_BUF_ON = NOR(READS_IDLE, ~ROM_SEL)`,
+`~ROM_BUF_EN -> U19.19 AND U24.22`, `LE_MDR = NAND(+5V, READS_IDLE)`.
+`.git/sdd/PHASE_G_0.md` RESULTS has the four faults the first image on
+it exposed: a pulsing `U15` (chip, replaced), `MVI`'s park (microcode,
+settle row, `U9 0xC52B / U15 0xDCD1`), `LE_MDR` opening during the replay
+(copper, `U39.4` strapped +5V), and that wire. The paragraph below is the
+2026-09-04 reading that started it, kept for the shape of the mistake.**
+
+**FACT — ROM WAS NOT READABLE AS DATA, 2026-09-04. `PROG_test3` read
+`0xFE`.** Two bytes planted in ROM, `LDA`/`LDB` by absolute address, `ADD`:
+both reads saw the bus park. The ROM's `~OE` (`U24.22`) and `U19`'s enable
+both key on `~{ROM_OUT}`, which only the PC-driven fetch asserts; a
+`src=RAM` row below 0x4000 leaves the ROM chip selected with its outputs
+off and `U21` driving MDR from nothing. **No bench-green image had ever
+read ROM as data** -- every table and pointer in every coverage image is in
+RAM -- so nothing caught it until the monitor kept a string in ROM and
+streamed bus residue to the terminal. RAM above 0x80FF is NOT the issue:
+`PROG_test2` reads `0x4D` at 0xFFE0/0xFFF0. **Decision (Rico): fixed in
+copper, not in software.** The ROM side keys on `READ` the way the RAM
+side already keys on `M15`: three re-sourced pins, zero packages, in
+`.git/sdd/PHASE_G_0.md` SECTION 3. The oracle already reads ROM as data
+and is the design; the copper is what moves. Rule: **before a new image
+burns, list everything it does that no green image ever did. All of it.**
 
 **FACT — gating `~{RAM_OUT}` upstream carries `U21`'s enable for free.**
 `U51` is a `7400` computing `~RAM_MDR_EN = AND(~RAM_OUT, ~WRITE_DIR)`, so
@@ -407,7 +445,8 @@ has the whole chase. Diagnostics from it: `PROG_serrx0`, `serlcr`,
 (`74LS157`) is in copper since 2026-08-27; the 174-instruction microcode is
 BURNED and in the sockets:
 
-    U9  0xE991    U15 0x33EA    U23 0xCB8E     pinned in test_microcode_gen.py
+    U9  0xC52B    U15 0xDCD1    U23 0xCB8E     pinned in test_microcode_gen.py
+    (2026-09-05: MVI settle row. Was 0xE991/0x33EA/0xCB8E from 2026-09-01.)
 
 The witness is the self-test, not the eight standalone images: `PROG_isa`
 reads `0xB4` (147 subtests, including `JNC`, `MOV A,C`, `LDAX`, `LDAM` —
@@ -498,6 +537,17 @@ circulation: `NOR` would give `CIN=0` for `SUB` as well, making it compute
 ## Open questions
 
 Named because they are not settled. None is blocking.
+
+**CLOSED AGAIN 2026-09-05 — HALT HELD ALL ALONG; `U15` WAS CLEARING THE
+T-COUNTER UNDER IT.** Every "OB moves after HALT" reading up to and
+including this morning's was `END` (`CW12`, `U15.16`) lifting for ~25ns
+into `U61` g1, `~MR` on `U6` dipping across a CLK edge, T clearing to 0,
+and the byte behind the HALT executing. The chip was putting the pulse
+out with a static address, clean rails and `~OE`/`~CE` low, at times
+locked to no clock in the machine. A fresh AT28C64B with the same image
+does not. LA, 100MHz, three clips: `U6.1`, `U6.14`, `U6.2`. Record in
+`.git/sdd/PHASE_G_0.md` RESULTS, FAULT 1. **A fault independent of the
+CLOCK is not in the logic.** Wander slot 1 holds `0x11` indefinitely.
 
 **CLOSED 2026-08-25 — HALT HOLDS. The "escape" was never tested.**
 `PROG_flow` reached `OB = 0x39` and held it for **at least 81 minutes**
@@ -800,6 +850,20 @@ not because they are principles.
   every one of them was wrong. Reseating restored it. Corollary: after
   ANY session of repeated chip swaps, re-seat the decoupling before
   trusting a single reading, because every pull flexes the board.
+- **A CHANGE THAT IS LOGICALLY IDENTICAL AND ONLY FASTER IS A TIMING
+  CHANGE, AND THE ORACLE IS BLIND TO IT. 2026-09-05, twice.** `NAND(READ,
+  M15)` and `NAND(RAM_OE_ON, M15)` are the same function; the first is
+  three gates quicker on `M15` and turned the RAM on while `U18` was still
+  parking a ROM byte. The `MVI` settle row's first cut moved `pc_up` one
+  row and made the ROM change address under an open latch. Both passed
+  every host test. **Before re-sourcing a pin, list every transparent
+  latch that is open across the boundary it speeds up.**
+- **A WITNESS THAT REWRITES THE SAME VALUE IS MIRROR-BLIND TO A WRITE
+  FAULT. 2026-09-05.** `PROG_isa` planted `0x2E` into `CELL` with `MVI`
+  147 times per pass and read `0xB4` while `MVI` was writing a MIX of the
+  immediate and the cell's old byte -- old and new were equal. The monitor
+  found it by writing two different pointers into one cell. Every plant
+  in a self-test must differ from what the cell held.
 - **A COMPONENT VALUE IS COPPER TOO. 2026-09-04, the cold-boot UART fault.**
   Rule 4 verifies WIRING; a beep cannot tell 1uF from 10uF. `C1` was 1uF
   in the socket against 10uF in the drawing, the power-on reset was a
@@ -885,9 +949,14 @@ not because they are principles.
   the '373s are transparent while CLK is low, closing a live loop
   `MAR -> M -> RAM -> MDR -> U25 -> W -> MAR`. ROM reads are exempt: their
   address comes from the PC.
-- **`misc=MDR_OUT` must be the state immediately after the read that parked
-  the byte.** `LE_MDR` falls at the T-state boundary and can latch whatever
-  the next source turns on.
+- **`misc=MDR_OUT` must follow the read that parked the byte, with at most
+  one `src=NONE` settle between, and a ROM-side park NEEDS that settle,
+  with `pc_up` on the settle and not on the park.** `LE_MDR` falls when
+  `READS_IDLE` rises, three gates after the decode; a `mux_pc` flip in the
+  same boundary turns the RAM on under the open latch, and a `pc_up`
+  moves the ROM's address under it. 2026-09-05, `MVI`. `LE_MDR` no longer
+  opens on `~RAM_LOAD` (`U39.4` strapped +5V), so the replay row itself
+  cannot re-open the park.
 
 The last three were found by the gate model after reading the schematic had
 accepted them. All are now `check_word`/`check_table` rules.
@@ -958,9 +1027,23 @@ LIVE — read these:
                                              BURNED. Read its RESULTS section
                                              FIRST -- the spec above it
                                              predates the rulings
+    .git/sdd/PHASE_G_0.md                    the monitor (D/W/O over serial,
+                                             host-green) AND the fix that
+                                             lets it run: ROM readable as
+                                             data, three re-sourced pins.
+                                             REMOVE/ADD/BEEP tables, the
+                                             witness order, the OPENs. ON
+                                             SILICON 2026-09-05; RESULTS has
+                                             the four faults. START HERE
     .git/sdd/PHASE_G.md                      the serial card: '138 + '245 +
                                              PC16550D. Follows E; does NOT
-                                             depend on F. SPECCED, not built
+                                             depend on F. ON SILICON 2026-09-04
+    .git/sdd/PHASE_I.md                      CompactFlash storage: '138 +
+                                             '138 + '245 + '04 + CF-to-IDE
+                                             in slot 2 (0x5000), 8-bit PIO,
+                                             DFS filesystem, BOM. Follows E
+                                             and G, assumes the monitor.
+                                             SPECCED 2026-09-04, not drawn
     .git/sdd/PHASE_D.md                      execute-from-RAM: build
                                              procedure, both checkpoints,
                                              the ramexec result

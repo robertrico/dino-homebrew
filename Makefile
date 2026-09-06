@@ -6,6 +6,8 @@
 #     make assemble-all          every asm/*.asm
 #
 #     make burn-prog-hello       re-assemble IF stale, then burn U24
+#     make burn-prog-isa         regenerate the ISA family, then burn
+#     make gen-isa               PROG_isa/isacount/isaid/isasoak/isalive/isawhere
 #     make burn-real-u9          microcode, CW0-7
 #     make list-prog             what can be burned, straight off disk
 #     make id-rom                name whatever chip is in the socket
@@ -82,9 +84,18 @@ assemble-all: $(patsubst %,$(ROMS)/PROG_%.bin,$(ASM_TAGS))
 #
 # Images with no .asm source (PROG_alu, PROG_suite, everything progrom_gen
 # emits) pass straight through untouched. Regenerate those with gen-progrom.
+# The ISA family has no .asm either: isatest_gen writes all six images in one
+# run (1.6s) and never committed them, so on a fresh checkout `burn-prog-isa`
+# died at "no such image". Regenerate before burning, same rule as the .asm
+# case -- the subtests read their opcodes out of microcode_gen at build time.
+ISA_GEN  = docs/notes/isatest_gen.py
+ISA_TAGS = isa isacount isaid isasoak isalive isawhere
+
 burn-prog-%:
 	@if test -f $(SRCS)/$*.asm; then \
 	  $(MAKE) --no-print-directory $(ROMS)/PROG_$*.bin; \
+	elif case " $(ISA_TAGS) " in *" $* "*) true;; *) false;; esac; then \
+	  $(MAKE) --no-print-directory gen-isa; \
 	fi
 	@test -f $(ROMS)/PROG_$*.bin || { \
 	  echo "no such image: $(ROMS)/PROG_$*.bin"; \
@@ -110,6 +121,10 @@ gen-microcode:
 
 gen-progrom:
 	$(PY) docs/notes/progrom_gen.py
+
+# All six at once; the generator has no per-image switch and takes 1.6s.
+gen-isa:
+	$(PY) $(ISA_GEN) --write
 
 expected:
 	@$(PY) docs/notes/progrom_gen.py --expected
@@ -147,7 +162,7 @@ kill-monitor:
 	    echo "minicom not running"; \
 	fi
 
-.PHONY: list-asm assemble-all gen-microcode gen-progrom expected test \
+.PHONY: list-asm assemble-all gen-microcode gen-progrom gen-isa expected test \
         burn-real-u9 burn-real-u15 burn-real-u23 burn-prog burn-prog-diag \
         list-prog read-prog id-rom verify-prog verify-prog-diag \
         verify-real-u9 verify-real-u15 verify-real-u23 \

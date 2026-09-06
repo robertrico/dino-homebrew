@@ -425,8 +425,16 @@ except g.BuildError:
 #   MVI fixed        U9 0xC64E   U15 0x61BF   U23 0xCB8E
 #   settling states  below. U23 UNCHANGED again: the pad rows spend no
 #                    third-ROM field, so only U9 and U15 need reburning.
-assert g.crc16(bins["U9.bin"][:4096]) == 0xE991, "U9 changed -- reburn intended?"
-assert g.crc16(bins["U15.bin"][:4096]) == 0x33EA, "U15 changed -- reburn intended?"
+#   settling states  U9 0xE991   U15 0x33EA   U23 0xCB8E   BURNED 2026-09-01
+#   MVI settle       below. U23 UNCHANGED a third time: the MVI family's rows
+#                    spend no third-ROM field and neither does the settle, so
+#                    U9 and U15 only. Found on silicon 2026-09-05 by
+#                    PROG_test5: the park closed on the RAM's old byte.
+#   MVI settle       U9 0xC52B   U15 0xAE3F   U23 0xCB8E   BURNED 2026-09-05,
+#                    WRONG: pc_up on the park row, U18 latched the next byte
+#   MVI settle v2    below. pc_up moved to the settle row: bit 13, U15 only.
+assert g.crc16(bins["U9.bin"][:4096]) == 0xC52B, "U9 changed -- reburn intended?"
+assert g.crc16(bins["U15.bin"][:4096]) == 0xDCD1, "U15 changed -- reburn intended?"
 assert g.crc16(bins["U23.bin"][:4096]) == 0xCB8E, "U23 changed -- reburn intended?"
 
 
@@ -470,22 +478,65 @@ def test_no_row_asks_the_address_bus_for_two_things():
 
 
 def test_MVI_parks_the_byte_in_MDR_and_replays_it():
-    """The cure, and it costs one T-state. Fetch with the mux on the PC and
-    NO destination -- which parks the byte in MDR for free -- then replay it
-    with the mux back on MAR. The replay must be the IMMEDIATELY next state,
-    because MDR holds for exactly one."""
+    """The cure, and it costs TWO T-states, not one. Fetch with the mux on
+    the PC and NO destination -- which parks the byte in MDR for free -- then
+    SETTLE with the mux still on the PC and no source, then replay it with
+    the mux on MAR.
+
+    Why the settle, 2026-09-05, on silicon: CW14 comes straight off the ROM
+    and flips M from the PC to MAR ~30ns before the source decode retires
+    ~{ROM_OUT}. In that window M15 is high and ~{ROM_OUT} is still low, so
+    FETCH_RAM = NOR(~{ROM_OUT}, ~{RAM_EN}) fires, the RAM drives the cell's
+    OLD byte onto MDR, and U18 is still transparent because LE_MDR closes on
+    READS_IDLE, three gates after the decode. The park shuts on a fight.
+    PROG_test5 slots 2/3: MVI 0x9E, read back 0x90 and 0x9F; MVI 0x02, read
+    0x03. PROG_isa never saw it: PLANT rewrites the same 0x2E every subtest.
+    The monitor was the first image to MVI a cell holding a different value.
+
+    With a src=NONE row between, READ drops while M is still in ROM: nothing
+    can turn on, the latch closes on a bus U19 released and that holds its
+    charge, and only then does M flip.
+
+    And the PC steps in the SETTLE, not in the park. The first settle cut
+    (burned 2026-09-05, U9 0xC52B / U15 0xAE3F) stepped the PC in the park
+    row; the ROM's address moved at the boundary and ~150ns later U19 was
+    carrying the NEXT byte into a still-open U18. test5 read 0x00/0xFF."""
     for name, nbytes in (("MVI", 4), ("MVIX", 2), ("MVIS", 2)):
         length, rows = INSTRUCTIONS[name]
         assert length == nbytes, f"{name} is {length} bytes, want {nbytes}"
-        park, replay = rows[-2], rows[-1]
+        park, settle, replay = rows[-3], rows[-2], rows[-1]
         assert (park >> 3) & 7 == SRC["ROM"] and park & 7 == DST["NONE"], \
             f"{name}: the park row must fetch with no destination"
         assert park & g.MUX_PC, f"{name}: the fetch needs the mux on the PC"
+        assert (settle >> 3) & 7 == SRC["NONE"] and settle & 7 == DST["NONE"] \
+            and (settle >> 6) & 7 == g.MISC["NONE"], \
+            f"{name}: the settle row must drive and load nothing"
+        assert settle & g.MUX_PC and settle & g.PC_UP, \
+            f"{name}: the settle keeps M on the PC and is where the PC steps"
+        assert not park & g.PC_UP, \
+            f"{name}: the park must NOT step the PC -- the ROM's address has " \
+            f"to stay put until U18 shuts (first settle cut read the next byte)"
         assert (replay >> 6) & 7 == g.MISC["MDR_OUT"], \
-            f"{name}: the next row must replay out of MDR"
+            f"{name}: the row after the settle must replay out of MDR"
         assert replay & 7 == DST["RAM"], f"{name}: the replay writes RAM"
         assert not replay & g.MUX_PC, \
             f"{name}: the write needs the mux back on MAR"
+
+
+def test_no_rom_park_flips_M_before_the_latch_closes():
+    """The hazard behind test_MVI..., stated for EVERY opcode: a row that
+    parks a ROM byte (src=ROM, dst=NONE, mux on PC) must not be followed by
+    a row with the mux on MAR. FETCH_RAM fires on that flip while the read is
+    still retiring and U18 is still open. A RAM-side park is exempt: M stays
+    on MAR through the replay and nothing else can join the bus."""
+    bad = []
+    for name, (_, rows) in INSTRUCTIONS.items():
+        for i in range(len(rows) - 1):
+            a, b = rows[i], rows[i + 1]
+            if ((a >> 3) & 7 == SRC["ROM"] and a & 7 == DST["NONE"]
+                    and a & g.MUX_PC and not b & g.MUX_PC):
+                bad.append(f"{name} T{i + 2}")
+    assert not bad, f"ROM park followed by an M flip: {bad}"
 
 
 # ---- PHASE F, step 2: the free set ---------------------------------------

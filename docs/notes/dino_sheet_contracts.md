@@ -25,8 +25,7 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - OUT   ~{ALU_OUT}  -> ALU Module, Memory Data Register
 - OUT   ~{REG_A_LOAD}, ~{REG_B_LOAD}  -> ALU Module, Register Modules
 - OUT   ~{MAR_HI_LOAD}, ~{MAR_LO_LOAD}  -> Memory Address Regiser
-- OUT   SRC_ACTIVE, ~{IR_LOAD}, ~{MDR_OUT}, ~{PC_HI_OUT}, ~{PC_LO_OUT}, ~{RAM_LOAD}, ~{RAM_OUT}  -> Memory Data Register
-- OUT   ~{ROM_OUT}  -> Memory, Memory Data Register
+- OUT   SRC_ACTIVE, ~{IR_LOAD}, ~{MDR_OUT}, ~{PC_HI_OUT}, ~{PC_LO_OUT}, ~{RAM_LOAD}, ~{RAM_OUT}, ~{ROM_OUT}  -> Memory Data Register
 - OUT   ~{PC_CLEAR}, ~{PC_LOAD}  -> Program Counter
 - OUT   ~{REG_A_OUT}, ~{REG_B_OUT}, ~{REG_C_LOAD}, ~{REG_C_OUT}, ~{REG_OUT_LOAD}  -> Register Modules
 - OUT   ~{SP_DOWN}, ~{SP_HI_LOAD}, ~{SP_HI_OUT}, ~{SP_LO_LOAD}, ~{SP_LO_OUT}, ~{SP_UP}  -> Stack Pointer
@@ -59,7 +58,6 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - BIDIR MDR0-7  <-> Memory, Register Modules, Stack Pointer
 
 ## Memory
-- IN    ~{ROM_OUT}  <- Control Word Module
 - IN    ~{RAM_EN}  <- Memory Address Regiser
 - IN    M0-15  <- Memory Address Regiser, Program Counter
 - IN    RAM_OE_ON, READS_IDLE, WRITE_DIR, ~{ROM_BUF_EN}  <- Memory Data Register

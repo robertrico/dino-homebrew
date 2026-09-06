@@ -5267,6 +5267,12 @@
 		(uuid "22f32097-88fe-4d5c-8f53-18105cf23c54")
 	)
 	(junction
+		(at 200.66 90.17)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "38168ddd-6ddd-4e22-ba97-7d76a06eec1a")
+	)
+	(junction
 		(at 168.91 81.28)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -6060,16 +6066,6 @@
 	)
 	(wire
 		(pts
-			(xy 196.85 95.25) (xy 200.66 95.25)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "20e3a335-6dc6-4675-9cc8-6fc021d51754")
-	)
-	(wire
-		(pts
 			(xy 100.33 62.23) (xy 105.41 62.23)
 		)
 		(stroke
@@ -6850,7 +6846,7 @@
 	)
 	(wire
 		(pts
-			(xy 200.66 95.25) (xy 200.66 96.52)
+			(xy 200.66 90.17) (xy 200.66 96.52)
 		)
 		(stroke
 			(width 0)
@@ -8058,6 +8054,16 @@
 		)
 		(uuid "104027d9-7f49-469c-83de-aead2e997311")
 	)
+	(label "RAM_OE_ON"
+		(at 26.67 175.26 180)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right bottom)
+		)
+		(uuid "1368038e-d12a-454b-a7a4-dbcc28d2d0c2")
+	)
 	(label "MDR1"
 		(at 160.02 45.72 0)
 		(effects
@@ -8418,16 +8424,6 @@
 		)
 		(uuid "795b558d-55d4-4d59-80ee-38653f83e542")
 	)
-	(label "~{ROM_OUT}"
-		(at 196.85 95.25 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "7a5882a4-e31a-5e75-bb32-baddfd49f221")
-	)
 	(label "MDR5"
 		(at 154.94 55.88 180)
 		(effects
@@ -8607,16 +8603,6 @@
 			(justify right bottom)
 		)
 		(uuid "a3c2051e-060c-43af-9e53-b9183281a749")
-	)
-	(label "RAM_OE_ON"
-		(at 26.67 175.26 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
-		(uuid "a926e058-54b6-4341-bdc6-a4d7ad7830e7")
 	)
 	(label "M11"
 		(at 63.5 85.09 0)

@@ -1070,5 +1070,90 @@ class TestSerialCard(unittest.TestCase):
         self.assertNotIn(("LDAI", 0x07), steps, "no FCR: nothing but the divisor")
 
 
+class TestSerialScript(unittest.TestCase):
+    """The scripted serial stimulus -- a TEST DOUBLE, not a UART model.
+
+    PHASE_G.md SECTION 5 forbids modelling THR/RBR/FIFOs because they are
+    TEMPORAL and the oracle has no clock. simulate(serial_in=...) does not
+    model time: DR is "bytes remain in the script", THRE is always set, and
+    a THR write is appended to a list. It exists so a program's PARSING and
+    FORMATTING can be host-tested; the polling idiom itself is bench-proven
+    by PROG_serrx. Without serial_in nothing changes and LSR stays
+    Unoracled."""
+    LSR, RBR, THR, LCR, DLL = 0x4805, 0x4800, 0x4800, 0x4803, 0x4800
+
+    def echo(self):
+        # the serrx idiom: DLAB dance, then poll DR, read once, write once
+        return [("LDAI", 0x83), ("STA", *pg._addr(self.LCR)),
+                ("LDAI", 0x18), ("STA", *pg._addr(self.DLL)),   # DLAB set
+                ("LDAI", 0x03), ("STA", *pg._addr(self.LCR)),
+                "top",
+                ("LDA", *pg._addr(self.LSR)), ("LDBI", 0x01), ("AND",),
+                ("JNZ", pg.Ref("go")), ("JMP", pg.Ref("top")),
+                "go",
+                ("LDA", *pg._addr(self.LSR)), ("LDBI", 0x20), ("AND",),
+                ("JNZ", pg.Ref("rd")), ("JMP", pg.Ref("go")),
+                "rd",
+                ("LDA", *pg._addr(self.RBR)), ("OUT",),
+                ("STA", *pg._addr(self.THR)), ("JMP", pg.Ref("top"))]
+
+    def test_default_is_still_unoracled(self):
+        with self.assertRaises(pg.Unoracled):
+            pg.simulate(self.echo())
+
+    def test_script_in_comes_back_out_and_the_program_goes_idle(self):
+        st = pg.simulate(self.echo(), serial_in=b"AB")
+        self.assertEqual(st["tx"], b"AB")
+        self.assertEqual(st["out"], ord("B"))
+        self.assertTrue(st["idle"], "script exhausted, program polling DR")
+        self.assertFalse(st["halted"])
+
+    def test_dlab_writes_are_not_transmitted(self):
+        st = pg.simulate(self.echo(), serial_in=b"")
+        self.assertEqual(st["tx"], b"", "DLL=0x18 must not appear as a byte")
+
+    def test_rbr_read_with_nothing_waiting_is_a_fault(self):
+        prog = [("LDA", *pg._addr(self.RBR)), ("OUT",), ("HALT",)]
+        with self.assertRaises(pg.BuildError):
+            pg.simulate(prog, serial_in=b"")
+
+    def test_thre_polling_alone_does_not_count_as_idle(self):
+        # six THR writes with a THRE poll before each, no RX at all: the
+        # program must be allowed to FINISH, not be cut off as "idle"
+        prog = pg.SERIAL_WITNESS["sertx"][0]
+        st = pg.simulate(prog, serial_in=b"")
+        self.assertTrue(st["halted"])
+        self.assertEqual(st["tx"], b"DINO\r\n")
+        self.assertEqual(st["out"], 0x53)
+
+
+class TestAsmOwnsItsImages(unittest.TestCase):
+    """New programs are .asm, not Python lists (Rico, 2026-09-04). A tag that
+    has asm/<tag>.asm belongs to the assembler; the generator may keep its
+    Python copy for the oracle, but it must NEVER write roms/PROG_<tag>.bin.
+
+    Paid for 2026-09-05: `make gen-progrom` wrote a 0xFF-poison serid over
+    the assembled 0x99-poison one (crc 0x8888 in the README), and `make`
+    then called the clobbered file up to date."""
+
+    def test_generator_skips_tags_with_an_asm_source(self):
+        owned = pg.asm_owned_tags()
+        self.assertIn("serid", owned)
+        self.assertIn("serid_aa", owned)
+        self.assertNotIn("alu", owned)
+
+    def test_write_all_leaves_asm_owned_images_alone(self):
+        import tempfile, shutil
+        with tempfile.TemporaryDirectory() as d:
+            marker = b"assembled, hands off"
+            for tag in ("serid", "serid_aa"):
+                open(os.path.join(d, f"PROG_{tag}.bin"), "wb").write(marker)
+            pg.write_coverage_images(d)
+            for tag in ("serid", "serid_aa"):
+                self.assertEqual(open(os.path.join(d, f"PROG_{tag}.bin"), "rb").read(),
+                                 marker, f"{tag} was overwritten")
+            self.assertTrue(os.path.exists(os.path.join(d, "PROG_alu.bin")))
+
+
 if __name__ == "__main__":
     sys.exit(0 if unittest.main(exit=False).result.wasSuccessful() else 1)

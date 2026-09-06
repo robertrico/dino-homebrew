@@ -310,6 +310,93 @@ def _ser_reg(addr, uart, verb):
     return uart
 
 
+# ---- the scripted serial stimulus: A TEST DOUBLE, NOT A UART MODEL -------
+# PHASE_G.md SECTION 5 forbids modelling THR/RBR/the FIFOs because they are
+# TEMPORAL and this interpreter has no clock. simulate(serial_in=...) does
+# not model time and does not pretend to:
+#
+#     DR   (LSR bit 0)   "bytes remain in the script"
+#     THRE (LSR bit 5)   always set -- kinder than the hardware, and the
+#                        reason this must never be read as a UART model
+#     RBR read           pops the script; empty is a FAULT, not a 0
+#     THR write          appended to `tx`
+#     DLAB               tracked, so the divisor dance is not "transmitted"
+#
+# It exists so a program's PARSING and FORMATTING can be host-tested (the
+# monitor). The polling idiom itself is bench-proven by PROG_serrx. Without
+# serial_in nothing here runs and LSR/RBR/THR stay Unoracled.
+#
+# IDLE: with the script exhausted, a third consecutive LSR read with no THR
+# write or RBR read between them is a program spinning on DR, and the run
+# stops there with st["idle"] = True. A THRE poll never reads LSR twice in
+# a row (THRE is always set), so a transmit-only program runs to its HALT.
+IDLE_LSR_READS = 3
+
+
+def _serial_result(st, uart):
+    """Fold the scripted session's observables into simulate()'s result."""
+    if uart is not None and "rx" in uart:
+        st["tx"] = bytes(uart["tx"])
+        st["idle"] = bool(uart.get("idle"))
+    return st
+
+
+def uart_script(data):
+    """Card state for a scripted session: `data` is what the host types."""
+    from collections import deque
+    return {"scr": 0x00, "rx": deque(bytes(data)), "tx": bytearray(),
+            "lcr": 0x00, "regs": {}, "lsr_run": 0}
+
+
+def _ser_read(addr, uart):
+    if "rx" not in uart:
+        return _ser_reg(addr, uart, "read")["scr"]
+    reg = addr & SER_REG
+    if reg == 5:                                  # LSR: DR | THRE | TEMT
+        if uart["rx"]:
+            uart["lsr_run"] = 0
+            return 0x61
+        uart["lsr_run"] += 1
+        if uart["lsr_run"] >= IDLE_LSR_READS:
+            uart["idle"] = True                   # simulate() stops here
+        return 0x60
+    if reg == 0:
+        if uart["lcr"] & 0x80:                    # DLAB: it is DLL
+            return uart["regs"].get("dll", 0)
+        if not uart["rx"]:
+            raise BuildError(
+                f"RBR read at 0x{addr:04X} with nothing waiting: the program "
+                f"read the FIFO without polling DR (LSR bit 0)")
+        uart["lsr_run"] = 0
+        return uart["rx"].popleft()
+    if reg == 7:
+        return uart["scr"]
+    return _ser_reg(addr, uart, "read")          # IER/IIR/LCR/MCR/MSR: no key
+
+
+def _ser_write(addr, val, uart):
+    val &= 0xFF
+    if "rx" not in uart:
+        _ser_reg(addr, uart, "write")["scr"] = val
+        return
+    reg = addr & SER_REG
+    dlab = uart["lcr"] & 0x80
+    if reg == 0:
+        if dlab:
+            uart["regs"]["dll"] = val
+        else:
+            uart["tx"].append(val)
+            uart["lsr_run"] = 0
+    elif reg == 1:
+        uart["regs"]["dlm" if dlab else "ier"] = val
+    elif reg == 3:
+        uart["lcr"] = val
+    elif reg == 7:
+        uart["scr"] = val
+    else:
+        uart["regs"][_SER_REG_NAME[reg]] = val    # FCR / MCR: accepted, inert
+
+
 def io_read(addr, switches, uart=None):
     """One byte from the I/O window, 0x4000-0x7FFF.
 
@@ -318,7 +405,7 @@ def io_read(addr, switches, uart=None):
     if (addr & ~DIP_SLOT) == DIP_BASE:
         return switches & 0xFF
     if (addr & ~SER_SLOT) == SER_BASE and uart is not None:
-        return _ser_reg(addr, uart, "read")["scr"]
+        return _ser_read(addr, uart)
     return IO_PARK
 
 
@@ -327,13 +414,13 @@ def io_write(addr, val, uart):
     a bare '244 and takes nothing; the serial card is the first consumer of
     ~{IO_WR} in this machine's life."""
     if (addr & ~SER_SLOT) == SER_BASE and uart is not None:
-        _ser_reg(addr, uart, "write")["scr"] = val & 0xFF
+        _ser_write(addr, val, uart)
         return True
     return False
 
 
 def simulate(program, max_steps=100000, switches=0x00,
-             image=None, rom_window=None, serial=True):
+             image=None, rom_window=None, serial=True, serial_in=None):
     """Execute an assembled image by interpreting its microcode rows.
 
     `serial=False` pulls the serial card out of slot 1 -- the phase-E
@@ -341,6 +428,12 @@ def simulate(program, max_steps=100000, switches=0x00,
     0x4000 NOP-slides through card zero and, with the card fitted, fetches
     UART registers as opcodes at 0x4800 (PHASE_G.md GOTCHA 2), which is
     undefined. With the slot empty it finds the park and halts.
+
+    `serial_in=b"..."` is what the host types, and turns on the scripted
+    serial stimulus (see uart_script -- a test double, not a UART model).
+    The result then carries `tx`, the bytes the program wrote to THR, and
+    `idle`, True when the run stopped because the program was polling DR
+    with the script exhausted.
 
     Returns a dict of observables. `out` is what OB would read — the only
     datapath observable the block ladder has, which is why every coverage
@@ -361,7 +454,10 @@ def simulate(program, max_steps=100000, switches=0x00,
     sp = SP_POISON
     mdr = 0
     out = None
-    uart = uart_reset() if serial else None   # slot 1 after MR, or empty
+    if serial_in is not None:
+        uart = uart_script(serial_in)         # the scripted session
+    else:
+        uart = uart_reset() if serial else None   # slot 1 after MR, or empty
     # THE FLAG MODEL. U49 is a '273 with NO clock enable -- it re-clocks every
     # T-state -- and U48 is a '157 whose select is ~{ALU_OUT}. So the flags
     # UPDATE on any row that sources the ALU and HOLD on every other row.
@@ -391,6 +487,8 @@ def simulate(program, max_steps=100000, switches=0x00,
         return ram.get(a, 0)
 
     while st["steps"] < max_steps:
+        if uart is not None and uart.get("idle"):
+            break                               # script done, program on DR
         st["steps"] += 1
         if pc in poison:
             st["hit_poison"] = True
@@ -572,14 +670,14 @@ def simulate(program, max_steps=100000, switches=0x00,
                 st.update(out=out, halted=True, A=A, B=B, C=C,
                           flag_z=flag_z, flag_c=flag_c,
                           flag_c_defined=flag_c_defined, sp=sp)
-                return st
+                return _serial_result(st, uart)
             if (w >> 12) & 1:                       # END
                 st["ends"] += 1
                 break
     st.update(out=out, halted=False, A=A, B=B, C=C,
               flag_z=flag_z, flag_c=flag_c,
               flag_c_defined=flag_c_defined, sp=sp)
-    return st
+    return _serial_result(st, uart)
 
 
 def _poison_spans(program):
@@ -1996,6 +2094,43 @@ def build_suite(tests=SUITE_TESTS):
     return bytes(img)
 
 
+ASM_DIR = os.path.normpath(os.path.join(HERE, "..", "..", "asm"))
+
+
+def asm_owned_tags():
+    """Tags that have asm/<tag>.asm. Those images belong to the assembler
+    (Rico, 2026-09-04: new programs are .asm, not Python lists). The Python
+    copy may stay for the oracle, but the generator must not write the file:
+    on 2026-09-05 `make gen-progrom` put a 0xFF-poison serid over the
+    assembled 0x99 one, and make then called the clobbered file up to date."""
+    try:
+        names = os.listdir(ASM_DIR)
+    except FileNotFoundError:
+        return set()
+    return {n[:-4] for n in names if n.endswith(".asm")}
+
+
+def write_coverage_images(roms):
+    """Write roms/PROG_<tag>.bin for every COVERAGE tag the assembler does
+    not own, and return the {tag: (crc, ob, ends, sw, needs_sw)} table for
+    the C header. Skipped tags are still simulated so the table is whole."""
+    owned = asm_owned_tags()
+    cov = {}
+    for tag, prog in COVERAGE.items():
+        if tag == "real":
+            continue
+        img = build_image(prog)
+        if tag in owned:
+            print(f"  PROG_{tag}.bin: asm/{tag}.asm owns it, not written")
+        else:
+            with open(os.path.join(roms, f"PROG_{tag}.bin"), "wb") as f:
+                f.write(img)
+        r = simulate(prog, switches=COVERAGE_SW.get(tag, 0x00))
+        cov[tag] = (crc16(img), r["out"], r["ends"],
+                    COVERAGE_SW.get(tag, 0x00), tag in COVERAGE_SW)
+    return cov
+
+
 def build_image_from_bytes(code, origin=0):
     """Already-assembled bytes -> a full ROM image.
 
@@ -2197,16 +2332,7 @@ def main():
     # PROG.bin — the milestone image is never regenerated under another name,
     # because block 6 must accept on exactly the image it was specified
     # against.
-    cov = {}
-    for tag, prog in COVERAGE.items():
-        if tag == "real":
-            continue
-        img = build_image(prog)
-        with open(os.path.join(ROMS, f"PROG_{tag}.bin"), "wb") as f:
-            f.write(img)
-        r = simulate(prog, switches=COVERAGE_SW.get(tag, 0x00))
-        cov[tag] = (crc16(img), r["out"], r["ends"],
-                    COVERAGE_SW.get(tag, 0x00), tag in COVERAGE_SW)
+    cov = write_coverage_images(ROMS)
     # cylon is written but NOT registered in PR_COVERAGE: it never halts, so
     # it has no (OB, END) fingerprint for block4.stepped to match. Burning it
     # and running block4.stepped will correctly report "no known image".

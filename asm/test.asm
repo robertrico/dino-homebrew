@@ -1,6 +1,5 @@
 ; test.asm
 
-STACK:	.equ	0x80FF
 INPUT:	.equ	0x4000
 outb:	.equ	0x00
 
@@ -8,7 +7,6 @@ outb:	.equ	0x00
 
 	LDAI	0xFF
 	OUT
-	LXISP	STACK
 
 
 LOOP:	LDA	0x4000
