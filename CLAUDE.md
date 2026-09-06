@@ -1050,6 +1050,11 @@ LIVE — read these:
     .git/sdd/RIG_RETIREMENT.md               the ATmega is retired; what is
                                              dead, and what must NOT be
                                              deleted with it
+    .git/sdd/GROUNDING.md                    ground is a wire. Star, external
+                                             grounds at the star only, measure
+                                             the table. The primer 2026-09-05
+                                             should have started with. READ
+                                             BEFORE WIRING ANYTHING
     .git/sdd/CLOCK_DISTRIBUTION.md           the 100R fix and the PCB
                                              consequence — read before any
                                              board gets its own clock branch
