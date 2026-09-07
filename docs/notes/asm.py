@@ -35,6 +35,8 @@ SYNTAX
             .db 1, 0xFF, 'A', "HI"  raw bytes, characters and strings
             .dw 0x1234, label       16-bit words, LOW BYTE FIRST
             .ds 8                   reserve 8 bytes, filled with HALT
+            .fill 0x00              unclaimed bytes (.ds, .org gaps, the ROM
+                                    padding) become this instead of HALT
 
     Numbers:  0x2C  44  %00101100  'A'
     Operands: a number, a label, or label+n / label-n
@@ -177,11 +179,12 @@ def _parse(text):
 
 # ---- assembly ----------------------------------------------------------
 class Result:
-    def __init__(self, code, origin, labels, listing):
+    def __init__(self, code, origin, labels, listing, fill=SAFE_FILL):
         self.code = bytes(code)
         self.origin = origin
         self.labels = labels
         self.listing = listing
+        self.fill = fill            # what unclaimed ROM reads; HALT unless .fill
 
 
 def _sizeof(ln, op, args, labels):
@@ -190,6 +193,8 @@ def _sizeof(ln, op, args, labels):
     if d == ".equ":
         return 0
     if d == ".org":
+        return 0
+    if d == ".fill":
         return 0
     if d == ".db":
         n = 0
@@ -213,6 +218,7 @@ def _unquote(a, ln):
 
 
 def assemble_text(text, origin=0):
+    fill = SAFE_FILL
     items = _parse(text)
     labels, org, addr = {}, origin, origin
     seen_org = False
@@ -229,6 +235,11 @@ def assemble_text(text, origin=0):
             if not args:
                 raise AsmError(f"line {ln}: .equ needs a value")
             labels[label] = _value(args[0], labels, ln)
+            continue
+        if op and op.lower() == ".fill":
+            if not args:
+                raise AsmError(f"line {ln}: .fill needs a byte")
+            fill = _byte(_value(args[0], labels, ln), ln)
             continue
         if op and op.lower() == ".org":
             if not args:
@@ -251,12 +262,12 @@ def assemble_text(text, origin=0):
     # pass 2 -- emit
     out, listing, addr = bytearray(), [], org
     for ln, label, op, args in items:
-        if not op or op.lower() == ".equ":
+        if not op or op.lower() in (".equ", ".fill"):
             continue
         d, start = op.lower(), addr
         if d == ".org":
             target = _value(args[0], labels, ln)
-            out.extend([SAFE_FILL] * (target - org - len(out)))
+            out.extend([fill] * (target - org - len(out)))
             addr = target
             continue
         emitted = bytearray()
@@ -271,14 +282,14 @@ def assemble_text(text, origin=0):
                 v = _value(a, labels, ln)
                 emitted.extend([v & 0xFF, (v >> 8) & 0xFF])
         elif d == ".ds":
-            emitted.extend([SAFE_FILL] * (_value(args[0], labels, ln)
-                                          if args else 0))
+            emitted.extend([fill] * (_value(args[0], labels, ln)
+                                     if args else 0))
         else:
             emitted.extend(_encode(ln, op.upper(), args, labels))
         out.extend(emitted)
         addr += len(emitted)
         listing.append((start, bytes(emitted), ln))
-    return Result(out, org, labels, listing)
+    return Result(out, org, labels, listing, fill)
 
 
 def _byte(v, ln):
@@ -401,7 +412,8 @@ def main(argv):
         import progrom_gen as pg
         try:
             st = pg.simulate(None,
-                             image=pg.build_image_from_bytes(r.code, r.origin))
+                             image=pg.build_image_from_bytes(r.code, r.origin,
+                                                             fill=r.fill))
         except pg.Unoracled as e:
             # By design, not a fault: the oracle has no answer key for this
             # image (PHASE_G.md SECTION 5). Say so and keep building; the
@@ -413,7 +425,7 @@ def main(argv):
             print(f"  OB = {ob}   halted={st['halted']}   steps={st['steps']}")
     if out:
         import progrom_gen as pg
-        img = pg.build_image_from_bytes(r.code, r.origin)
+        img = pg.build_image_from_bytes(r.code, r.origin, fill=r.fill)
         open(out, "wb").write(bytes(img))
         print(f"  wrote {out}  {len(img)} bytes  crc={pg.crc16(img):#06x}")
     return 0

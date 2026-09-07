@@ -79,11 +79,25 @@ def test_crcs_match_the_generators():
     check(f"0x{pr.crc16(pr.build_real()):04X}" in text, "PROG.bin crc present")
 
 
+def test_asm_image_crcs_match_disk():
+    """The README re-assembles each asm-owned image to get its CRC. If that
+    re-assembly pads differently from `asm.py -o` -- 2026-09-06, `.fill` --
+    the README carries a number no chip will ever read back. So: for every
+    asm-owned PROG_*.bin, the README's CRC must equal crc16(file on disk)."""
+    print("asm-owned image CRCs in the README match the .bin on disk")
+    roms = os.path.dirname(gen.OUT)
+    text = gen.build()
+    for fn, crc, _ob, _src in gen.handwritten_rows():
+        disk = pr.crc16(open(os.path.join(roms, fn), "rb").read())
+        check(crc == disk, f"{fn} README 0x{crc:04X} == disk 0x{disk:04X}")
+
+
 def main():
     for fn in (test_readme_is_current,
                test_every_image_on_disk_is_listed,
                test_coverage_tags_all_present,
-               test_crcs_match_the_generators):
+               test_crcs_match_the_generators,
+               test_asm_image_crcs_match_disk):
         fn()
         print()
     if FAILS:

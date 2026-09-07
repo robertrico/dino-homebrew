@@ -217,7 +217,7 @@ gates faster, which turned a marginal `MVI` into a broken one; it is
 BACK on `RAM_OE_ON`. As built: `ROM_BUF_ON = NOR(READS_IDLE, ~ROM_SEL)`,
 `~ROM_BUF_EN -> U19.19 AND U24.22`, `LE_MDR = NAND(+5V, READS_IDLE)`.
 `.git/sdd/PHASE_G_0.md` RESULTS has the four faults the first image on
-it exposed: a pulsing `U15` (chip, replaced -- RETRACTED the same evening: a fresh `U9` pulses too, driven to 4V with a static address; the EEPROMs are being handed a bad address for ns, found late 09-05 to be `T0` off `U6.14` glitching on the ROOT board's ground bounce -- a probe or 22pF at that pin damps it, 22pF at the far end does not; 22pF is IN as a marked partial, the fix is a proper ground star, OPEN), `MVI`'s park (microcode,
+it exposed: a pulsing `U15` (chip, replaced -- RETRACTED the same evening: a fresh `U9` pulses too, driven to 4V with a static address; the EEPROMs are being handed a bad address for ns, found late 09-05 to be `T0` off `U6.14` glitching on the ROOT board's ground bounce -- a probe or 22pF at that pin damps it, 22pF at the far end does not; 22pF was IN as a marked partial -- RETRACTED 2026-09-06: the runt was the `RESET` wire's ROUTE, see the Open questions entry below; cap is OUT, never needed), `MVI`'s park (microcode,
 settle row, `U9 0xC52B / U15 0xDCD1`), `LE_MDR` opening during the replay
 (copper, `U39.4` strapped +5V), and that wire. The paragraph below is the
 2026-09-04 reading that started it, kept for the shape of the mistake.**
@@ -537,6 +537,27 @@ circulation: `NOR` would give `CIN=0` for `SUB` as well, making it compute
 ## Open questions
 
 Named because they are not settled. None is blocking.
+
+**CLOSED FOR GOOD 2026-09-06 — IT WAS THE `RESET` WIRE'S ROUTE.** The
+post-HALT flood, the "HALT escapes", the "bad" EEPROMs, the `T0` 22pF and
+the serial garble that made the monitor unusable were ONE wire. `RESET`
+(`U27.9`) ran root -> PC board -> memory board in the bundle with fast
+edges and picked up ~1.5V for ~10ns once per few thousand cycles. `U75`
+g3 regenerated it into a 3.3V pulse on `RESET_B` into the 16550's `MR`
+(LCR/FCR cleared, 5-bit framing: `PROG_txlive` OB `0x00`); the same runt
+into `U61.2` clears `T` when it lands on a CLK edge. Found with
+`asm/txlive.asm` and a scope triggered on `U103.35`: a probe cured it at
+`U75.9` and at `U10.6` -- anywhere on the net -- but not at `MR` alone.
+**Pulling the wire out of the bundle fixed it with NO caps.** `T0` cap
+is OUT. `U9`/`U15` were fine. Route rule for the PCB: `RESET` away from
+CLK and the buses. **CORRECTION, same evening: the post-HALT `~WR` strobe
+is a SECOND fault and survived the RESET fix.** Walked to `U30.7` (hard
+low, `CW0-2 = 111`), `U9` alone in an access (`U15` on the same address
+bus still), every `U9` leg flat, no ROM row near HALT is `1111`, and
+pressing `U9` down makes it rarer: a marginal SOCKET CONTACT on `U9`,
+flexed by the 09-05 chip swaps. Socket replacement pending. Design item:
+a control-word pipeline register would make this whole class invisible.
+Record in `.git/sdd/PHASE_G_0.md`, last two sections.
 
 **CLOSED AGAIN 2026-09-05 — HALT HELD ALL ALONG; `U15` WAS CLEARING THE
 T-COUNTER UNDER IT.** Every "OB moves after HALT" reading up to and
@@ -864,6 +885,15 @@ not because they are principles.
   immediate and the cell's old byte -- old and new were equal. The monitor
   found it by writing two different pointers into one cell. Every plant
   in a self-test must differ from what the cell held.
+- **A RUNT CURED BY CAPACITANCE ANYWHERE ON A NET IS PICKUP ALONG THE
+  RUN, NOT A FAULT AT A PIN. 2026-09-06, THE `RESET` WIRE.** Two days of
+  chip swaps, a `T0` cap and a ground plan went into a runt that a probe
+  cured at `U75.9`, at `U10.6`, at either end -- and pulling the wire out
+  of its bundle cured with nothing fitted. Before blaming either end of a
+  wire, look at what runs beside it. Sister rule: **the UART is the only
+  device in the machine that counts strobes or has an asynchronous reset;
+  a serial-only fault with `isa` clean is a strobe or a reset, never the
+  datapath** -- RAM shrugs off a spurious rewrite, a FIFO does not.
 - **A COMPONENT VALUE IS COPPER TOO. 2026-09-04, the cold-boot UART fault.**
   Rule 4 verifies WIRING; a beep cannot tell 1uF from 10uF. `C1` was 1uF
   in the socket against 10uF in the drawing, the power-on reset was a

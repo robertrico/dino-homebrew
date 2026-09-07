@@ -2131,21 +2131,27 @@ def write_coverage_images(roms):
     return cov
 
 
-def build_image_from_bytes(code, origin=0):
+def build_image_from_bytes(code, origin=0, fill=SAFE_FILL):
     """Already-assembled bytes -> a full ROM image.
 
     The .asm path (asm.py) produces bytes directly, so it needs the padding
     and the two guards without going back through `assemble()`. Everything
     below build_image() shares this, so a rule added here reaches both paths.
+
+    `fill` is what unclaimed ROM reads. HALT by default (SAFE_FILL); the
+    `.fill` directive overrides it per image -- 2026-09-06, Rico's A/B of
+    the fill choice. A NOP-filled ROM turns an escape from HALT into a
+    28K slide that wraps to 0x0000 and RE-RUNS the program: loud where HALT
+    fill re-halts one byte later and is silent.
     """
     code = bytes(code)
     if origin:
-        code = bytes([SAFE_FILL]) * origin + code
+        code = bytes([fill]) * origin + code
     if len(code) > ROM_WINDOW:
         raise BuildError("program larger than the ROM WINDOW (0x0000-0x3FFF)")
     if code and code[0] == DIAG_ZERO:
         raise BuildError("program byte 0 collides with the diag signature")
-    return code + bytes([SAFE_FILL]) * (ROM_IMAGE - len(code))
+    return code + bytes([fill]) * (ROM_IMAGE - len(code))
 
 
 def build_image(program):

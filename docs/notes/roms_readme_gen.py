@@ -277,7 +277,9 @@ def handwritten_rows():
         if not os.path.exists(os.path.join(ROMS, fn)):
             continue
         r = asmmod.assemble_text(open(src).read())
-        img = pr.build_image_from_bytes(r.code, r.origin)
+        # fill=r.fill: the same padding `asm.py -o` wrote, or the README's
+        # CRC is a number no chip reads back (2026-09-06, PROG_sertx00).
+        img = pr.build_image_from_bytes(r.code, r.origin, fill=r.fill)
         try:
             st = pr.simulate(None, image=img)
         except pr.Unoracled:

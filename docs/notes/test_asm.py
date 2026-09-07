@@ -239,6 +239,36 @@ def test_every_coverage_image_round_trips():
     check_eq(bad, [], "all 28 images assemble byte-identically from text")
 
 
+def test_fill_directive():
+    """`.fill 0x00` makes every unclaimed byte -- .ds, the origin gap, and the
+    ROM padding -- NOP instead of HALT. Default stays HALT (0xFF). 2026-09-06:
+    Rico's A/B of the fill choice; with NOP fill an escape re-runs the
+    program instead of re-halting one byte later, so it is LOUD."""
+    print(".fill directive")
+    r = asm.assemble_text("LDAI 1\n.ds 2\nHALT\n")
+    check_eq(r.fill, 0xFF, "default fill is HALT (0xFF)")
+    check_eq(r.code, b"\x11\x01\xff\xff\xff", ".ds pads with HALT by default")
+    check_eq(pg.build_image_from_bytes(r.code, r.origin, fill=r.fill)[-1], 0xFF,
+             "ROM padding is HALT by default")
+    r = asm.assemble_text(".fill 0x00\nLDAI 1\n.ds 2\nHALT\n")
+    check_eq(r.fill, 0x00, ".fill 0x00 is recorded on the Result")
+    check_eq(r.code, b"\x11\x01\x00\x00\xff", ".ds pads with the fill")
+    img = pg.build_image_from_bytes(r.code, r.origin, fill=r.fill)
+    check_eq(len(img), pg.ROM_IMAGE, "image is a full ROM")
+    check_eq(img[5:21], b"\x00" * 16, "ROM padding uses the fill")
+    check_eq(img[-1], 0x00, "last byte of the ROM is the fill")
+    check_eq(pg.build_image_from_bytes(r.code, r.origin)[-1], 0xFF,
+             "build_image_from_bytes still defaults to HALT")
+    r = asm.assemble_text(".fill 0x00\n.org 0x10\nHALT\n")
+    img = pg.build_image_from_bytes(r.code, r.origin, fill=r.fill)
+    check_eq(img[:0x11], b"\x00" * 16 + b"\xff", "origin gap uses the fill")
+    try:
+        asm.assemble_text(".fill 0x100\n")
+        check(False, ".fill rejects a non-byte")
+    except asm.AsmError:
+        check(True, ".fill rejects a non-byte")
+
+
 def test_lengths_come_from_the_microcode():
     """No operand table lives in the assembler. Break the microcode's
     declared length and the assembler must follow it, not a private copy."""
