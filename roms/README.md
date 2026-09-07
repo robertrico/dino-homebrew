@@ -176,7 +176,7 @@ construction — no eleventh table.
         memory-indirect JUMP, landing site as the observable. 0x6C passes,
         0xE7 is the fall-through. The target address is computed from the
         assembled prologue, never counted. PHASE F+.
-    PROG_serid.bin   0x8888  0x55  6   asm/serid.asm owns this file; the Python copy feeds the oracle only
+    PROG_serid.bin   0xEE88  0x55  6
         PHASE G, step 4b. STA/LDA round trip through the 16550's scratch
         register at 0x4807: the first write in this machine's life that
         anything consumed (~{IO_WR}, U75.6). RAW REPORT -- 0x54 names D0,
@@ -340,11 +340,6 @@ time the DIAG image is reburned — no reason to reburn just for this.
 
     PROG_isa.bin     0xB96F  147 subtests, 3250 bytes
 
-    make gen-isa          writes all six: isa, isacount, isaid, isasoak,
-                          isalive, isawhere (docs/notes/isatest_gen.py --write)
-    make burn-prog-isa    regenerates, then burns. Same for the other five.
-    All six are committed as of 2026-09-05; `make gen-isa` regenerates them.
-
     Burn it, press RESET, read OB. 0xB4 means every
     subtest passed. ANY OTHER VALUE IS THE NUMBER OF THE FIRST
     INSTRUCTION THAT MISBEHAVED, and the table below names it.
@@ -356,6 +351,57 @@ time the DIAG image is reburned — no reason to reburn just for this.
     microcode makes the program report that instruction. A
     subtest that survives its own instruction being broken is
     not counted as coverage.
+
+    PROG_isacount.bin  0xA2D0  the SAME 147 subtests, COUNTED
+
+    Identical tests, but a failure bumps a counter and
+    execution CONTINUES. OB is then the NUMBER of subtests
+    that failed, 0x00 for a clean run. Use it when the
+    machine is marginal rather than broken: PROG_isa stops
+    at the first failure and cannot tell one bad
+    instruction from forty, and a wild jump into its stub
+    table reports a subtest number that nothing failed.
+
+    PROG_isaid.bin     0x019B  the SAME 147, reporting WHICH one failed
+
+    Execution continues past a failure, as in isacount, so
+    a wild jump cannot fabricate an answer -- but the cell
+    holds the ID of the last failing subtest instead of a
+    tally. When the count is reliably 0 or 1, last-failing
+    IS the-one-failing. 0x00 is still clean, because ids
+    start at 1.
+
+    PROG_isasoak.bin   0x9554  the 147, run 255 TIMES, failures totalled
+
+    ~9,400 subtest executions in under a tenth of a second.
+    OB is the total failure count, 0x00 for a clean soak.
+    Use it when the failure rate is low enough that
+    resetting is not a measurement: at 1-in-60 you cannot
+    tell whether a repair helped, and this turns that into a
+    number that moves. 0x00 clean, 0xFE saturated,
+    0xFF means it never finished.
+
+    PROG_isalive.bin   0x504A  HOW FAR does it get before it dies
+
+    Every pass OUTs its own number, so OB holds the last
+    pass the machine actually reached. 0xB4 means it
+    survived all 64. Anything else is where it died.
+
+    A HANG cannot report anything at the end, because there
+    is no end. This reports as it goes, which turns 'it
+    usually does not finish' into a mean time to failure in
+    passes -- a number that moves when a repair helps.
+    Miscompares are deliberately ignored: this measures how
+    FAR, not whether it AGREES.
+
+    PROG_isawhere.bin  0xF87F  WHICH subtest was running when it died
+
+    OB is updated with the subtest id before each subtest
+    runs, so a machine that hangs leaves the id of the one
+    it was in. 0xB4 means it survived all 64 passes. Use
+    the id table below to name it.
+
+    isalive says HOW FAR (a rate); this says WHERE (a place).
 
       1 LDAI       2 LDBI       3 LDCI       4 LXISP      5 LXIL       6 LXIH     
       7 LDA        8 STA        9 LDB       10 LDC       11 STB       12 STC      
@@ -400,9 +446,8 @@ time the DIAG image is reburned — no reason to reburn just for this.
 
     IMAGE            CRC16   OB    SOURCE
     PROG_hello.bin   0x9C68  0x96  asm/hello.asm
-    PROG_monitor.bin 0xA22B  UNORACLED asm/monitor.asm
-    PROG_romsoak.bin 0xF919  SW1   asm/romsoak.asm   ROM-as-data soak, 65536 passes, OB = misses; docs/notes/test_romsoak.py
-    PROG_txsoak.bin  0x5903  SW1   asm/txsoak.asm   four routes into STA THR, streams forever; docs/notes/test_txsoak.py
+    PROG_monitor.bin 0xD0E1  UNORACLED asm/monitor.asm
+    PROG_romsoak.bin 0xF919  0x00  asm/romsoak.asm
     PROG_serbaud.bin 0x2C77  UNORACLED asm/serbaud.asm
     PROG_serid.bin   0x8888  0x55  asm/serid.asm
     PROG_serid_aa.bin 0x74B4  0xAA  asm/serid_aa.asm
@@ -417,9 +462,12 @@ time the DIAG image is reburned — no reason to reburn just for this.
     PROG_serrxlcr.bin 0xF746  UNORACLED asm/serrxlcr.asm
     PROG_serrxlive.bin 0xA673  UNORACLED asm/serrxlive.asm
     PROG_sertx.bin   0x1DC8  UNORACLED asm/sertx.asm
-    PROG_test.bin    0x1059  0x00* asm/test.asm
+    PROG_sertx00.bin 0x8E73  UNORACLED asm/sertx00.asm
+    PROG_test.bin    0xC6CF  0x00* asm/test.asm
     PROG_test2.bin   0x3FAA  0x4D  asm/test2.asm
     PROG_test3.bin   0xB56A  0x4D  asm/test3.asm
-    PROG_test4.bin   0x5841  0x5A  asm/test4.asm   the monitor's puts read path, no UART
-    PROG_test5.bin   0xA464  SW1   asm/test5.asm   test4 bisected, six slots; docs/notes/test_test5.py
-    PROG_wander.bin  0x95FD  SW1   asm/wander.asm   0x11-0x1A per slot; docs/notes/test_wander.py
+    PROG_test4.bin   0x5841  0x5A  asm/test4.asm
+    PROG_test5.bin   0xA464  0x00  asm/test5.asm
+    PROG_txlive.bin  0xB2A4  UNORACLED asm/txlive.asm
+    PROG_txsoak.bin  0x5903  0x00  asm/txsoak.asm
+    PROG_wander.bin  0x95FD  0x00  asm/wander.asm

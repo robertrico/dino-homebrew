@@ -14,6 +14,8 @@
 #
 #     make monitor               minicom on the serial card, 9600 8N1
 #     make kill-monitor          kill minicom, free the port
+#     make load-hello            asm/ram/hello.asm into DINO RAM via L
+#     make go-hello              the same, then G runs it
 #
 # The burn targets carry the SAME NAMES as tests/dino_bringup/Makefile on
 # purpose. Two vocabularies for one action is how `make burn-prog-window` died
@@ -74,6 +76,40 @@ list-asm:
 	@for t in $(ASM_TAGS); do echo "$$t"; done
 
 assemble-all: $(patsubst %,$(ROMS)/PROG_%.bin,$(ASM_TAGS))
+
+# ---- load ----------------------------------------------------------------
+# RAM-resident programs: asm/ram/*.asm, `.org 0x8100`, end with RET. They
+# go over the serial card through the monitor's L/G commands, never through
+# the programmer. asm/ram/ sits OUTSIDE the assemble-% wildcard on purpose:
+# a RAM origin cannot be padded into a ROM image.
+#
+#     make load-hello            asm/ram/hello.asm -> DINO RAM, sum checked
+#     make go-hello              the same, then G: run it
+#     make list-ram              what can be loaded
+#
+# minicom holds the port: `make kill-monitor` first. DINO_PORT overrides.
+RAMSRCS  = $(SRCS)/ram
+RAM_TAGS = $(patsubst $(RAMSRCS)/%.asm,%,$(wildcard $(RAMSRCS)/*.asm))
+LOADER   = docs/notes/dinoload.py
+
+load-%:
+	@test -f $(RAMSRCS)/$*.asm || { \
+	  echo "no such source: $(RAMSRCS)/$*.asm"; \
+	  echo "available:"; \
+	  for t in $(RAM_TAGS); do echo "    $$t"; done; \
+	  exit 1; }
+	$(PY) $(LOADER) $(RAMSRCS)/$*.asm
+
+go-%:
+	@test -f $(RAMSRCS)/$*.asm || { \
+	  echo "no such source: $(RAMSRCS)/$*.asm"; \
+	  echo "available:"; \
+	  for t in $(RAM_TAGS); do echo "    $$t"; done; \
+	  exit 1; }
+	$(PY) $(LOADER) $(RAMSRCS)/$*.asm --go
+
+list-ram:
+	@for t in $(RAM_TAGS); do echo "$$t"; done
 
 # ---- burn --------------------------------------------------------------
 # This is the ONE thing the root can do that $(RIG) cannot: an image with an
@@ -166,5 +202,5 @@ kill-monitor:
         burn-real-u9 burn-real-u15 burn-real-u23 burn-prog burn-prog-diag \
         list-prog read-prog id-rom verify-prog verify-prog-diag \
         verify-real-u9 verify-real-u15 verify-real-u23 \
-        monitor kill-monitor
+        monitor kill-monitor list-ram
 .PRECIOUS: $(ROMS)/PROG_%.bin

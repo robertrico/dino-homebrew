@@ -10,7 +10,7 @@
 ; same bytes through simulate(serial_in=...) -- a scripted stimulus, not a
 ; UART model -- and compares the WHOLE transcript. That is the check.
 ;
-; THE LANGUAGE. One command per line, CR ends it. Three commands:
+; THE LANGUAGE. One command per line, CR ends it. Five commands:
 ;
 ;     D addr          dump one byte             > D 8044
 ;                                               0x00
@@ -19,6 +19,25 @@
 ;                     what is really there
 ;     O addr          put [addr] on OB           > O 8044
 ;                     (the LEDs; prints nothing)
+;     L addr,len      then 2*len HEX DIGITS      > L 8100,4
+;                     follow -- typed or         115A5F34
+;                     pasted, echoed, spaces     0xF0
+;                     and newlines skipped --    >
+;                     and land at addr. Reply:
+;                     their 8-bit sum, the
+;                     witness. A non-hex char
+;                     is `?` and stops the load
+;     G addr          CALL addr. RET comes back  > G 8100
+;                     to the prompt; HALT stays  >
+;                     halted (RESET recovers)
+;
+; L and G together are the loader. docs/notes/dinoload.py assembles an
+; .asm and sends the `L` line and the hex for you (`make load-hello`);
+; then `make monitor` and type `G 8100` yourself, or `--go` sends it.
+; A loaded program lives at 0x8100 and up (`.org 0x8100`), may CALL putc /
+; puthex / puts / crlf by their ROM addresses (`make listing-monitor`), and
+; ends with RET. It must not touch 0x80E0-0x80FF: that is this monitor's
+; state and the stack the RET needs.
 ;
 ; Hex, 1-4 digits, case does not matter, `0x` prefix optional, spaces
 ; ignored. Anything else on the line gets `?` and NOTHING is written.
@@ -80,6 +99,9 @@ T_BYTE:   .equ  0x80ED          ; puthex's scratch
 T_CNT:    .equ  0x80EE
 PTRH:     .equ  0x80EF          ; puts' string pointer
 PTRL:     .equ  0x80F0
+CNTH:     .equ  0x80F1          ; L's byte count, 16 bits
+CNTL:     .equ  0x80F2
+SUM:      .equ  0x80F3          ; L's running 8-bit sum
 
           .org  0x0000
 
@@ -247,7 +269,7 @@ w_ok:     LDA   VAL
           CALL  show            ; and print what is REALLY there now
           JMP   new_line
 not_w:    CPI   'O'
-          JNZ   what
+          JNZ   not_o
           LDA   FIELD           ; O takes no value
           CPI   0
           JNZ   what
@@ -256,6 +278,109 @@ not_w:    CPI   'O'
           LDAX
           OUT                   ; [ADR] on the LEDs. Says nothing here
           JMP   new_line
+not_o:    CPI   'G'
+          JNZ   not_g
+          LDA   FIELD           ; G takes no value
+          CPI   0
+          JNZ   what
+          CALL  go              ; a RET in the program lands here
+          JMP   new_line
+not_g:    CPI   'L'
+          JNZ   what
+          LDA   FIELD           ; L needs a length
+          CPI   0
+          JNZ   l_ok
+          JMP   what
+; ---- L addr,len: the value field is the whole 16-bit length, N3..N0
+l_ok:     LDA   N3
+          CALL  sh4
+          MOVBA
+          LDA   N2
+          ADD
+          STA   CNTH
+          LDA   VAL
+          STA   CNTL
+          CLR
+          STA   SUM
+; the load loop. The payload is HEX TEXT, two digits per byte, echoed as it
+; arrives so a human at minicom sees what they typed; spaces, CR and LF
+; between digits are skipped and not counted. NDIG is reused as the
+; half flag (0 = waiting for the high nibble) and N3 parks that nibble.
+; A non-hex character is `?` and the load stops: bytes already landed
+; stay, the sum is never printed.
+          CLR
+          STA   NDIG
+l_loop:   LDA   CNTL
+          LDB   CNTH
+          OR
+          JNZ   l_more
+          JMP   l_done
+l_more:   CALL  getc
+          CPI   0x0A            ; LF: skipped, not echoed, like the parser
+          JNZ   l_notlf
+          JMP   l_loop
+l_notlf:  CPI   0x0D            ; CR: skipped, not echoed
+          JNZ   l_notcr
+          JMP   l_loop
+l_notcr:  CALL  putc            ; echo
+          CPI   ' '
+          JNZ   l_notsp
+          JMP   l_loop
+l_notsp:  CALL  hexval          ; A <- 0..15 or 0xFF
+          CPI   0xFF
+          JNZ   l_nib
+          CALL  crlf            ; end the echoed line
+          JMP   what            ; `?`, and the load is over
+l_nib:    STA   CH
+          LDA   NDIG
+          CPI   0
+          JNZ   l_lo
+          LDA   CH              ; high nibble: park it, wait for the low
+          STA   N3
+          LDAI  1
+          STA   NDIG
+          JMP   l_loop
+l_lo:     CLR
+          STA   NDIG
+          LDA   N3
+          CALL  sh4
+          MOVBA
+          LDA   CH
+          ADD                   ; A = the byte
+          STA   CH
+          LDB   ADRH
+          LDC   ADRL
+          STAX                  ; [ADR] <- the byte
+          LDA   SUM
+          MOVBA
+          LDA   CH
+          ADD
+          STA   SUM
+          LDA   ADRL            ; ADR += 1
+          INR
+          STA   ADRL
+          JNZ   l_count
+          LDA   ADRH
+          INR
+          STA   ADRH
+l_count:  LDA   CNTL            ; CNT -= 1
+          DCR
+          STA   CNTL
+          CPI   0xFF
+          JNZ   l_loop
+          LDA   CNTH            ; low byte wrapped: borrow from the high
+          DCR
+          STA   CNTH
+          JMP   l_loop
+l_done:   CALL  crlf            ; end the echoed payload's line
+          LDAI  '0'             ; "0x", the sum, CRLF: the witness
+          CALL  putc
+          LDAI  'x'
+          CALL  putc
+          LDA   SUM
+          CALL  puthex
+          CALL  crlf
+          JMP   new_line
 
 what:     LDAI  '?'
           CALL  putc
@@ -263,6 +388,14 @@ what:     LDAI  '?'
           JMP   new_line
 
 ; ==== subroutines ============================================================
+
+; go -- jump to ADR. Reached by CALL, so the return address is on the
+; stack and a RET in the loaded program comes straight back to the
+; dispatcher. JMPX takes B:C and touches nothing else. A program that
+; HALTs instead stays halted; RESET recovers, RAM survives it.
+go:       LDB   ADRH
+          LDC   ADRL
+          JMPX
 
 ; show -- print "0x", [ADR] in hex, CRLF
 show:     LDAI  '0'

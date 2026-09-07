@@ -152,6 +152,149 @@ def test_long_hex_keeps_the_last_four_digits():
                             (b"D 8046", b"0xC3")),
              "the shift register keeps the low four nibbles")
 
+# ---- L and G: load hex text, run it -----------------------------------------
+def ram_prog(text, org=0x8100):
+    """Assemble a RAM-resident program; return its bytes."""
+    return asm.assemble_text(f"          .org {org:#06x}\n" + text).code
+
+
+def load_line(org, data):
+    return b"L %04X,%X" % (org, len(data))
+
+
+def hexed(data):
+    return data.hex().upper().encode()
+
+
+def csum(data):
+    return b"0x%02X" % (sum(data) & 0xFF)
+
+
+def lpair(org, data, payload=None):
+    """The (typed, reply) pair for an L: the line, its CRLF, the echoed
+    payload, then the sum. `payload` overrides the hex text sent; CR and
+    LF inside it are skipped and NOT echoed, like the line parser."""
+    payload = hexed(data) if payload is None else payload
+    echo = payload.replace(b"\r", b"").replace(b"\n", b"")
+    return (load_line(org, data) + b"\r\n" + echo, csum(data))
+
+
+def ltyped(org, data, payload=None):
+    payload = hexed(data) if payload is None else payload
+    return load_line(org, data) + b"\r" + payload
+
+
+def test_load_takes_hex_text_and_answers_the_sum():
+    print("L addr,len: hex digits land in RAM, the reply is their 8-bit sum")
+    data = bytes([0x0D, 0x0A, 0x00, 0xFF, 0x3F, 0x4C, 0x44])
+    typed = ltyped(0x8200, data) + b"D 8200\rD 8203\rD 8206\r"
+    tx, st = run(typed)
+    check_eq(tx, transcript(lpair(0x8200, data),
+                            (b"D 8200", b"0x0D"),
+                            (b"D 8203", b"0xFF"),
+                            (b"D 8206", b"0x44")),
+             "the payload is echoed, then CRLF, then the sum")
+    check(st["idle"] and not st["halted"], "back at the prompt")
+
+
+def test_hex_payload_is_forgiving():
+    print("lower case, spaces, CR and LF inside the payload are fine")
+    data = bytes([0xAB, 0xCD, 0x12])
+    payload = b"ab cd\r\n 12"
+    typed = ltyped(0x8100, data, payload) + b"D 8101\r"
+    tx, _ = run(typed)
+    check_eq(tx, transcript(lpair(0x8100, data, payload),
+                            (b"D 8101", b"0xCD")),
+             "whitespace is skipped and not counted; case folds")
+
+
+def test_bad_hex_in_the_payload_aborts_with_a_question_mark():
+    print("a non-hex character stops the load")
+    data = bytes([0x11, 0x22, 0x33])
+    typed = ltyped(0x8100, data, b"11G2\r") + b"D 8100\rD 8101\r"
+    tx, _ = run(typed)
+    check_eq(tx, BANNER + PROMPT
+             + b"L 8100,3\r\n11G\r\n?\r\n" + PROMPT
+             + b"2\r\n?\r\n" + PROMPT              # the 2 became a line
+             + b"D 8100\r\n0x11\r\n" + PROMPT
+             + b"D 8101\r\n0x00\r\n" + PROMPT,
+             "`?`; the bytes already landed stay, the rest never arrive")
+
+
+def test_load_length_is_sixteen_bit():
+    print("a length above 0xFF walks the pointer's high byte")
+    data = bytes((i * 7) & 0xFF for i in range(0x110))
+    typed = ltyped(0x8100, data) + b"D 81FF\rD 8200\rD 820F\r"
+    tx, _ = run(typed)
+    check_eq(tx, transcript(lpair(0x8100, data),
+                            (b"D 81FF", b"0x%02X" % data[0xFF]),
+                            (b"D 8200", b"0x%02X" % data[0x100]),
+                            (b"D 820F", b"0x%02X" % data[0x10F])),
+             "bytes 0x100+ land at 0x8200+, and the sum wraps")
+
+
+def test_load_needs_a_length():
+    print("L without a length is refused")
+    tx, _ = run(b"L 8100\rL 8100,\r")
+    check_eq(tx, transcript((b"L 8100", b"?"), (b"L 8100,", b"?")),
+             "no length, empty length: `?` and nothing is read")
+
+
+def test_go_runs_the_loaded_program_and_ret_comes_back():
+    print("G addr: CALL into RAM; RET returns to the prompt")
+    prog = ram_prog("""
+          LDAI  0x5A
+          OUT
+          RET
+    """)
+    typed = ltyped(0x8100, prog) + b"G 8100\rD 8100\r"
+    tx, st = run(typed)
+    check_eq(tx, transcript(lpair(0x8100, prog),
+                            (b"G 8100", None),
+                            (b"D 8100", b"0x%02X" % prog[0])),
+             "G prints nothing; RET lands on the next prompt")
+    check_eq(st["out"], 0x5A, "the loaded program ran and reached OB")
+    check(st["idle"] and not st["halted"], "monitor is back on DR")
+
+
+def test_go_program_may_use_the_monitor_subroutines():
+    print("a loaded program can CALL putc/crlf by ROM address")
+    labels = asm.assemble_text(open(SRC).read()).labels
+    prog = ram_prog(f"""
+          LDAI  'H'
+          CALL  {labels['putc']:#06x}
+          LDAI  'I'
+          CALL  {labels['putc']:#06x}
+          CALL  {labels['crlf']:#06x}
+          RET
+    """)
+    typed = ltyped(0x8100, prog) + b"G 8100\r"
+    tx, _ = run(typed)
+    check_eq(tx, transcript(lpair(0x8100, prog), (b"G 8100", b"HI")),
+             "HI printed through the monitor's own putc")
+
+
+def test_go_to_a_halt_halts():
+    print("G to a program that HALTs stops the machine")
+    prog = ram_prog("""
+          LDAI  0x3C
+          OUT
+          HALT
+    """)
+    typed = ltyped(0x8100, prog) + b"G 8100\rD 8100\r"
+    tx, st = run(typed)
+    check_eq(tx, transcript(lpair(0x8100, prog)) + b"G 8100\r\n",
+             "nothing after G: the machine halted")
+    check(st["halted"], "halted")
+    check_eq(st["out"], 0x3C, "the program ran to its HALT")
+
+
+def test_go_takes_no_value():
+    print("G addr,val and bare G are refused")
+    tx, st = run(b"G 8100,1\rG\r")
+    check_eq(tx, transcript((b"G 8100,1", b"?"), (b"G", b"?")),
+             "`?` and nothing jumps")
+    check(st["out"] in (None, 0xFF), "nothing ran")
 
 if __name__ == "__main__":
     for _n, _f in sorted((kv for kv in list(globals().items())
