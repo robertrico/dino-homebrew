@@ -35,6 +35,15 @@ justify design decisions.
    than once.
 5. **Schematics first.** Draw it, then wire it, then prove it on the bench.
    The FPGA step is gone — the twin is retired, see below.
+6. **Work in the main checkout, not a worktree.** Rico, 2026-09-07. The
+   bench runs `make load-hello` / `make monitor` from
+   `/Users/hambook/Development/dino-homebrew`; a fix that lands in
+   `.claude/worktrees/<x>` is invisible there until someone merges it,
+   and a worktree branched from `origin/main` is missing everything on
+   local `main` that has not been pushed. `.claude/settings.json` sets
+   `worktree.bgIsolation = none` so background sessions edit `main`
+   directly. Do not create worktrees for this project; if one exists,
+   fast-forward `main` to it and remove it.
 
 ## Status
 

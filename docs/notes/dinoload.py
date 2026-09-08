@@ -134,29 +134,39 @@ def sync(port, tries=4):
                     f"in the socket and running? last saw {last!r}")
 
 
-def _type(port, data, what, gap=0.0):
+ROW = 32                                # payload bytes per progress row
+
+
+def _type(port, data, what, view=None):
     """Type `data` the way a person does: one character, wait for its
     echo, the next. CR echoes as CRLF. That is the pacing -- the machine
     drops characters that arrive back-to-back and never drops paced ones
     (2026-09-07, serprobe vs the burst loader) -- and a per-character
     check that each digit arrived as sent. A wrong echo names the
-    position."""
+    position. `view` sees every echo as it lands: the live picture."""
     for i, b in enumerate(bytes(data)):
         ch = bytes([b])
         want = b"\r\n" if ch == b"\r" else ch
         port.write(ch)
         got = port.read_until(want, 1.0)
+        if view and got:
+            view(got)
         if got != want:
             raise LoadError(f"{what}: char {i} sent {ch!r}, monitor echoed "
                             f"{got!r}")
-        if gap:
-            time.sleep(gap)
 
 
-def _load_once(port, code, origin):
-    _type(port, load_line(origin, code), "L line")
-    _type(port, hexed(code), "payload")
+def _load_once(port, code, origin, view=None):
+    _type(port, load_line(origin, code), "L line", view)
+    text = hexed(code)
+    for row in range(0, len(code), ROW):
+        _type(port, text[2 * row:2 * (row + ROW)], "payload", view)
+        done = min(row + ROW, len(code))
+        if view and done < len(code):
+            view(b"\n  %d/%d " % (done, len(code)))
     reply = _expect(port, PROMPT, "sum reply")
+    if view:
+        view(reply)
     body = reply[:-len(PROMPT)].strip()
     try:
         got = int(body, 16)
@@ -170,40 +180,41 @@ def _load_once(port, code, origin):
     return got
 
 
-def load(port, code, origin, tries=3, log=None):
+def load(port, code, origin, tries=3, log=None, view=None):
     """Send `code` to `origin` as hex text; return the sum the monitor
     answered. A dropped character anywhere (the line, the payload) or a
     wrong sum is retried from the top, up to `tries` times, after getting
     the monitor back to its prompt. Every byte lands again on a retry --
-    the L is whole-image, so a partial first pass is simply overwritten."""
+    the L is whole-image, so a partial first pass is simply overwritten.
+    `log` gets one line per failed attempt; `view` gets the echo stream,
+    the sum line and a `done/total` counter every 32 bytes."""
     check_placement(code, origin)
     sync(port)
     last = None
     for attempt in range(1, tries + 1):
         try:
-            return _load_once(port, code, origin)
+            return _load_once(port, code, origin, view)
         except LoadError as e:
             last = e
             if log:
-                log(f"  attempt {attempt}: {e}")
+                log(f"\n  attempt {attempt}: {e}")
             sync(port)
     raise LoadError(f"{last} -- gave up after {tries} attempts")
 
 
-def go(port, origin, timeout=5.0):
+def go(port, origin, timeout=5.0, view=None):
     """G origin. Returns what the program printed before the prompt came
     back, or None if no prompt did (the program HALTed, or is still
-    running)."""
-    _type(port, go_line(origin), "G line")
+    running). `view` sees the G line's echo and the program's output."""
+    _type(port, go_line(origin), "G line", view)
     out = port.read_until(PROMPT, timeout)
+    if view and out:
+        view(out)
     if out.endswith(PROMPT):
         return out[:-len(PROMPT)]
-    if out:
-        sys.stdout.write(out.decode("ascii", "replace"))
     return None
 
 
-# ---- the real port ------------------------------------------------------
 class FdPort:
     """The adapter. Bytes arrive in whatever clumps USB delivers them, so
     a read for one delimiter can bring the NEXT reply along with it: the
@@ -308,20 +319,23 @@ def main(argv):
               " first: make kill-monitor)", file=sys.stderr)
         return 1
     port = FdPort(port_path)
+
+    def view(b):                       # what the monitor sends, verbatim
+        sys.stdout.write(b.decode("ascii", "replace"))
+        sys.stdout.flush()
     try:
-        got = load(port, code, origin, log=print)
-        print(f"  loaded, monitor sum {got:#04x} OK")
+        got = load(port, code, origin, log=print, view=view)
+        print(f"\nloaded {len(code)} bytes at {origin:#06x}, monitor sum "
+              f"{got:#04x} OK")
         if not run:
             print(f"  now: make monitor, then type   G {origin:04X}")
         if run:
-            print(f"  G {origin:04X}")
-            out = go(port, origin)
+            out = go(port, origin, view=view)
             if out is None:
-                print("  no prompt back: the program HALTed or is still"
+                print("\n  no prompt back: the program HALTed or is still"
                       " running")
             else:
-                sys.stdout.write(out.decode("ascii", "replace"))
-                print("  returned to the prompt")
+                print("\n  returned to the prompt")
     except LoadError as e:
         print(f"  FAILED: {e}", file=sys.stderr)
         return 1

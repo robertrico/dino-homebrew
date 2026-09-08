@@ -229,6 +229,30 @@ def test_fdport_keeps_what_arrives_past_the_delimiter():
     port.close()
 
 
+def test_view_shows_the_session_as_the_monitor_sends_it():
+    print("view: the L line typing itself, the digits, the sum, a counter")
+    r = prog("LDAI 0x5A\nOUT\nRET\n")
+    seen = []
+    port = OraclePort()
+    dinoload.load(port, r.code, r.origin, view=seen.append)
+    check_eq(b"".join(seen), b"L 8100,4\r\n" + dinoload.hexed(r.code)
+             + b"\r\n0xF0\r\n> ",
+             "a short load is the monitor's transcript, verbatim")
+    big = prog("\n".join(["LDAI 0x11"] * 20) + "\nRET\n")   # 41 bytes
+    seen = []
+    dinoload.load(OraclePort(), big.code, big.origin, view=seen.append)
+    text = dinoload.hexed(big.code)
+    check_eq(b"".join(seen),
+             b"L 8100,29\r\n" + text[:64] + b"\n  32/41 " + text[64:]
+             + b"\r\n0x%02X\r\n> " % dinoload.csum(big.code),
+             "a long load breaks into 32-byte rows with a done/total counter")
+    seen = []
+    port = OraclePort()
+    dinoload.load(port, r.code, r.origin)
+    dinoload.go(port, r.origin, view=seen.append)
+    check_eq(b"".join(seen), b"G 8100\r\n> ", "go shows its echo and the prompt")
+
+
 def test_go_runs_it_and_returns_the_output():
     print("go: G addr, then whatever the program prints up to the prompt")
     labels = asm.assemble_text(open(MON).read()).labels
