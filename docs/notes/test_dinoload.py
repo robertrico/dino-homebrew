@@ -148,6 +148,27 @@ def test_a_wrong_sum_is_a_named_error():
         check(False, "no LoadError on a wrong sum")
 
 
+def test_sync_swallows_a_stray_byte_and_flushes_first():
+    print("a stray 0x81 in the FTDI buffer before the prompt is not fatal")
+    r = prog("LDAI 0x5A\nOUT\nRET\n")
+
+    class Stray(OraclePort):
+        flushed = 0
+        junk = b"\x81"
+
+        def flush_input(self):
+            self.flushed += 1
+
+        def read_until(self, delim, timeout=1.0):
+            got = super().read_until(delim, timeout)
+            j, self.junk = self.junk, b""
+            return j + got
+    port = Stray()
+    got = dinoload.load(port, r.code, r.origin)
+    check_eq(got, dinoload.csum(r.code), "loaded through the junk")
+    check_eq(port.flushed, 1, "the input queue was flushed before sync")
+
+
 def test_go_runs_it_and_returns_the_output():
     print("go: G addr, then whatever the program prints up to the prompt")
     labels = asm.assemble_text(open(MON).read()).labels

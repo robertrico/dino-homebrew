@@ -99,11 +99,24 @@ def _expect(port, want, what, timeout=2.0):
     return got
 
 
-def sync(port):
-    """A bare CR at the prompt reprompts. Anything else there means the
-    monitor is not listening -- wrong image, halted, or mid-line."""
-    port.write(b"\r")
-    _expect(port, PROMPT, "sync")
+def sync(port, tries=4):
+    """A bare CR at the prompt reprompts. The FTDI buffer can hold a stray
+    byte from the burn or a prior run in front of the banner (minicom
+    flushes on open; open_port does too, but bytes arrive after that), so
+    drain first and send CR up to `tries` times, each ending a possibly
+    partial line. `read_until` returns the tail through the FIRST prompt,
+    so a leading 0x81 is swallowed, not fatal."""
+    if hasattr(port, "flush_input"):
+        port.flush_input()
+    last = b""
+    for _ in range(tries):
+        port.write(b"\r")
+        got = port.read_until(PROMPT, 1.0)
+        if got.endswith(PROMPT):
+            return
+        last = got
+    raise LoadError(f"sync: no prompt after {tries} CRs -- is the monitor "
+                    f"in the socket and at its prompt? last saw {last!r}")
 
 
 def load(port, code, origin):
@@ -157,6 +170,14 @@ def go(port, origin, timeout=5.0):
 class FdPort:
     def __init__(self, path):
         self.fd = open_port(path)
+
+    def flush_input(self, settle=0.2):
+        """Drop whatever is queued: the burn's noise, a banner from a
+        reset, an unfinished line's echo. Wait `settle` first so bytes in
+        the adapter's pipe make it into the queue we are dropping."""
+        time.sleep(settle)
+        import termios
+        termios.tcflush(self.fd, termios.TCIFLUSH)
 
     def write(self, data):
         data = bytes(data)
