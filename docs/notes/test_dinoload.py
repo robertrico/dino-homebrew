@@ -96,23 +96,64 @@ def test_frames_are_the_monitor_language():
              "the payload is upper-case hex text, typeable at minicom")
 
 
-def test_a_wrong_echo_is_a_named_error():
-    print("a chunk echoed wrong stops the load before the sum")
+class DropOnce(OraclePort):
+    """The machine eats character number `at` of everything the host
+    types (counted across the whole session): the monitor sees 0x00 in its
+    place, exactly the bench fault of 2026-09-07."""
+
+    def __init__(self, at):
+        super().__init__()
+        self.at, self.n, self.dropped = at, 0, 0
+
+    def write(self, data):
+        for b in bytes(data):
+            if self.n == self.at:
+                b, self.dropped = 0x00, self.dropped + 1
+            self.n += 1
+            super().write(bytes([b]))
+
+
+def test_a_character_dropped_in_the_L_line_is_retried():
+    print("the L line loses a character: `?`, back to the prompt, typed again")
+    r = prog("LDAI 0x5A\nOUT\nRET\n")
+    # session: "\r" (sync) then "L 8100,4\r": drop the second '0'
+    port = DropOnce(at=len(b"\rL 810"))
+    got = dinoload.load(port, r.code, r.origin)
+    check_eq(port.dropped, 1, "one character was eaten")
+    check_eq(got, dinoload.csum(r.code), "the retry landed the whole image")
+    port.write(b"D 8103\r")
+    check_eq(port.read_until(b"> "), b"D 8103\r\n0x%02X\r\n> " % r.code[3],
+             "the last byte is there")
+
+
+def test_a_character_dropped_in_the_payload_is_retried():
+    print("a hex digit is eaten mid-payload: the monitor aborts with `?`, "
+          "sync escapes with Z, and the load starts over")
+    r = prog("LDAI 0x5A\nOUT\nRET\n")
+    port = DropOnce(at=len(b"\rL 8100,4\r115A5"))
+    got = dinoload.load(port, r.code, r.origin)
+    check_eq(port.dropped, 1, "one digit was eaten")
+    check_eq(got, dinoload.csum(r.code), "the retry landed the whole image")
+    check_eq(port.last["idle"], True, "monitor back on the prompt")
+
+
+def test_three_drops_is_a_named_error():
+    print("a machine that eats a character every time gives up after 3")
     r = prog("LDAI 0x5A\nOUT\nRET\n")
 
-    class Garbler(OraclePort):
-        def read_until(self, delim, timeout=1.0):
-            got = super().read_until(delim, timeout)
-            if delim == dinoload.hexed(r.code):       # the payload chunk
-                got = got.replace(b"5A", b"5B")
-            return got
-    port = Garbler()
+    class DropAlways(OraclePort):
+        def write(self, data):
+            data = bytes(data)
+            if data == b"8":                      # every L line has one
+                data = b"\x00"
+            super().write(data)
     try:
-        dinoload.load(port, r.code, r.origin)
+        dinoload.load(port := DropAlways(), r.code, r.origin)
     except dinoload.LoadError as e:
-        check("echo" in str(e), f"LoadError names the echo: {e}")
+        check("3 attempts" in str(e) and "echoed" in str(e),
+              f"LoadError names the attempts and the echo: {e}")
     else:
-        check(False, "no LoadError on a garbled echo")
+        check(False, "no LoadError on a machine that always drops")
 
 
 def test_load_streams_the_bytes_and_checks_the_sum():
