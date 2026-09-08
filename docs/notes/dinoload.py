@@ -205,16 +205,31 @@ def go(port, origin, timeout=5.0):
 
 # ---- the real port ------------------------------------------------------
 class FdPort:
-    def __init__(self, path):
-        self.fd = open_port(path)
+    """The adapter. Bytes arrive in whatever clumps USB delivers them, so
+    a read for one delimiter can bring the NEXT reply along with it: the
+    last payload digit's echo and the whole sum line came in one read on
+    the bench (2026-09-07) and the reply was dropped on the floor. What
+    arrives past the delimiter is kept in `self.buf` for the next call."""
+
+    def __init__(self, path=None, fd=None):
+        self.fd = open_port(path) if fd is None else fd
+        self.buf = bytearray()
 
     def flush_input(self, settle=0.2):
         """Drop whatever is queued: the burn's noise, a banner from a
         reset, an unfinished line's echo. Wait `settle` first so bytes in
         the adapter's pipe make it into the queue we are dropping."""
         time.sleep(settle)
-        import termios
-        termios.tcflush(self.fd, termios.TCIFLUSH)
+        self.buf.clear()
+        try:
+            import termios
+            termios.tcflush(self.fd, termios.TCIFLUSH)
+        except (termios.error, OSError):
+            pass                                  # a pipe, not a tty
+        while True:                               # whatever is left
+            r, _, _ = select.select([self.fd], [], [], 0)
+            if not r or not os.read(self.fd, 256):
+                break
 
     def write(self, data):
         data = bytes(data)
@@ -222,25 +237,34 @@ class FdPort:
             n = os.write(self.fd, data)
             data = data[n:]
 
+    def _take(self, delim):
+        i = self.buf.find(delim)
+        if i < 0:
+            return None
+        i += len(delim)
+        out, self.buf = bytes(self.buf[:i]), self.buf[i:]
+        return out
+
     def read_until(self, delim, timeout=1.0):
-        buf = bytearray()
+        got = self._take(delim)
+        if got is not None:
+            return got
         deadline = time.monotonic() + timeout
         while True:
             left = deadline - time.monotonic()
             if left <= 0:
-                return bytes(buf)
+                out, self.buf = bytes(self.buf), bytearray()
+                return out
             r, _, _ = select.select([self.fd], [], [], left)
             if not r:
                 continue
             b = os.read(self.fd, 256)
             if not b:
                 continue
-            buf += b
-            if delim in buf:
-                i = buf.find(delim) + len(delim)
-                # anything past the delimiter belongs to the next read;
-                # the monitor never speaks unprompted, so there is none
-                return bytes(buf[:i])
+            self.buf += b
+            got = self._take(delim)
+            if got is not None:
+                return got
 
     def close(self):
         os.close(self.fd)

@@ -210,6 +210,25 @@ def test_sync_swallows_a_stray_byte_and_flushes_first():
     check_eq(port.flushed, 1, "the input queue was flushed before sync")
 
 
+def test_fdport_keeps_what_arrives_past_the_delimiter():
+    print("FdPort: the sum reply glued to the last echo is not thrown away")
+    rd, wr = os.pipe()                      # the adapter, as a pipe
+    port = dinoload.FdPort(fd=rd)
+    # one USB read delivers the last digit's echo AND the whole reply
+    os.write(wr, b"4\r\n0xF0\r\n> ")
+    check_eq(port.read_until(b"4", 0.5), b"4", "the echo, alone")
+    check_eq(port.read_until(b"> ", 0.5), b"\r\n0xF0\r\n> ",
+             "the reply that came with it, on the next read")
+    check_eq(port.read_until(b"> ", 0.1), b"", "then nothing, promptly")
+    os.write(wr, b"ab")
+    port.flush_input(settle=0.0)
+    os.write(wr, b"> ")
+    check_eq(port.read_until(b"> ", 0.5), b"> ",
+             "flush drops the buffered leftover too")
+    os.close(wr)
+    port.close()
+
+
 def test_go_runs_it_and_returns_the_output():
     print("go: G addr, then whatever the program prints up to the prompt")
     labels = asm.assemble_text(open(MON).read()).labels
