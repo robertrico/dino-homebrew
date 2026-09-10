@@ -24,7 +24,7 @@ changes confined to `CW16-23`.
 
     IMAGE            BITS      SET    CRC16
     U9.bin           CW0-7     REAL   0xC52B
-    U15.bin          CW8-15    REAL   0xDCD1
+    U15.bin          CW8-15    REAL   0x45F9
     U23.bin          CW16-23   REAL   0xCB8E
     U9_diag.bin      CW0-7     DIAG   0x0F69
     U15_diag.bin     CW8-15    DIAG   0xF1B9
@@ -53,58 +53,58 @@ the burned microcode rows, so image and hardware cannot disagree by
 construction — no eleventh table.
 
     IMAGE            CRC16   OB    ENDS
-    PROG_probe.bin   0x254E  0x39  2
+    PROG_probe.bin   0x254E  0x39  1
         immediate -> A -> OB, ALU out of the path entirely. The smallest
         question worth asking.
-    PROG_adda.bin    0xAC3D  0x39  4
+    PROG_adda.bin    0xAC3D  0x39  3
         TMP_A alone: value + 0, so the answer IS the operand.
-    PROG_addb.bin    0x8DAE  0x39  4
+    PROG_addb.bin    0x8DAE  0x39  3
         TMP_B alone: 0 + value, isolating the other shadow latch.
-    PROG_dip.bin     0xFEE3  0x4D  6   SW1 = 0x1E
+    PROG_dip.bin     0xFEE3  0x4D  4   SW1 = 0x1E
         THE INTERACTIVE ONE, through the BUS. A comes off card zero at
         0x4000 with a plain LDA -- SW1 is an ADDRESS now, not a SRC code,
         and IN retired with U28.7. Only the SOURCE of the operand changed;
         the answer is still the milestone's 0x4D.
-    PROG_alu.bin     0x642A  0x39  13
+    PROG_alu.bin     0x642A  0x39  12
         all eight SA codes CHAINED, so a wrong code corrupts the signature
         rather than being masked by a later op.
-    PROG_mem.bin     0x3E4B  0xC5  5
+    PROG_mem.bin     0x3E4B  0xC5  4
         STA then LDA back through RAM. Uses ONE address twice, so it is
         blind to what that address actually was -- see mardisc.
-    PROG_flow.bin    0xCED0  0x39  7
+    PROG_flow.bin    0xCED0  0x39  6
         JMP over a poison HALT, then a JNZ that must NOT be taken.
-    PROG_loop.bin    0x8727  0x15  33
+    PROG_loop.bin    0x8727  0x15  32
         the JNZ TAKEN arm, iterated an exact number of times. A wrong
         count changes the answer, so the answer proves the count.
-    PROG_mardisc.bin 0x2066  0x6B  8
+    PROG_mardisc.bin 0x2066  0x6B  6
         TWO DIFFERENT MAR values. Reads back the FIRST of two cells
         differing only in MAR_LO, so a collapsed low byte returns the
         SECOND value. The question mem cannot ask.
-    PROG_pads.bin    0x749A  0x40  5
+    PROG_pads.bin    0x749A  0x40  3
         the PC's LANDING ADDRESS as the observable. Every 4-byte slot is
         LDAI <own address>; OUT; HALT.
-    PROG_sp1.bin     0x5F58  0x2C  5
+    PROG_sp1.bin     0x5F58  0x2C  4
         ONE push, ONE pop -- the fewest moving parts that reach the stack
         at all. BLIND TO A FROZEN SP by construction: push and pop use the
         same cell, so 0x2C comes back whether or not SP ever moved. It
         reported a green machine for most of 2026-08-24. Read it only
         alongside sp2.
-    PROG_sp2.bin     0xFBA3  0x53  9
+    PROG_sp2.bin     0xFBA3  0x53  8
         the ADDRESS as the observable, not the data. Plants a sentinel in
         the cell push #2 must reach, then reads that cell by ABSOLUTE
         address so the readback cannot inherit the fault under test. 0x53
         = SP moved. 0xA5 = SP never moved and the sentinel survived. The
         first image that is not blind to a frozen SP.
-    PROG_sp3.bin     0x76FF  0x2C  9
+    PROG_sp3.bin     0x76FF  0x2C  8
         WHICH cell did the pop read. A different sentinel in each
         neighbour: 0x2C correct, 0x11 read one BELOW (increment never took
         before the MAR copy), 0x22 read one ABOVE (increment landed
         twice). 0x22 is what a ringing CLK edge at U63.2 produced before
         the 100R series termination went in.
-    PROG_sp.bin      0xC047  0x27  9
+    PROG_sp.bin      0xC047  0x27  8
         SP alone -- LXISP and the counter, without CALL/RET. The phase-B
         bench gate.
-    PROG_calladdr.bin 0x7D79  0x5C  15
+    PROG_calladdr.bin 0x7D79  0x5C  13
         CALL WITHOUT RET. Reads the pushed return address back out of RAM
         by absolute address. 0x5C = both bytes right, 0xC1 = the LO byte
         is wrong (U72 / ~PC_LO_OUT), 0xC2 = the HI byte (U73 /
@@ -112,13 +112,13 @@ construction — no eleventh table.
         passing and call failing puts the fault on the RET side. NOTE:
         CALL pushes PC+1, not PC+3 -- RET steps over the two operand bytes
         with PC_UP on T12/T13. PHASE C.
-    PROG_callraw.bin 0xD709  0x2A  7
+    PROG_callraw.bin 0xD709  0x2A  5
         REPORTS the pushed PC_LO byte raw -- no comparison, no fault
         codes. Found phase C's fault when calladdr had misattributed it:
         0x26 was the previous JMP's target, naming U72/U73 as landed on
         the PC LOAD path (U11/U12) instead of the Q outputs. Expect 0x2A.
         PHASE C.
-    PROG_call.bin    0x14C9  0x4B  8
+    PROG_call.bin    0x14C9  0x4B  6
         the RETURN ADDRESS as the observable -- pads, for RET. The landing
         site is the ONLY thing that can produce the answer: 0x4B = RET
         landed on the right byte, 0xFF = it did not (OB is poisoned first
@@ -126,63 +126,63 @@ construction — no eleventh table.
         padding are LOAD-BEARING: they push the CALL above 0x00FF so the
         pushed PC_HI is 0x01, and a U73 that is dead or stuck low cannot
         pass by delivering 0x00. PHASE C -- needs U72/U73.
-    PROG_stack.bin   0x1A77  0x27  13
+    PROG_stack.bin   0x1A77  0x27  11
         LXISP, PUSH, POP, CALL, RET. Pushes two DIFFERENT bytes and pops
         them into SWAPPED registers, so LIFO order is observable rather
         than decorative -- and the SUB runs INSIDE the callee with the
         only OUT after the return, so the answer exists only if registers,
         flags and stack all survived the call. PHASE C.
-    PROG_ramexec.bin 0x9BC7  0x6E  21
+    PROG_ramexec.bin 0x9BC7  0x6E  19
         THE MACHINE EXECUTES FROM RAM. No new instruction -- the new thing
         is where the instructions come from. ROM plants LDBI/SUB/OUT/HALT
         at 0x9000, verifies byte 0 by ABSOLUTE address (unwritten RAM
         reads 0x00 = NOP, so a failed store would NOP-slide 28KB and look
         like a fetch fault), then JMPs across 0x8000 and the answer is
         computed in RAM. PHASE D.
-    PROG_jnc.bin     0x64C0  0x6C  8
+    PROG_jnc.bin     0x64C0  0x6C  6
         THE ONLY IMAGE WHOSE ANSWER DEPENDS ON U77, the '157 flag mux. CMP
         sets FLAG_C, JNC selects it through CW21, and the taken arm is the
         only path to 0x6C. Run it WITH jncswap: a one-sided branch test is
         passed by a branch wired permanently taken. PHASE F.
-    PROG_jncswap.bin 0x3841  0xEE  8
+    PROG_jncswap.bin 0x3841  0xEE  6
         jnc's other direction, same code, swapped operands. 0xEE is the
         pass here. PHASE F.
-    PROG_mov.bin     0x234B  0x9C  6
+    PROG_mov.bin     0x234B  0x9C  4
         LDCI EXECUTES FOR THE FIRST TIME. C was write-only by design --
         RET's return-address scratch, with no way to read it back -- and
         MOV A,C is the one microcode row that closes it. A is cleared
         first so a dead MOV cannot report LDAI's byte. PHASE F.
-    PROG_ptr.bin     0x8F67  0x22  21
+    PROG_ptr.bin     0x8F67  0x22  19
         B:C AS AN INDEX PAIR, with PROG_sp3's discipline. Three cells, a
         different sentinel in each, planted through the pointer with STAX
         -- then read back down TWO paths, one through the pointer (LDAX)
         and one by ABSOLUTE address (LDB), and the answer is their
         difference. The absolute path cannot inherit a pointer fault.
         PHASE F.
-    PROG_shl.bin     0x0E11  0xA4  9
+    PROG_shl.bin     0x0E11  0xA4  7
         the TMP_B shadow doing arithmetic: SHL, INR, INR, NOT, DCR. Two
         INRs and one DCR on purpose -- INR then DCR returns the same byte
         whether both worked or neither did. PHASE F.
-    PROG_ind.bin     0x9B7E  0x63  10
+    PROG_ind.bin     0x9B7E  0x63  8
         MEMORY-INDIRECT, the third addressing mode. The pointer is in RAM
         and the operand names WHERE THE POINTER IS. 0x63 passes; 0xE0
         means it read the pointer byte instead of following it; 0x9C means
         it read an unwritten cell. B must survive. PHASE F+.
-    PROG_indst.bin   0xAB5B  0x5B  9
+    PROG_indst.bin   0xAB5B  0x5B  8
         memory-indirect STORE, read back by absolute address so the
         readback cannot inherit the fault. 0x5B passes, 0x00 means the
         store never reached the target. PHASE F+.
-    PROG_indj.bin    0x81A8  0x6C  7
+    PROG_indj.bin    0x81A8  0x6C  5
         memory-indirect JUMP, landing site as the observable. 0x6C passes,
         0xE7 is the fall-through. The target address is computed from the
         assembled prologue, never counted. PHASE F+.
-    PROG_serid.bin   0xEE88  0x55  6
+    PROG_serid.bin   0xEE88  0x55  4
         PHASE G, step 4b. STA/LDA round trip through the 16550's scratch
         register at 0x4807: the first write in this machine's life that
         anything consumed (~{IO_WR}, U75.6). RAW REPORT -- 0x54 names D0,
         0x51 D2, 0x15 D6; 0xFF means the card never drove W. Permutation-
         blind: a crossed U102 passes it.
-    PROG_serid_aa.bin 0x74B4  0xAA  6
+    PROG_serid_aa.bin 0x74B4  0xAA  4
         the complement arm. 0x55 and 0xAA between them put a 1 and a 0 on
         every data line.
 
@@ -448,6 +448,7 @@ time the DIAG image is reburned — no reason to reburn just for this.
     PROG_hello.bin   0x9C68  0x96  asm/hello.asm
     PROG_monitor.bin 0xD0E1  UNORACLED asm/monitor.asm
     PROG_romsoak.bin 0xF919  0x00  asm/romsoak.asm
+    PROG_rxsoak.bin  0xA149  UNORACLED asm/rxsoak.asm
     PROG_serbaud.bin 0x2C77  UNORACLED asm/serbaud.asm
     PROG_serid.bin   0x8888  0x55  asm/serid.asm
     PROG_serid_aa.bin 0x74B4  0xAA  asm/serid_aa.asm

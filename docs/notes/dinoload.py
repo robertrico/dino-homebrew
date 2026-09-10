@@ -137,18 +137,30 @@ def sync(port, tries=4):
 ROW = 32                                # payload bytes per progress row
 
 
+# Extra spacing between characters, as a FRACTION of each character's own
+# echo round-trip -- so the load is (1 + SLOW) times its natural wall time
+# whatever the port latency is. Self-calibrating: no baud-derived constant
+# to fall stale. 0.20 = 20% slower, Rico 2026-09-08, for drop margin.
+SLOW = float(os.environ.get("DINO_SLOW", "0.20"))
+
+
 def _type(port, data, what, view=None):
     """Type `data` the way a person does: one character, wait for its
     echo, the next. CR echoes as CRLF. That is the pacing -- the machine
     drops characters that arrive back-to-back and never drops paced ones
     (2026-09-07, serprobe vs the burst loader) -- and a per-character
     check that each digit arrived as sent. A wrong echo names the
-    position. `view` sees every echo as it lands: the live picture."""
+    position. After each echo, pause SLOW times that character's own
+    round-trip, widening the gap the next character sees. `view` sees
+    every echo as it lands: the live picture."""
     for i, b in enumerate(bytes(data)):
         ch = bytes([b])
         want = b"\r\n" if ch == b"\r" else ch
+        t0 = time.monotonic()
         port.write(ch)
         got = port.read_until(want, 1.0)
+        if SLOW > 0 and got == want:
+            time.sleep(SLOW * (time.monotonic() - t0))
         if view and got:
             view(got)
         if got != want:
