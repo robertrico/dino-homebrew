@@ -247,6 +247,85 @@ side already keys on `M15`: three re-sourced pins, zero packages, in
 and is the design; the copper is what moves. Rule: **before a new image
 burns, list everything it does that no green image ever did. All of it.**
 
+**FACT — ALL OF RAM, 0x8000-0xFFFF, IS PROVEN. Rico, 2026-09-07.** The
+standing caution that RAM above 0x80FF was OPEN -- kept because every
+bench-green image confined its cells and stack to 0x8000-0x80FF -- is
+CLOSED. Data lands and reads back, and instructions fetch, across the
+whole 32K. RAM is flat and whole. The only reserved cells are the
+monitor's own 0x80E0-0x80FF (its variables and the stack a `RET` needs);
+a loaded program still stays off those, for the monitor's sake, not
+RAM's.
+
+**RETRACTED 2026-09-08 — THE MICROCODE SETTLE DID NOT FIX IT.** U15 was
+burned with the OUT-settle (`0x45F9`) and `make go-step2` STILL halts,
+OB `0x22`. The settle was the wrong fix and the model behind it was
+incomplete. **What the burn PROVED:** idle T-states between OUT and the RET
+fetch do NOT cure it -- only an intervening real FETCH does (a `NOP`, a
+`LDAI`). So it is not OUT's bus/strobe overlapping the next fetch (a settle
+would have separated them); it is the FIRST RAM fetch after an OUT being
+marginal, and a throwaway fetch (NOP) absorbs it so the RET fetch is the
+SECOND and is clean. RAM read path timing: OUT's own T0 fetches from RAM,
+then OUT drives REG_A (RAM path off), then the RET fetch must re-assert the
+RAM read -- and the first re-assert after that gap is where HALT latches.
+**SETUP-MARGIN FAULT, CONFIRMED BY CLOCK, 2026-09-08.** `step2` HALTS at
+1.024MHz and above, RETURNS at 500kHz. Slower clock CURES it, so it is a
+setup-margin fault -- the RET fetch does not deliver a valid opcode to IR
+before the latching edge. (An earlier note here predicted slower=worse from
+a transparent-IR-dwell model; the bench said slower=better, so that model
+is RETRACTED.) Bracket: fails at the 488ns half-window (1.024MHz), passes
+at 1000ns (500kHz), so the real first-fetch-after-OUT settle is 488..1000ns.
+Datasheet budget to IR is 382ns worst-case and CLOSES at 488ns, so the
+missing 100..600ns is NOT in the datasheet path: it is breadboard bus
+capacitance (100+pF vs the 45pF a 74LS245 tPD is specced into) plus the
+`U41`(REG_A)->`U21`(RAM) CROSS-DRIVER handoff that only the OUT->fetch sees.
+A fetch after a fetch is `U21`->`U21`, same buffer, no contention.
+**WHY MORE SETTLE STATES DO NOT HELP:** the bottleneck is the RET fetch's
+own single T-state, whose setup deadline is the clock edge; idle states
+BEFORE it do not lengthen it. The burned settle proved this. **WHY A
+DRIVING settle does not help either:** keeping RAM on the bus into the fetch
+(U21->U21) would fix RAM but OUT cannot know the next fetch is ROM or RAM --
+a RAM-driving last row makes OUT->ROM-fetch a `U21`->`U19` fight and breaks
+the 147-instruction ROM path. **The fix is not in OUT's microcode.**
+Options, all consistent: NOP between OUT and RET (zero burn, proven);
+500kHz (zero burn, proven); PCB (the real fix -- cut the bus C). The burned
+OUT settle (`0x45F9`) should be REVERTED on the next burn: it costs a
+T-state and fixes nothing. **WORKAROUND, zero burn:** never put OUT
+immediately before RET in RAM code; one instruction between them is enough
+(`step2a`, `step2g`). Original freeze note below.
+
+**Original claim, RETRACTED above — the freeze was
+`OUT` immediately before the next fetch FROM RAM, 2026-09-08.**
+`asm/ram/step2` (`LDAI 0x22; OUT; RET`) OUTs `0x22` and froze. The staircase
+`asm/ram/step1..8` plus `step2pop/ram/jmp/a/b/c/e/f/g` (all oracle-green in
+`test_ramsteps.py`) pinned it: fetch/`OUT`/`HALT`/`RET`/`CALL` from RAM all
+work; only `OUT` IMMEDIATELY before another instruction fetched from RAM
+halts, data-independent (four `OUT` values all froze; `0x34` with `REG_A`
+also `0x34`, no bus transition, still froze). One instruction between them
+cures it (`step2a`), and one `NOP` cures it (`step2g`, OB `0x22`, prompt
+back -- `NOP`'s first execution on silicon). **Root cause:** `OUT` was one
+row driving MDR from `REG_A` and strobing `REG_OUT_LOAD` in the SAME
+T-state it carried END, so the next fetch began before the bus released;
+on the fast `FETCH_RAM` path the transparent IR (`NOR(~LOAD, CLK)`) latched
+the overlap and `U61`'s HALT latch caught it and STUCK (its pins 5/6
+feed back). From ROM the fetch had margin, which is why 147 instructions
+and every coverage image were clean. **Fix:** `OUT` and the register/ALU
+`OUT_` family end in a `SETTLE` row (`0xff0000`, drives nothing) before
+the safe-fill END; `OUTI` is left as-is (it reads a ROM immediate and
+cannot cleanly carry the settle -- H2 retirement candidate anyway).
+`check_table` now blesses a trailing `SETTLE` terminator. **U15 reburn,
+`0xDCD1 -> 0x45F9`; U9 `0xC52B` and U23 `0xCB8E` UNCHANGED -- one chip.**
+Host-green, bins regenerated; Rico burns U15 and reruns `make go-step2`
+(pass = OB `0x22`, prompt back). This rides with the H1 settle-row
+cleanup, which reburns the same chip.
+
+Old note kept for the record: fetch from RAM, `OUT` and
+`HALT` from RAM work (`step1` OB `0x11`); `CALL` from RAM into ROM and
+`RET` from ROM back into RAM work (`bigxfer` printed 261 bytes). Every
+earlier RAM program did five firsts at once; `asm/ram/step1..8` is the
+staircase that does one per step, `test_ramsteps.py` its oracle answer
+key, and `step2pop` / `step2ram` / `step2jmp` split `RET` into its pops,
+a RAM-to-RAM return, and a bare RAM-to-ROM jump.
+
 **FACT — gating `~{RAM_OUT}` upstream carries `U21`'s enable for free.**
 `U51` is a `7400` computing `~RAM_MDR_EN = AND(~RAM_OUT, ~WRITE_DIR)`, so
 one gate on `~RAM_OUT` moves both the RAM chip's `~OE` and its buffer.
@@ -454,8 +533,10 @@ has the whole chase. Diagnostics from it: `PROG_serrx0`, `serlcr`,
 (`74LS157`) is in copper since 2026-08-27; the 174-instruction microcode is
 BURNED and in the sockets:
 
-    U9  0xC52B    U15 0xDCD1    U23 0xCB8E     pinned in test_microcode_gen.py
+    U9  0xC52B    U15 0x45F9    U23 0xCB8E     pinned in test_microcode_gen.py
     (2026-09-05: MVI settle row. Was 0xE991/0x33EA/0xCB8E from 2026-09-01.)
+    (2026-09-08: OUT settle row, BURNED U15 0xDCD1 -> 0x45F9, did NOT
+     fix the OUT->RET-from-RAM halt; the fetch, not idle time, is the cure.)
 
 The witness is the self-test, not the eight standalone images: `PROG_isa`
 reads `0xB4` (147 subtests, including `JNC`, `MOV A,C`, `LDAX`, `LDAM` —
@@ -1089,6 +1170,13 @@ LIVE — read these:
     .git/sdd/RIG_RETIREMENT.md               the ATmega is retired; what is
                                              dead, and what must NOT be
                                              deleted with it
+    .git/sdd/POWER.md                        PCB phase starts HERE. Supply
+                                             choice (ATX / PicoPSU / brick),
+                                             current budget, TASKS 1-3:
+                                             measure the machine, measure the
+                                             ATX, feed the machine. Written
+                                             2026-09-08; draw 1.25-1.34A
+                                             (bench ammeter, 2026-09-10)
     .git/sdd/GROUNDING.md                    ground is a wire. Star, external
                                              grounds at the star only, measure
                                              the table. The primer 2026-09-05
