@@ -1951,267 +1951,629 @@
 		)
 		(uuid "f848410f-3ad6-4860-954b-a214f1abcbf5")
 	)
-	(label "OB1"
+	(global_label "OB1"
+		(shape passive)
 		(at 135.89 55.88 270)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "12a6bc79-a1c2-41e8-a56e-7da69f4ccdcd")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 135.89 55.88 270)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "OB7"
+	(global_label "OB7"
+		(shape passive)
 		(at 135.89 116.84 270)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "1528e069-41e3-446c-95b3-fa3f9a4bee61")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 135.89 116.84 270)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "OB6"
+	(global_label "OB6"
+		(shape passive)
 		(at 135.89 106.68 270)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "1e3a027e-c8bf-4f76-a3ed-4e05bb528ff0")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 135.89 106.68 270)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "OB0"
+	(global_label "OB0"
+		(shape passive)
 		(at 128.27 45.72 180)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "2e190d74-e3c5-4713-9000-40ae352dfa14")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 128.27 45.72 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "OB7"
+	(global_label "OB7"
+		(shape passive)
 		(at 128.27 116.84 180)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "3a9cbacc-27cf-4262-9366-a4c889b1516b")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 128.27 116.84 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "W5"
+	(global_label "W5"
+		(shape passive)
 		(at 29.21 68.58 0)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify left)
 		)
 		(uuid "3b1d4c61-ee99-4e3f-a658-602d4ce23b92")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 29.21 68.58 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 	)
-	(label "W4"
+	(global_label "W4"
+		(shape passive)
 		(at 29.21 60.96 0)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify left)
 		)
 		(uuid "4843e392-0035-4021-8115-7d8985004a09")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 29.21 60.96 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 	)
-	(label "W0"
+	(global_label "W0"
+		(shape passive)
 		(at 29.21 30.48 0)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify left)
 		)
 		(uuid "5cb42281-6eeb-4493-9497-0aaae4bf092f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 29.21 30.48 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 	)
-	(label "OB5"
+	(global_label "OB5"
+		(shape passive)
 		(at 135.89 96.52 270)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "608155c6-8d1d-494b-9bb3-22c1c02b9eed")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 135.89 96.52 270)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "W6"
+	(global_label "W6"
+		(shape passive)
 		(at 29.21 76.2 0)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify left)
 		)
 		(uuid "60d205e4-0842-44ac-af85-9586aec36f0e")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 29.21 76.2 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 	)
-	(label "OB4"
+	(global_label "OB4"
+		(shape passive)
 		(at 135.89 86.36 270)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "743f2e8d-2811-4918-b03e-626494c6f392")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 135.89 86.36 270)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "OB[0..7]"
+	(global_label "OB[0..7]"
+		(shape passive)
 		(at 127 40.64 180)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
-				(thickness 0.254)
-				(bold yes)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "819c0c53-49dd-4191-86c1-35f22fb9fd99")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 127 40.64 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "OB6"
+	(global_label "OB6"
+		(shape passive)
 		(at 128.27 106.68 180)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "8745d5fb-aa9b-4c49-80aa-8d4d148bbf3f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 128.27 106.68 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "W3"
+	(global_label "W3"
+		(shape passive)
 		(at 29.21 53.34 0)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify left)
 		)
 		(uuid "8bdac200-a77f-4bad-91db-3c6b147bb13d")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 29.21 53.34 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 	)
-	(label "OB2"
+	(global_label "OB2"
+		(shape passive)
 		(at 128.27 66.04 180)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "92dd69ea-514f-4194-b141-8b76b1581c8f")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 128.27 66.04 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "OB0"
+	(global_label "OB0"
+		(shape passive)
 		(at 135.89 45.72 270)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "93ace92e-7f7a-4c19-9071-6181b6e70219")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 135.89 45.72 270)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "OB3"
+	(global_label "OB3"
+		(shape passive)
 		(at 128.27 76.2 180)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "94d0c98b-0364-45d0-abc1-9860577f9d8d")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 128.27 76.2 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "W[0..7]"
+	(global_label "W[0..7]"
+		(shape passive)
 		(at 26.67 24.13 180)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "b9c642c7-2e69-4142-abed-d5db4a388a2c")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 26.67 24.13 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "OB4"
+	(global_label "OB4"
+		(shape passive)
 		(at 128.27 86.36 180)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "bb2f50fc-80f9-45f9-9fd5-c82c8ba26fa3")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 128.27 86.36 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "W2"
+	(global_label "W2"
+		(shape passive)
 		(at 29.21 45.72 0)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify left)
 		)
 		(uuid "ced46b70-4f5a-48f5-9690-c354649abdf3")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 29.21 45.72 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 	)
-	(label "OB2"
+	(global_label "OB2"
+		(shape passive)
 		(at 135.89 66.04 270)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "d7d47770-9e76-4de6-83ea-8e99353121cc")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 135.89 66.04 270)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "W7"
+	(global_label "W7"
+		(shape passive)
 		(at 29.21 83.82 0)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify left)
 		)
 		(uuid "dd0afea8-4d8c-493a-92e0-b885825ed5dd")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 29.21 83.82 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 	)
-	(label "OB3"
+	(global_label "OB3"
+		(shape passive)
 		(at 135.89 76.2 270)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "ede8e96e-648c-42e1-a47c-8fedf4309db5")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 135.89 76.2 270)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "OB5"
+	(global_label "OB5"
+		(shape passive)
 		(at 128.27 96.52 180)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "f4dd407c-95de-4c1a-8776-e2f27c8c8348")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 128.27 96.52 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
-	(label "W1"
+	(global_label "W1"
+		(shape passive)
 		(at 29.21 38.1 0)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left bottom)
+			(justify left)
 		)
 		(uuid "f99d4579-300e-4a55-9bf9-cbe18722aa6b")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 29.21 38.1 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
 	)
-	(label "OB1"
+	(global_label "OB1"
+		(shape passive)
 		(at 128.27 55.88 180)
+		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify right bottom)
+			(justify right)
 		)
 		(uuid "fd2e7515-c7c8-4958-8d3d-1b6b51d34813")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 128.27 55.88 180)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
 	(symbol
 		(lib_id "Device:R_Small")
@@ -2245,7 +2607,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 38.1 76.2 0)
 			(hide yes)
 			(show_name no)
@@ -2326,7 +2688,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "LED_THT:LED_D5.0mm"
 			(at 152.4 102.87 0)
 			(hide yes)
 			(show_name no)
@@ -2417,7 +2779,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 140.97 64.008 90)
 			(hide yes)
 			(show_name no)
@@ -2497,7 +2859,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 38.1 53.34 0)
 			(hide yes)
 			(show_name no)
@@ -2577,7 +2939,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 38.1 83.82 0)
 			(hide yes)
 			(show_name no)
@@ -2657,7 +3019,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 38.1 30.48 0)
 			(hide yes)
 			(show_name no)
@@ -2814,7 +3176,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 140.97 104.648 90)
 			(hide yes)
 			(show_name no)
@@ -2894,7 +3256,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 140.97 94.488 90)
 			(hide yes)
 			(show_name no)
@@ -2975,7 +3337,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "LED_THT:LED_D5.0mm"
 			(at 152.4 82.55 0)
 			(hide yes)
 			(show_name no)
@@ -3066,7 +3428,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 140.97 53.848 90)
 			(hide yes)
 			(show_name no)
@@ -3146,7 +3508,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 38.1 45.72 0)
 			(hide yes)
 			(show_name no)
@@ -3227,7 +3589,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "LED_THT:LED_D5.0mm"
 			(at 152.4 52.07 0)
 			(hide yes)
 			(show_name no)
@@ -3319,7 +3681,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "LED_THT:LED_D5.0mm"
 			(at 152.4 72.39 0)
 			(hide yes)
 			(show_name no)
@@ -3411,7 +3773,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "LED_THT:LED_D5.0mm"
 			(at 152.4 92.71 0)
 			(hide yes)
 			(show_name no)
@@ -3503,7 +3865,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "LED_THT:LED_D5.0mm"
 			(at 152.4 113.03 0)
 			(hide yes)
 			(show_name no)
@@ -3595,7 +3957,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "LED_THT:LED_D5.0mm"
 			(at 152.4 123.19 0)
 			(hide yes)
 			(show_name no)
@@ -3686,7 +4048,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 140.97 114.808 90)
 			(hide yes)
 			(show_name no)
@@ -3766,7 +4128,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 140.97 124.968 90)
 			(hide yes)
 			(show_name no)
@@ -3846,7 +4208,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 140.97 84.328 90)
 			(hide yes)
 			(show_name no)
@@ -3926,7 +4288,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 140.97 74.168 90)
 			(hide yes)
 			(show_name no)
@@ -4006,7 +4368,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 38.1 60.96 0)
 			(hide yes)
 			(show_name no)
@@ -4163,7 +4525,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 38.1 38.1 0)
 			(hide yes)
 			(show_name no)
@@ -4243,7 +4605,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal"
 			(at 38.1 68.58 0)
 			(hide yes)
 			(show_name no)
@@ -4324,7 +4686,7 @@
 				)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "LED_THT:LED_D5.0mm"
 			(at 152.4 62.23 0)
 			(hide yes)
 			(show_name no)

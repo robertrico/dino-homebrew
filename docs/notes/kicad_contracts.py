@@ -73,10 +73,25 @@ def compress(names):
     return sorted(out + plain)
 
 
+def component_sheets(text):
+    """ref -> sheetpath name ("/", "/Memory/", ...) from the netlist's
+    components section. 2026-09-12: the sheet used to be read off the net
+    NAME's /Sheet/ prefix. Global labels have no prefix, so every node
+    landed on the root and no contract crossed anything."""
+    out = {}
+    comps = text[text.index("(components"):text.index("(libparts")]
+    for chunk in re.split(r"\(comp\n", comps)[1:]:
+        ref = re.search(r'\(ref "([^"]+)"\)', chunk).group(1)
+        names = re.search(r'\(sheetpath\s*\(names "([^"]+)"\)', chunk)
+        out[ref] = names.group(1) if names else "/"
+    return out
+
+
 def parse_with_pinfunction(netfile):
     text = open(netfile).read()
     values = dict(re.findall(
         r'\(comp\s*\(ref "([^"]+)"\)\s*\(value "([^"]+)"\)', text))
+    values["__sheets__"] = component_sheets(text)
     nets = []
     body = text[text.index("(nets"):]
     for chunk in re.split(r"\(net\n", body)[1:]:
@@ -112,8 +127,9 @@ def build_contracts(root_path):
         label = alias_note.get(alias_rep.get(label, label), label)
         if label in ("+5V", "GND"):
             continue
-        sheet = name.rsplit("/", 1)[0] + "/" if "/" in name else "/"
+        sheets_of = values["__sheets__"]
         for r, _p, fn, t in nodes:
+            sheet = sheets_of.get(r, "/")
             merged[label][sheet].add((r, fn or "", t.split("+")[0]))
 
     DRV = {"output", "power_out"}

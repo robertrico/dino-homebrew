@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""Assign THT footprints to every symbol in dino_v0_0_2 and write them into
+the schematic's Footprint fields.
+
+    python3 docs/notes/footprint_gen.py            report: what is empty
+    python3 docs/notes/footprint_gen.py --write    fill the fields in place
+
+Rules (Rico, 2026-09-12):
+  * plain DIP, never `_Socket` -- sockets do not change the footprint and
+    the 3D render should show the ICs
+  * one library for all DIPs: the '382 pair leaves the one-off vendor
+    `74F382PC` library for stock `Package_DIP`
+  * a symbol this table does not know is REFUSED, not guessed
+
+The write is a text edit of exactly the `(property "Footprint" "...")`
+lines, keyed on the instance's `(lib_id ...)`. Nothing else in the file is
+touched, so a diff of a written sheet is only footprint lines.
+"""
+import glob
+import os
+import re
+import sys
+from collections import namedtuple
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+from kicad_netlist import tokenize, parse, children, child  # noqa: E402
+
+STOCK_FP_DIR = ("/Applications/KiCad/KiCad.app/Contents/SharedSupport/"
+                "footprints")
+
+DIP = "Package_DIP:DIP-{n}_W{w}mm"
+
+# pin count -> narrow DIP; memories are listed by name because they are 0.6"
+PINS_74XX = {
+    "7400": 14, "74LS00": 14, "74LS02": 14, "74LS04": 14, "74LS08": 14,
+    "74LS14": 14, "74LS32": 14, "74LS74": 14,
+    "74LS138": 16, "74LS157": 16, "74LS163": 16, "74LS169": 16,
+    "74LS193": 16,
+    "74LS244N": 20, "74LS245": 20, "74LS273": 20, "74LS373": 20,
+}
+
+BY_LIB_ID = {
+    "2026-07-13_03-50-17:74F382PC": DIP.format(n=20, w="7.62"),
+    "Memory_EEPROM:AT28C64B": DIP.format(n=28, w="15.24"),
+    "Memory_EEPROM:AT28C256": DIP.format(n=28, w="15.24"),
+    "Memory_RAM:MCM60256AP": DIP.format(n=28, w="15.24"),
+    "Device:C_Small": "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm",
+    "Device:C_Polarized": "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm",
+    "Device:R": "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+    "Device:R_Small": "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
+    "Device:LED": "LED_THT:LED_D5.0mm",
+    "Switch:SW_DIP_x08": "Button_Switch_THT:SW_DIP_SPSTx08_Slide_9.78x22.5mm_W7.62mm_P2.54mm",
+    "Switch:SW_Push": "Button_Switch_THT:SW_PUSH_6mm",
+    "Oscillator:CXO_DIP14": "Oscillator:Oscillator_DIP-14",
+    # power sheet, 2026-09-12: the header a picoPSU plugs into, and PS_ON#
+    "Connector:ATX-24":
+        "Connector_Molex:Molex_Mini-Fit_Jr_5566-24A_2x12_P4.20mm_Vertical",
+    "Connector_Generic:Conn_01x02":
+        "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
+    # project library `dino`, 2026-09-12: symbols KiCad 10 no longer ships
+    "dino:74LS244N": DIP.format(n=20, w="7.62"),
+    "dino:AT28C64B": DIP.format(n=28, w="15.24"),
+    "dino:AT28C256": DIP.format(n=28, w="15.24"),
+    "dino:MCM60256AP": DIP.format(n=28, w="15.24"),
+}
+
+Item = namedtuple("Item", "file ref value lib_id footprint unit")
+
+
+def assign(lib_id, value):
+    """Footprint for one symbol. KeyError on anything unknown."""
+    if lib_id in BY_LIB_ID:
+        return BY_LIB_ID[lib_id]
+    lib, _, name = lib_id.partition(":")
+    if lib == "74xx" and name in PINS_74XX:
+        return DIP.format(n=PINS_74XX[name], w="7.62")
+    raise KeyError(f"no footprint rule for {lib_id} ({value})")
+
+
+def sheets(proj):
+    """The project's sheets. KiCad's `_autosave-*` copies are not sheets."""
+    return sorted(f for f in glob.glob(os.path.join(proj, "*.kicad_sch"))
+                  if not os.path.basename(f).startswith("_autosave-"))
+
+
+def inventory(paths):
+    """Every non-power symbol INSTANCE (each unit separately), as parsed."""
+    out = []
+    for f in paths:
+        with open(f) as fh:
+            tree = parse(tokenize(fh.read()))
+        for s in children(tree, "symbol"):
+            lib = child(s, "lib_id")
+            lib = lib[1] if lib else ""
+            props = {p[1]: p[2] for p in children(s, "property") if len(p) > 2}
+            ref = props.get("Reference", "")
+            if not ref or ref.startswith("#"):
+                continue
+            unit = child(s, "unit")
+            out.append(Item(os.path.basename(f), ref, props.get("Value", ""),
+                            lib, props.get("Footprint", ""),
+                            int(unit[1]) if unit else 1))
+    return out
+
+
+# One top-level instance: starts at "\t(symbol\n", ends at "\n\t)\n".
+_INSTANCE = re.compile(r"^\t\(symbol\n(.*?)^\t\)\n", re.S | re.M)
+_LIB_ID = re.compile(r'\(lib_id "([^"]+)"\)')
+_REF = re.compile(r'\(property "Reference" "([^"]*)"')
+_VALUE = re.compile(r'\(property "Value" "([^"]*)"')
+_FP = re.compile(r'(\(property "Footprint" ")([^"]*)(")')
+
+
+def apply(path):
+    """Write the assigned footprint into every instance. Returns count changed."""
+    with open(path) as fh:
+        src = fh.read()
+    changed = 0
+
+    def fix(m):
+        nonlocal changed
+        body = m.group(1)
+        ref = _REF.search(body)
+        if not ref or ref.group(1).startswith("#"):
+            return m.group(0)
+        lib = _LIB_ID.search(body).group(1)
+        val = _VALUE.search(body)
+        want = assign(lib, val.group(1) if val else "")
+        fp = _FP.search(body)
+        if fp is None:
+            raise ValueError(f"{path}: {ref.group(1)} has no Footprint property")
+        if fp.group(2) == want:
+            return m.group(0)
+        changed += 1
+        body = body[:fp.start()] + fp.group(1) + want + fp.group(3) + body[fp.end():]
+        return "\t(symbol\n" + body + "\t)\n"
+
+    new = _INSTANCE.sub(fix, src)
+    if changed:
+        with open(path, "w") as fh:
+            fh.write(new)
+    return changed
+
+
+def footprint_libs(proj):
+    """name -> directory, from the stock install plus the project table."""
+    libs = {}
+    for d in glob.glob(os.path.join(STOCK_FP_DIR, "*.pretty")):
+        libs[os.path.basename(d)[:-len(".pretty")]] = d
+    table = os.path.join(proj, "fp-lib-table")
+    if os.path.exists(table):
+        with open(table) as fh:
+            rows = fh.read()
+        for m in re.finditer(r'\(name "([^"]+)"\)[^\n]*\(uri "([^"]+)"\)', rows):
+            libs[m.group(1)] = m.group(2).replace("${KIPRJMOD}", proj)
+    return libs
+
+
+def footprint_exists(fp, libs):
+    lib, _, name = fp.partition(":")
+    return lib in libs and os.path.exists(
+        os.path.join(libs[lib], name + ".kicad_mod"))
+
+
+def main(argv):
+    proj = os.path.join(HERE, "..", "..", "dino_v0_0_2")
+    if "--write" in argv:
+        for f in sheets(proj):
+            n = apply(f)
+            if n:
+                print(f"{os.path.basename(f)}: {n} footprints written")
+        return 0
+    inv = inventory(sheets(proj))
+    empty = [i for i in inv if not i.footprint]
+    wrong = [i for i in inv if i.footprint and i.footprint != assign(i.lib_id, i.value)]
+    print(f"{len(inv)} instances, {len(empty)} empty, {len(wrong)} differ from generator")
+    for i in empty + wrong:
+        print(f"  {i.file:26} {i.ref:6} {i.footprint!r:10} -> {assign(i.lib_id, i.value)}")
+    return 1 if empty or wrong else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
