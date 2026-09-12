@@ -11546,7 +11546,7 @@
 			(color 0 0 0 0)
 		)
 		(uuid "57977dc0-ee09-4ff5-b2e8-b5fa69d8270d")
-		(property "Sheetname" "Output"
+		(property "Sheetname" "Front Panel"
 			(at 236.22 47.498 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11557,7 +11557,7 @@
 				(justify left bottom)
 			)
 		)
-		(property "Sheetfile" "input_output.kicad_sch"
+		(property "Sheetfile" "front_panel.kicad_sch"
 			(at 235.966 53.086 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11853,12 +11853,13 @@
 		)
 	)
 	(sheet
-		(at 237.49 58.42)
+		(at 212.09 58.42)
 		(size 12.7 3.81)
 		(exclude_from_sim no)
 		(in_bom yes)
 		(on_board yes)
 		(dnp no)
+		(fields_autoplaced yes)
 		(stroke
 			(width 0.1524)
 			(type solid)
@@ -11866,9 +11867,9 @@
 		(fill
 			(color 0 0 0 0)
 		)
-		(uuid "eeb646fc-821f-4891-aade-9ed05142e1ec")
-		(property "Sheetname" "Input"
-			(at 237.49 57.658 0)
+		(uuid "4d6460f4-ccfd-5d62-b8e1-e9dcf1dc0c07")
+		(property "Sheetname" "Peripheral Bus"
+			(at 212.09 57.7084 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11878,8 +11879,8 @@
 				(justify left bottom)
 			)
 		)
-		(property "Sheetfile" "input.kicad_sch"
-			(at 237.236 63.246 0)
+		(property "Sheetfile" "peripheral_bus.kicad_sch"
+			(at 212.09 62.8146 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -11892,7 +11893,7 @@
 		(instances
 			(project "dino_v0_0_2"
 				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541"
-					(page "12")
+					(page "14")
 				)
 			)
 		)

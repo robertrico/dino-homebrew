@@ -1,5 +1,4 @@
 (fp_lib_table
 	(version 7)
-	(lib (name "74F382PC") (type "KiCad") (uri "${KIPRJMOD}/74F382PC/KiCADv6/footprints.pretty") (options "") (descr ""))
 	(lib (name "dino_bus") (type "KiCad") (uri "${KIPRJMOD}/../dino_bus/dino_bus.pretty") (options "") (descr ""))
 )

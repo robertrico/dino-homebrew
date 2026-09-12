@@ -38,9 +38,9 @@ Net = namedtuple("Net", "name code nodes")
 PROJ = os.path.join(HERE, "..", "..", "dino_v0_0_2")
 
 # Sheet blocks in the order the breadboards sit; unknown sheets go last.
-SHEET_ORDER = ["root", "Power", "Microcode", "Control Word", "Program Counter",
-               "MAR", "Memory", "MDR", "Registers A B", "ALU",
-               "Stack Pointer", "Input", "Input Output"]
+SHEET_ORDER = ["root", "Power", "Peripheral Bus", "Microcode", "Control Word",
+               "Program Counter", "MAR", "Memory", "MDR", "Registers A B", "ALU",
+               "Stack Pointer", "Front Panel", "Input", "Input Output"]
 BLOCK_W = 120.0     # mm, width of one sheet block
 BLOCKS_ACROSS = 3
 GRID = 2.54
