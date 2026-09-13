@@ -11532,6 +11532,52 @@
 		)
 	)
 	(sheet
+		(at 212.09 58.42)
+		(size 12.7 3.81)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0.1524)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "4d6460f4-ccfd-5d62-b8e1-e9dcf1dc0c07")
+		(property "Sheetname" "Peripheral Bus"
+			(at 212.09 57.7084 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "peripheral_bus.kicad_sch"
+			(at 212.09 62.8146 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "dino_v0_0_2"
+				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541"
+					(page "14")
+				)
+			)
+		)
+	)
+	(sheet
 		(at 236.22 48.26)
 		(size 12.7 3.81)
 		(exclude_from_sim no)
@@ -11848,52 +11894,6 @@
 			(project "dino_v0_0_2"
 				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541"
 					(page "5")
-				)
-			)
-		)
-	)
-	(sheet
-		(at 212.09 58.42)
-		(size 12.7 3.81)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(stroke
-			(width 0.1524)
-			(type solid)
-		)
-		(fill
-			(color 0 0 0 0)
-		)
-		(uuid "4d6460f4-ccfd-5d62-b8e1-e9dcf1dc0c07")
-		(property "Sheetname" "Peripheral Bus"
-			(at 212.09 57.7084 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left bottom)
-			)
-		)
-		(property "Sheetfile" "peripheral_bus.kicad_sch"
-			(at 212.09 62.8146 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify left top)
-			)
-		)
-		(instances
-			(project "dino_v0_0_2"
-				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541"
-					(page "14")
 				)
 			)
 		)
