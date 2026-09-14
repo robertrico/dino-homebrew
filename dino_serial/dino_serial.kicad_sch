@@ -4269,7 +4269,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_THT:C_Disc_D10.0mm_W2.5mm_P5.00mm"
 			(at 58.42 173.99 0)
 			(hide yes)
 			(show_name no)
@@ -4351,7 +4351,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Package_DIP:DIP-20_W7.62mm"
 			(at 80.01 45.72 0)
 			(hide yes)
 			(show_name no)
@@ -4720,7 +4720,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Connector_PinSocket_2.54mm:PinSocket_1x06_P2.54mm_Vertical"
 			(at 262.89 60.96 0)
 			(hide yes)
 			(show_name no)
@@ -4969,7 +4969,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_THT:C_Disc_D10.0mm_W2.5mm_P5.00mm"
 			(at 43.18 173.99 0)
 			(hide yes)
 			(show_name no)
@@ -6227,7 +6227,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Capacitor_THT:C_Disc_D10.0mm_W2.5mm_P5.00mm"
 			(at 27.94 173.99 0)
 			(hide yes)
 			(show_name no)
@@ -6309,7 +6309,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" ""
+		(property "Footprint" "Package_DIP:DIP-16_W7.62mm"
 			(at 81.28 104.14 0)
 			(hide yes)
 			(show_name no)
