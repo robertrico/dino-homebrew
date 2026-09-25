@@ -17,6 +17,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import progrom_gen as pg
 from microcode_gen import OPCODES, INSTRUCTIONS
+from microcode_gen import _OPCODES_INT as _INT_OPS
 
 try:
     import pytest
@@ -286,8 +287,12 @@ def test_coverage_is_progressive():
         (lambda n: n.startswith("OUT"),
          "OB latches MDR, so every OUT variant is the SAME strobe over a "
          "source that some other image already drives onto the bus"),
-        (lambda n: n.startswith(("PUSH", "POP")),
+        (lambda n: n.startswith(("PUSH", "POP")) and n not in _INT_OPS,
          "identical shape to PUSHA/POPA, bench-proven by PROG_sp2"),
+        (lambda n: n in _INT_OPS,
+         "INTERRUPTS, 2026-09-25: every row names a decoder output that is "
+         "a no-connect until the PROPOSAL_INT hardware lands. Witnessed by "
+         "the int* images (PROPOSAL_INT 6.3) on that hardware, not here"),
         (lambda n: n.startswith(("LDSP", "STSP", "STPC", "LXI")),
          "_MARFILL with a pointer half as the source or destination; the "
          "prefix is LDA's verbatim and the codes are PROG_sp's"),
@@ -333,7 +338,7 @@ def test_coverage_is_progressive():
     check_eq(multi, [],
              "no instruction matches two rules -- overlapping rules mean the "
              "reason printed is arbitrary")
-    check_eq(len(unreached), 135,
+    check_eq(len(unreached), 141,
              "the uncovered count is a TRIPWIRE: adding an instruction "
              "without an image is fine, doing it silently is not")
 

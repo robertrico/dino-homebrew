@@ -75,7 +75,12 @@ def test_coverage_is_accounted_for():
     out_family = {n for n in skipped if n.startswith("OUT")}
     pc_high = {n for n in skipped
                if n.endswith("PCH") or n in ("STPCL", "STPCH")}
-    rest = set(skipped) - out_family - pc_high
+    # the interrupt six need hardware that is not in copper yet; they are
+    # witnessed by the int* images, not by PROG_isa (isatest_gen.INT_SKIP)
+    int_family = set(skipped) & g.INT_SKIP
+    check_eq(sorted(int_family), sorted(g.INT_SKIP),
+             "all six interrupt instructions are skipped, not half of them")
+    rest = set(skipped) - out_family - pc_high - int_family
     check_eq(sorted(rest), ["HALT", "NOP", "RET", "RST"],
              "the only un-grouped skips are the four with no readable result")
     check_eq(len(out_family), 17,

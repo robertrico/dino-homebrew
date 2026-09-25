@@ -48,6 +48,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from microcode_gen import OPCODES, INSTRUCTIONS, SRC, SRC_BANK_N   # noqa: E402
+from microcode_gen import NOT_ASSEMBLABLE                          # noqa: E402
 
 SAFE_FILL = 0xFF            # HALT. Unclaimed space must STOP the machine.
 
@@ -208,6 +209,10 @@ def _sizeof(ln, op, args, labels):
     name = op.upper()
     if name not in INSTRUCTIONS:
         raise AsmError(f"line {ln}: unknown mnemonic {op!r}")
+    if name in NOT_ASSEMBLABLE:
+        raise AsmError(f"line {ln}: {name} is injected by the interrupt "
+                       f"hardware and never assembled -- fetched from memory "
+                       f"it would push a return address one byte late")
     return instruction_size(name)
 
 

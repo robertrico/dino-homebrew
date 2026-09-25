@@ -31,7 +31,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from microcode_gen import (OPCODES, INSTRUCTIONS, DST, SRC, MISC,  # noqa: E402
-                           SA, _sa_bits)                         # single source
+                           SA, _sa_bits,                         # single source
+                           KONST, NOT_ASSEMBLABLE)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROMS = os.path.normpath(os.path.join(HERE, "..", "..", "roms"))
@@ -144,6 +145,9 @@ def assemble(program, base=0):
         name = step[0]
         if name not in OPCODES or name not in INSTRUCTIONS:
             raise BuildError(f"unknown mnemonic {name!r}")
+        if name in NOT_ASSEMBLABLE:
+            raise BuildError(f"{name} is injected by the interrupt hardware "
+                             f"and never assembled")
         addr += INSTRUCTIONS[name][0]
 
     # pass 2 — emit
@@ -420,7 +424,8 @@ def io_write(addr, val, uart):
 
 
 def simulate(program, max_steps=100000, switches=0x00,
-             image=None, rom_window=None, serial=True, serial_in=None):
+             image=None, rom_window=None, serial=True, serial_in=None,
+             irq_at=None):
     """Execute an assembled image by interpreting its microcode rows.
 
     `serial=False` pulls the serial card out of slot 1 -- the phase-E
@@ -434,6 +439,14 @@ def simulate(program, max_steps=100000, switches=0x00,
     The result then carries `tx`, the bytes the program wrote to THR, and
     `idle`, True when the run stopped because the program was polling DR
     with the script exhausted.
+
+    `irq_at` is the interrupt stimulus: a set of BOUNDARY ORDINALS (the
+    value of `ends` just after an instruction's END) at which ~{IRQ} is
+    asserted for that one boundary. A self-clearing pulse, so a request
+    that meets IE=0 is lost, exactly as the synchroniser would lose it.
+    A HALTed machine with IE set wakes on any ordinal still in the set.
+    `ints` in the result lists the PC pushed by each accepted interrupt --
+    the address of the instruction that was NOT fetched.
 
     Returns a dict of observables. `out` is what OB would read — the only
     datapath observable the block ladder has, which is why every coverage
@@ -471,13 +484,23 @@ def simulate(program, max_steps=100000, switches=0x00,
     flag_z = 0
     flag_c = 0
     flag_c_defined = False
+    # INTERRUPTS. IE resets to 0 (R4), so a program that never EIs sees
+    # none of this. `flag_cells` marks RAM bytes written by PUSHF, with the
+    # carry's definedness at push time: the oracle models Z and C and NOT
+    # V and N, so a flags byte may only come back through POPF. Anything
+    # else reading it would need four flags the oracle does not have.
+    irq = set(irq_at or ())
+    ie = 0
+    inject = False
+    flag_cells = {}
+    mdr_is_flags = None
     # `outs` is the ORDERED history of what OB showed, not just the last
     # value. A never-halting image has no final answer, so the only way to
     # assert one is to compare the SEQUENCE -- which is exactly what a
     # stack-driven display makes meaningful.
     st = {"ram_writes": 0, "ram_reads": 0, "branches_taken": 0,
           "branches_not_taken": 0, "hit_poison": False, "stored": None,
-          "steps": 0, "ends": 0, "outs": []}
+          "steps": 0, "ends": 0, "outs": [], "ints": []}
 
     def rd(a):
         if a < window:
@@ -490,10 +513,23 @@ def simulate(program, max_steps=100000, switches=0x00,
         if uart is not None and uart.get("idle"):
             break                               # script done, program on DR
         st["steps"] += 1
-        if pc in poison:
-            st["hit_poison"] = True
-        op = rd(pc)
-        pc = (pc + 1) & 0xFFFF                      # T0 FETCH: IR <- ROM, PC++
+        if inject:
+            # T0 under INJECT: the buffers are held off, K is on MDR, IR
+            # latches it, and PC_UP is inhibited -- the PC keeps pointing at
+            # the instruction that was not fetched.
+            inject = False
+            st["ints"].append(pc)
+            op = KONST
+        else:
+            if pc in poison:
+                st["hit_poison"] = True
+            op = rd(pc)
+            if op == KONST:
+                raise BuildError(
+                    f"pc=0x{pc:04X}: fetched 0x{op:02X} (INT) from memory -- "
+                    f"INT is injected by the interrupt hardware only; "
+                    f"fetched, its return address would be one byte late")
+            pc = (pc + 1) & 0xFFFF                  # T0 FETCH: IR <- ROM, PC++
         name = {v: k for k, v in OPCODES.items()}.get(op)
         if name is None or name not in INSTRUCTIONS:
             raise BuildError(f"pc=0x{pc-1:04X}: no instruction for 0x{op:02X}")
@@ -525,8 +561,26 @@ def simulate(program, max_steps=100000, switches=0x00,
             if src == "ROM":
                 val = rd(pc)
             elif src == "RAM":
-                val = rd(_addr_bus())
+                a = _addr_bus()
+                val = rd(a)
                 st["ram_reads"] += 1
+                if a in flag_cells:
+                    if dst not in ("NONE", "FLAGS"):
+                        raise Unoracled(
+                            f"pc=0x{pc:04X}: a PUSHF byte at 0x{a:04X} read "
+                            f"into {dst} -- the oracle models Z and C only, "
+                            f"so only POPF may take a flags byte back")
+                    mdr_is_flags = a
+                else:
+                    mdr_is_flags = None
+            elif src == "KONST":
+                val = KONST                         # the '244, strapped K
+            elif src == "FLAGS":
+                # U49 Q0-3 = C Z V N onto MDR0-3, zeros above. V and N are
+                # not modelled; the byte is marked where it lands (dst=RAM).
+                if dst != "RAM":
+                    raise Unoracled(f"pc=0x{pc:04X}: src=FLAGS into {dst}")
+                val = (flag_c & 1) | ((flag_z & 1) << 1)
             elif src == "REG_A":
                 val = A
             elif src == "REG_B":
@@ -546,6 +600,9 @@ def simulate(program, max_steps=100000, switches=0x00,
             elif src == "PC_HI":
                 val = (pc >> 8) & 0xFF
             elif misc == "MDR_OUT":
+                if mdr_is_flags is not None:
+                    raise Unoracled(f"pc=0x{pc:04X}: MDR replays a PUSHF "
+                                    f"byte -- only POPF may read it")
                 # MDR replay. U18 holds whatever last crossed the bus, and
                 # LE_MDR = NAND(~{RAM_LOAD}, READS_IDLE) latches it as soon
                 # as the read ends -- so it is a free second scratch, which
@@ -599,12 +656,25 @@ def simulate(program, max_steps=100000, switches=0x00,
                 # them working. check_word refuses those rows now, but the
                 # oracle must not be the thing that would have missed it.
                 a = _addr_bus()
+                if src == "FLAGS":
+                    flag_cells[a] = flag_c_defined
+                else:
+                    flag_cells.pop(a, None)
                 if a >= RAM_BASE:
                     ram[a] = val
                 elif not (a >= IO_BASE and io_write(a, val, uart)):
                     st["lost_writes"] = st.get("lost_writes", 0) + 1
                 st["ram_writes"] += 1
                 st["stored"] = val
+            elif dst == "FLAGS":
+                # POPF's second RAM row. U49 D0-3 <- the POPF '157 <- W.
+                flag_c, flag_z = val & 1, (val >> 1) & 1
+                a = _addr_bus()
+                flag_c_defined = flag_cells.get(a, True)
+            elif dst == "IE_SET":
+                ie = 1
+            elif dst == "IE_CLR":
+                ie = 0
             elif dst == "SP_LO":
                 sp = (sp & 0xFF00) | val
             elif dst == "SP_HI":
@@ -667,16 +737,30 @@ def simulate(program, max_steps=100000, switches=0x00,
                 sp = (sp - 1) & 0xFFFF
 
             if halt:
+                # HALT holds T with CET low. An accept from HALT clears T
+                # through the new ~MR term, and the pushed PC is the byte
+                # after the HALT, where IRET lands (PROPOSAL_INT C5).
+                wake = [n for n in irq if n >= st["ends"]]
+                if ie and wake:
+                    irq.discard(min(wake))
+                    inject = True
+                    break
                 st.update(out=out, halted=True, A=A, B=B, C=C,
                           flag_z=flag_z, flag_c=flag_c,
-                          flag_c_defined=flag_c_defined, sp=sp)
+                          flag_c_defined=flag_c_defined, sp=sp, ie=ie)
                 return _serial_result(st, uart)
             if (w >> 12) & 1:                       # END
                 st["ends"] += 1
+                # ACCEPT = PEND AND IE AND END, sampled on the edge that
+                # ends this state -- after this row's own IE_SET/IE_CLR.
+                if st["ends"] in irq:
+                    irq.discard(st["ends"])
+                    if ie:
+                        inject = True
                 break
     st.update(out=out, halted=False, A=A, B=B, C=C,
               flag_z=flag_z, flag_c=flag_c,
-              flag_c_defined=flag_c_defined, sp=sp)
+              flag_c_defined=flag_c_defined, sp=sp, ie=ie)
     return _serial_result(st, uart)
 
 

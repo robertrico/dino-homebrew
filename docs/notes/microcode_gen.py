@@ -60,14 +60,24 @@ SRC = {"NONE": 0b000, "ROM": 0b001, "RAM": 0b010, "REG_A": 0b011,
        # every bank-1 code already reads "a source is active" -- which is
        # what turns the U25 bridge on so the byte reaches W. A bank-1 NONE
        # would let MDR quietly supply W with nothing driving it.
-       "SP_LO": 8, "SP_HI": 9, "PC_LO": 10, "PC_HI": 11}
+       "SP_LO": 8, "SP_HI": 9, "PC_LO": 10, "PC_HI": 11,
+       # INTERRUPTS, 2026-09-25 (PROPOSAL_INT C6). U70 O4/O5, pins 11/10,
+       # NC until the INT hardware lands -- decoder-inert on today's copper.
+       # KONST is the '244 holding K (the injected opcode, and both vector
+       # bytes); FLAGS is the '245 putting FLAG_C/Z/V/N on MDR0-3, zeros
+       # above. Both are bank 1, so both land on MDR, as the rule requires.
+       "KONST": 12, "FLAGS": 13}
 
 DST = {"NONE": 0b000, "REG_A": 0b001, "REG_B": 0b010, "REG_C": 0b011,
        "MAR_LO": 0b100, "MAR_HI": 0b101, "IR": 0b110, "RAM": 0b111,  # [2:0] U30
        # bank 1 (U71). These drive the '169s' ~PE, a SYNCHRONOUS load enable
        # -- which is why the stack needs no SP_LOAD misc code and why MISC
        # got away with the two slots it had left.
-       "SP_LO": 8, "SP_HI": 9}
+       "SP_LO": 8, "SP_HI": 9,
+       # INTERRUPTS, 2026-09-25. U71 O2-O4, pins 13/12/11, NC today.
+       # FLAGS drives the POPF '157 in front of U49 D0-3; IE_SET / IE_CLR
+       # are the interrupt-enable flip-flop's set and clear.
+       "FLAGS": 10, "IE_SET": 11, "IE_CLR": 12}
 
 # ---- the third EEPROM, CW16-23 (U23) -----------------------------------
 # Every bit is ACTIVE LOW so that 0xFF -- an erased AT28C64B -- is today's
@@ -643,7 +653,8 @@ _OPCODES_F_PLUS = {
     # 0x7x  indexed through B:C
     "MVIX": 0x77, "STADDX": 0x78, "STSUBX": 0x79, "STBSUBX": 0x7A,
     "STANDX": 0x7B, "STORX": 0x7C, "STXORX": 0x7D,
-    # 0x9x  RESERVED -- hardware-gated. SHR (U78), MOV A,FLAGS (U79),
+    # 0x9x  RESERVED -- hardware-gated. 0x90-0x95 went to INTERRUPTS
+    #       2026-09-25 (see _OPCODES_INT). SHR (U78), MOV A,FLAGS (U79),
     #       ADC/SBB (U80), and the CW22/CW23 branch families.
     # 0xAx  memory, overflow from 0x2x: save and restore the pointers, and
     #       store an immediate without going through A
@@ -856,6 +867,97 @@ if _collide:
                      f"{sorted(hex(o) for o in _collide)}")
 OPCODES.update(_OPCODES_F_PLUS)
 INSTRUCTIONS.update(_F_PLUS)
+
+
+# ==========================================================================
+# INTERRUPTS -- 2026-09-25, Rico. .git/sdd/PROPOSAL_INT.md, as ruled:
+# all six in 0x9x, K = 0x90, vector K:K = 0x9090, PUSHF/POPF in.
+#
+# 8080-style injection. At an instruction boundary (END, or HALT) with IE
+# set and ~{IRQ} pending, the hardware holds the ROM/RAM buffers off for
+# the next T0, drives K onto MDR from a '244, and inhibits PC_UP. The FETCH
+# row runs unchanged -- IR latches K -- so the opcode below is never read
+# from memory, and the PC still holds the address of the instruction that
+# was NOT fetched. Everything after T0 is ordinary microcode.
+#
+# Decoder-inert until the hardware lands: no row of any other opcode names
+# KONST, FLAGS, IE_SET or IE_CLR (test_interrupts pins every old row).
+# ==========================================================================
+KONST = 0x90                    # the '244's strapping: opcode AND vector byte
+INT_VECTOR = (KONST << 8) | KONST   # 0x9090, in RAM: the vector is SOFT --
+                                    # whoever EIs plants JMP handler here
+
+_OPCODES_INT = {"INT": KONST, "IRET": 0x91, "EI": 0x92, "DI": 0x93,
+                "PUSHF": 0x94, "POPF": 0x95}
+
+# INT's first push is CALL's, with IE_CLR riding on the SP_DOWN row, whose
+# DST field is otherwise empty. The microcode clears IE, so the accept
+# logic does not have to: IE is 0 six states before INT's END, which is the
+# first boundary at which a second accept could happen.
+_INT_PUSH_HI = _PUSH_BYTE("PC_HI")
+_INT_PUSH_HI = _INT_PUSH_HI[:-1] + [word(misc="SP_DOWN", dst="IE_CLR")]
+
+_INT = {
+    # 11 rows, 12 T. No pc_up anywhere: the PC already points at the
+    # unfetched instruction, because the injected T0 did not count.
+    "INT": (1, _INT_PUSH_HI + _PUSH_BYTE("PC_LO") + [
+        word(src="KONST", dst="MAR_LO"),
+        word(src="KONST", dst="MAR_HI"),
+        word(end=True, misc="PC_LOAD"),
+    ]),
+
+    # IRET is NOT "RET plus one row", which is what the proposal said.
+    # RET parks the return address's LO byte in C, and C belongs to the
+    # interrupted program -- an IRET built that way breaks R3 on every
+    # interrupt that lands while C is live. IRET parks LO in the PC
+    # instead: the PC is about to be overwritten, so it is the one 16-bit
+    # holder in the machine that is free here. 13 rows, 14 T.
+    "IRET": (1, [
+        word(misc="SP_UP"),
+        word(src="SP_LO", dst="MAR_LO"),
+        word(src="SP_HI", dst="MAR_HI"),
+        word(src="RAM"),                        # return LO parked in MDR
+        word(misc="MDR_OUT", dst="MAR_LO"),     # replayed immediately
+        word(misc="PC_LOAD"),                   # PC = {SP_HI, LO}: scratch
+        word(misc="SP_UP"),
+        word(src="SP_LO", dst="MAR_LO"),
+        word(src="SP_HI", dst="MAR_HI"),
+        word(src="RAM"),                        # return HI parked in MDR
+        word(misc="MDR_OUT", dst="MAR_HI"),     # replayed immediately
+        word(src="PC_LO", dst="MAR_LO"),        # LO back out of the PC
+        # IE_SET rides on the load: re-enable and return are one state, so
+        # no 8080-style "EI takes effect after the next instruction" rule
+        # is needed. No trailing pc_up -- INT has no operand bytes.
+        word(end=True, misc="PC_LOAD", dst="IE_SET"),
+    ]),
+
+    "EI": (1, [word(end=True, dst="IE_SET")]),
+    "DI": (1, [word(end=True, dst="IE_CLR")]),
+
+    "PUSHF": (1, _PUSH("FLAGS")),
+    # U49 clocks on ~{CLK}, MID T-state, not at the end (P_POPF). The
+    # first RAM row loads nothing and lets the byte settle onto W for a
+    # whole state; the second loads FLAGS from it. One T-state, bought
+    # instead of a timing argument on breadboard bus capacitance.
+    "POPF": (1, [word(misc="SP_UP")] + _SP_TO_MAR + [
+        word(src="RAM"),
+        word(end=True, src="RAM", dst="FLAGS"),
+    ]),
+}
+
+if set(_INT) != set(_OPCODES_INT):
+    raise BuildError("interrupt tables disagree")
+_collide = set(_OPCODES_INT.values()) & set(OPCODES.values())
+if _collide:
+    raise BuildError(f"interrupt opcode collision: "
+                     f"{sorted(hex(o) for o in _collide)}")
+OPCODES.update(_OPCODES_INT)
+INSTRUCTIONS.update(_INT)
+
+# Assemblers refuse these by name. INT exists only as an injected opcode:
+# fetched from memory, the FETCH row would count the PC and INT would push
+# a return address one byte past the truth.
+NOT_ASSEMBLABLE = frozenset({"INT"})
 
 
 def _fields(w):

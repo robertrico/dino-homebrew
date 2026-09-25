@@ -119,6 +119,16 @@ PC_SKIP = {n: "the difference between two reads would be 0x00, which a dead "
                      "STPCL", "STPCH")}
 
 
+# THE INTERRUPT INSTRUCTIONS STAY OUT OF PROG_isa, 2026-09-25. Every one
+# names a decoder output (KONST, FLAGS, IE_SET, IE_CLR) that is a no-connect
+# until the INT hardware lands, and on today's copper PUSHF would push
+# whatever a floating MDR holds. PROG_isa is the bench-green witness for the
+# 174 instructions that exist in copper; it must not move because six were
+# written that the copper cannot run yet. Their witnesses are the int*
+# images (PROPOSAL_INT 6.3), which are OB-driven like everything else.
+INT_SKIP = frozenset(mc._OPCODES_INT)
+
+
 def mode(name):
     """The addressing mode, read off the instruction's own leading rows.
 
@@ -446,6 +456,9 @@ def build():
     tid = 0
     for name in sorted(mc.INSTRUCTIONS, key=lambda n: mc.OPCODES[n]):
         cand = tid + 1
+        if name in INT_SKIP:
+            skipped.append(name)
+            continue
         if name in FLAG_ONLY:
             s = flagonly_subtest(name, cand)
         elif name in BRANCH_FLAG or name in ("JMP", "CALL", "RET", "JMPX",

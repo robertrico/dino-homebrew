@@ -490,7 +490,9 @@ until it has a witness that cannot miss.
 
 **A card cannot touch RAM, and that is by construction.** `M0-M15` is
 published TO cards as an input; nothing on the edge lets a card assert an
-address or a write enable, and DMA is removed entirely, not deferred. Card
+address or a write enable, and DMA is removed entirely, not deferred.
+**Re-ruled 2026-09-24 (Rico): DMA stays OFF this board, Rev A included;
+interrupts go on.** `PROPOSAL_DMA.md` is kept for a future machine. Card
 code that runs on the CPU is software like any other and has the same reach —
 conflicts there are a convention problem, the Apple/IBM slot-scratch problem,
 and no hardware guards it. **`~{IO_WR}` (`U75.6`) is LANDED as of 2026-09-04**,
