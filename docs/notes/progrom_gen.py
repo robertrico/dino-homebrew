@@ -425,7 +425,7 @@ def io_write(addr, val, uart):
 
 def simulate(program, max_steps=100000, switches=0x00,
              image=None, rom_window=None, serial=True, serial_in=None,
-             irq_at=None):
+             irq_at=None, trace=None):
     """Execute an assembled image by interpreting its microcode rows.
 
     `serial=False` pulls the serial card out of slot 1 -- the phase-E
@@ -447,6 +447,11 @@ def simulate(program, max_steps=100000, switches=0x00,
     A HALTed machine with IE set wakes on any ordinal still in the set.
     `ints` in the result lists the PC pushed by each accepted interrupt --
     the address of the instruction that was NOT fetched.
+
+    `trace=[]` gets one dict per instruction executed, {"pc", "op"}: the
+    address its opcode was FETCHED from (None for an injected INT) and its
+    name. Timing faults the oracle cannot model are classified from this
+    by position -- see test_ramret.py.
 
     Returns a dict of observables. `out` is what OB would read — the only
     datapath observable the block ladder has, which is why every coverage
@@ -520,10 +525,12 @@ def simulate(program, max_steps=100000, switches=0x00,
             inject = False
             st["ints"].append(pc)
             op = KONST
+            fetch_pc = None
         else:
             if pc in poison:
                 st["hit_poison"] = True
             op = rd(pc)
+            fetch_pc = pc
             if op == KONST:
                 raise BuildError(
                     f"pc=0x{pc:04X}: fetched 0x{op:02X} (INT) from memory -- "
@@ -533,6 +540,8 @@ def simulate(program, max_steps=100000, switches=0x00,
         name = {v: k for k, v in OPCODES.items()}.get(op)
         if name is None or name not in INSTRUCTIONS:
             raise BuildError(f"pc=0x{pc-1:04X}: no instruction for 0x{op:02X}")
+        if trace is not None:
+            trace.append({"pc": fetch_pc, "op": name})
         for w in INSTRUCTIONS[name][1]:
             # BANK-AWARE DECODE. `(w >> 3) & 7` alone is wrong since the
             # third EEPROM landed: bank-1 code 10 (PC_LO) has the same low

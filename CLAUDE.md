@@ -4,6 +4,13 @@ An 8-bit CPU built from discrete 74-series logic on breadboards, designed in
 KiCad. Split out of the `hardware` portfolio repo on 2026-07-28 with full
 history preserved.
 
+## READ `.git/sdd/HANDOFF.md` FIRST
+
+Rico, 2026-09-27: any session in this repo after that date starts by
+reading `.git/sdd/HANDOFF.md` -- the live bench state, where the probes
+are, and the exact next action. It supersedes anything below that it
+contradicts. Keep it current at the end of each session.
+
 ## How this document is written
 
 Every claim here is one of three things, and it says which:
@@ -1179,6 +1186,17 @@ LIVE — read these:
                                              ATX, feed the machine. Written
                                              2026-09-08; draw 1.25-1.34A
                                              (bench ammeter, 2026-09-10)
+    .git/sdd/RAM_RET_FETCH.md                OPEN 2026-09-28: a RET fetched
+                                             from RAM latches 0xFF after OUT,
+                                             LDA, MVI or a ROM RET (not after
+                                             NOP/LDAI/HLSP/POPA/JMP). Widens
+                                             and supersedes the 09-08 "OUT
+                                             before a RAM fetch" model. Bench
+                                             table = docs/notes/test_ramret.py
+    .git/sdd/SERIAL_RX_A0.md                 received bytes losing 1 bits:
+                                             cured by capacitance on U103.28
+                                             (22 pF, MARKED PARTIAL FIX),
+                                             mechanism OPEN
     .git/sdd/GROUNDING.md                    ground is a wire. Star, external
                                              grounds at the star only, measure
                                              the table. The primer 2026-09-05
