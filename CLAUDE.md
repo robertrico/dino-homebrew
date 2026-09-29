@@ -69,9 +69,10 @@ GND/VCC starring. On 2026-09-29, with loose connections in the machine,
 worse at 500 kHz); with them fixed it read `0xB4`. Re-run 5x at both
 clocks before calling it green on the gated machine (HANDOFF section 1).
 
-Microcode in the sockets: `U9 0xC52B  U15 0x45F9  U23 0xCB8E`, pinned in
-`test_microcode_gen.py`. `roms/U9/U15/U23.bin` on `main` are the NEWER
-interrupt microcode (`0xEE1F / 0x1DE7 / 0x0C0A`), not burned.
+Microcode in the sockets: `U9 0xEE1F  U15 0x1DE7  U23 0x0C0A`, the interrupt
+microcode, burned 2026-09-29 (PHASE_INT I-1: `isa 0xB4`, `isasoak 0x00`).
+Pinned in `test_microcode_gen.py`; every non-interrupt row is byte-
+identical to the previous image, and the 09-08 OUT settle is gone.
 
 Coverage images and their expected `OB` (all oracle-computed, all
 bench-green on the dates in `roms/README.md`):
@@ -132,13 +133,14 @@ pins good (2026-09-29). An alternative form, `AND(WRITE_DIR, TO0)` on
 - `CN+4` after a LOGIC function on the '382 has never been measured; the
   oracle raises on a `JNC` that depends on it rather than guess.
 - The 23 `SETTLE` rows (23 instructions load an ALU operand and consume it
-  the next state) and the OUT settle in `U15 0x45F9`: cost a T-state,
-  necessity unproven, revert candidates at the next burn (PHASE H).
+  the next state): cost a T-state, necessity unproven, revert candidates
+  at the next burn (PHASE H). The OUT settle was reverted 2026-09-29.
 - Bus levels have never been characterised on a healthy machine.
 - Seven boards sit at 124-180 mV of ground offset after the starring
   (`HANDOFF_HALT.md`); first suspects if anything analog returns.
-- Interrupts: microcode host-green, six images, ICs on the bench; nothing
-  burned or built (`.git/sdd/PHASE_INT.md`). Rico says when.
+- Interrupts: microcode BURNED and I-1 passed; six images and the ICs on
+  the bench; the SECTION 3 build (U80-U87 + the '05) not started
+  (`.git/sdd/PHASE_INT.md`). Rico says when.
 - The PCB: 4-layer mainboard placed, GND and +5V planes, not routed;
   power supply undecided (`.git/sdd/POWER.md`; draw 1.25-1.34 A).
 
