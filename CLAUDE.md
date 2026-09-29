@@ -64,10 +64,8 @@ Siglent SDS1204X-E, DSLogic LA (20 MHz max), DMM, TL866. The ATmega rig and the 
 **FACT — the ISA is bench-proven at 1.024 MHz.** `PROG_isa` reads `0xB4`
 (147 subtests), `PROG_isalive` `0xB4` every run, `PROG_isasoak` `0x00` on
 50 consecutive runs (470,400 subtest executions), 2026-09-01 after the
-GND/VCC starring. On 2026-09-29, with loose connections in the machine,
-`isa` flaked on the subtract family only (0x6B SUI / 0x6E BSUI / 0x23 SUB,
-worse at 500 kHz); with them fixed it read `0xB4`. Re-run 5x at both
-clocks before calling it green on the gated machine (HANDOFF section 1).
+GND/VCC starring; `0xB4` and `0x00` again on 2026-09-29 on the interrupt
+microcode with the write gate in.
 
 Microcode in the sockets: `U9 0xEE1F  U15 0x1DE7  U23 0x0C0A`, the interrupt
 microcode, burned 2026-09-29 (PHASE_INT I-1: `isa 0xB4`, `isasoak 0x00`).
