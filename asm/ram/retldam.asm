@@ -1,4 +1,6 @@
 ; retldam.asm -- RET fetched from RAM straight after LDAM (memory-indirect) (ends T9 = 1001).
+; 2026-09-29: RETURNS (5/5, retlda 40/40) with the T-state-0 write gate in copper
+;   (U62 g4 + U56 3->4, .git/sdd/RAM_RET_FETCH.md). The results below are PRE-GATE.
 ;   load+run: python3 docs/notes/dinoload.py asm/ram/retldam.asm --go
 ;   check:    python3 docs/notes/test_ramret.py
 ;

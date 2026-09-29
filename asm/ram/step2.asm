@@ -1,4 +1,6 @@
 ; step2.asm -- execute-from-RAM staircase, step 2: RET from RAM back into ROM
+; 2026-09-29: RETURNS (5/5, retlda 40/40) with the T-state-0 write gate in copper
+;   (U62 g4 + U56 3->4, .git/sdd/RAM_RET_FETCH.md). The results below are PRE-GATE.
 ;   load+run: make go-step2      then read OB.   OB = 0x22 passes.
 ;   check:    python3 docs/notes/test_ramsteps.py
 ; 2026-09-08. ramexec proved LDBI/SUB/OUT/HALT from RAM and nothing else;

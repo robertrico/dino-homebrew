@@ -1,4 +1,6 @@
 ; retcrlf.asm -- bigxfer's ending, alone. RAM-resident: loaded, not burned.
+; 2026-09-29: RETURNS (5/5, retlda 40/40) with the T-state-0 write gate in copper
+;   (U62 g4 + U56 3->4, .git/sdd/RAM_RET_FETCH.md). The results below are PRE-GATE.
 ;   load+run: python3 docs/notes/dinoload.py asm/ram/retcrlf.asm --go
 ;
 ; 2026-09-28: bigxfer streams all 2233 bytes, prints S/X, then HALTs instead

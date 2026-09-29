@@ -7,8 +7,9 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 ## root
 - IN    CW12=END, CW15=HALT  <- Microcode_Decoder
 - OUT   ~{RESET}  -> ALU Module
-- OUT   CLK  -> ALU Module, Memory, Memory Address Regiser, Memory Data Register, Program Counter, Register Modules, Stack Pointer
-- OUT   ~{CLK}  -> ALU Module, Memory, Peripheral Bus, Program Counter
+- OUT   CLK  -> ALU Module, Control Word Module, Memory, Memory Address Regiser, Memory Data Register, Program Counter, Register Modules, Stack Pointer
+- OUT   ~{CLK}  -> ALU Module, Peripheral Bus, Program Counter
+- OUT   ~{TO0}  -> Control Word Module
 - OUT   RESET  -> Memory, Program Counter
 - OUT   T0-3  -> Microcode_Decoder
 
@@ -22,8 +23,10 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 ## Control Word Module
 - IN    COND_FLAG  <- ALU Module
 - IN    CW0-8, CW17=~{SRC_BANK}, CW18=~{DST_BANK}  <- Microcode_Decoder
+- IN    CLK, ~{TO0}  <- root
 - OUT   ~{ALU_OUT}  -> ALU Module, Memory Data Register
 - OUT   ~{REG_A_LOAD}, ~{REG_B_LOAD}  -> ALU Module, Register Modules
+- OUT   WR_GATE  -> Memory
 - OUT   ~{MAR_HI_LOAD}, ~{MAR_LO_LOAD}  -> Memory Address Regiser
 - OUT   SRC_ACTIVE, ~{IR_LOAD}, ~{MDR_OUT}, ~{PC_HI_OUT}, ~{PC_LO_OUT}, ~{RAM_LOAD}, ~{RAM_OUT}, ~{ROM_OUT}  -> Memory Data Register
 - OUT   ~{PC_CLEAR}, ~{PC_LOAD}  -> Program Counter
@@ -56,10 +59,11 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - BIDIR MDR0-7  <-> Memory, Register Modules, Stack Pointer
 
 ## Memory
+- IN    WR_GATE  <- Control Word Module
 - IN    ~{RAM_EN}  <- Memory Address Regiser
 - IN    M0-15  <- Memory Address Regiser, Program Counter
 - IN    RAM_OE_ON, READS_IDLE, WRITE_DIR, ~{ROM_BUF_EN}  <- Memory Data Register
-- IN    CLK, RESET, ~{CLK}  <- root
+- IN    CLK, RESET  <- root
 - OUT   ~{IO_RD}, ~{ROM_SEL}  -> Memory Data Register
 - OUT   MDR0-7  -> Memory Data Register, Register Modules, Stack Pointer
 - OUT   RESET_B, ~{IO_RD_Q}, ~{IO_SEL}, ~{IO_WR}  -> Peripheral Bus

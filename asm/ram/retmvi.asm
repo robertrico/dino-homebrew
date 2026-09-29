@@ -1,4 +1,6 @@
 ; retmvi.asm -- RET fetched from RAM straight after MVI, which ends at T5.
+; 2026-09-29: RETURNS (5/5, retlda 40/40) with the T-state-0 write gate in copper
+;   (U62 g4 + U56 3->4, .git/sdd/RAM_RET_FETCH.md). The results below are PRE-GATE.
 ;   load+run: python3 docs/notes/dinoload.py asm/ram/retmvi.asm --go
 ;   check:    python3 docs/notes/test_ramret.py
 ;

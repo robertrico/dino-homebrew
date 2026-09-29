@@ -1,4 +1,6 @@
 ; bigxfer.asm -- the serial settle test. RAM-resident: loaded, not burned.
+; 2026-09-29: RETURNS (5/5, retlda 40/40) with the T-state-0 write gate in copper
+;   (U62 g4 + U56 3->4, .git/sdd/RAM_RET_FETCH.md). The results below are PRE-GATE.
 ;   load+run: make go-bigxfer        (asm/ram/bigxfer.asm -> RAM via L, then G)
 ;   soak:     python3 docs/notes/bigxfer_host.py --runs 5
 ;   check:    python3 docs/notes/test_bigxfer.py

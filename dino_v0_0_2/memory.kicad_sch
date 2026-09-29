@@ -9762,7 +9762,7 @@
 			)
 		)
 	)
-	(global_label "~{CLK}"
+	(global_label "WR_GATE"
 		(shape passive)
 		(at 26.67 63.5 180)
 		(fields_autoplaced yes)

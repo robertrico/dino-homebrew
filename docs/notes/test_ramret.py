@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""RET fetched from RAM HALTs on silicon when the instruction before it ends
+"""PRE-GATE BENCH TABLE (2026-09-28). On 2026-09-29 the cause was found and
+fixed in copper -- a 14 ns ~WE runt during the fetch, write gate now off in
+T-state 0 (.git/sdd/RAM_RET_FETCH.md) -- and every image below RETURNS.
+The rows here pin what the UNGATED machine did; they are a record, not the
+current bench truth.
+
+RET fetched from RAM HALTs on silicon when the instruction before it ends
 at T >= 2. The oracle cannot see it (it has no timing); this file pins the
 bench results as truth and checks one rule against every one of them.
 
