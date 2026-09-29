@@ -144,7 +144,7 @@ ROW = 32                                # payload bytes per progress row
 SLOW = float(os.environ.get("DINO_SLOW", "0.20"))
 
 
-def _type(port, data, what, view=None):
+def _type(port, data, what, view=None, where=None):
     """Type `data` the way a person does: one character, wait for its
     echo, the next. CR echoes as CRLF. That is the pacing -- the machine
     drops characters that arrive back-to-back and never drops paced ones
@@ -152,7 +152,9 @@ def _type(port, data, what, view=None):
     check that each digit arrived as sent. A wrong echo names the
     position. After each echo, pause SLOW times that character's own
     round-trip, widening the gap the next character sees. `view` sees
-    every echo as it lands: the live picture."""
+    every echo as it lands: the live picture. `where(i)` adds to an error
+    what position i IS (a payload names the byte's address: in-row char
+    numbers alone could not tell ten rows apart, 2026-09-27)."""
     for i, b in enumerate(bytes(data)):
         ch = bytes([b])
         want = b"\r\n" if ch == b"\r" else ch
@@ -164,15 +166,18 @@ def _type(port, data, what, view=None):
         if view and got:
             view(got)
         if got != want:
-            raise LoadError(f"{what}: char {i} sent {ch!r}, monitor echoed "
-                            f"{got!r}")
+            at = f" ({where(i)})" if where else ""
+            raise LoadError(f"{what}: char {i}{at} sent {ch!r}, monitor "
+                            f"echoed {got!r}")
 
 
 def _load_once(port, code, origin, view=None):
     _type(port, load_line(origin, code), "L line", view)
     text = hexed(code)
     for row in range(0, len(code), ROW):
-        _type(port, text[2 * row:2 * (row + ROW)], "payload", view)
+        _type(port, text[2 * row:2 * (row + ROW)], "payload", view,
+              where=lambda i, row=row: f"byte {origin + row + i // 2:#06x}, "
+                                       f"digit {i % 2}")
         done = min(row + ROW, len(code))
         if view and done < len(code):
             view(b"\n  %d/%d " % (done, len(code)))

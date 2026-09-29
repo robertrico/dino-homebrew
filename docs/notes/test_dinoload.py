@@ -137,6 +137,20 @@ def test_a_character_dropped_in_the_payload_is_retried():
     check_eq(port.last["idle"], True, "monitor back on the prompt")
 
 
+def test_a_payload_error_names_the_absolute_address():
+    print("a payload error names the byte's address, not just its place in "
+          "a 64-char row (2026-09-27: three 5-bit resets at in-row char 51, "
+          "ten candidate rows, no way to tell which)")
+    r = prog("NOP\n" * 40 + "RET\n")          # 41 bytes: two rows
+    head = b"\r" + dinoload.load_line(r.origin, r.code)
+    port = DropOnce(at=len(head) + 2 * 35 + 1)  # byte 35, its low digit
+    lines = []
+    dinoload.load(port, r.code, r.origin, log=lines.append)
+    check_eq(port.dropped, 1, "one digit was eaten")
+    check(any("0x8123" in s and "digit 1" in s for s in lines),
+          f"the attempt line names byte 0x8123, digit 1: {lines}")
+
+
 def test_three_drops_is_a_named_error():
     print("a machine that eats a character every time gives up after 3")
     r = prog("LDAI 0x5A\nOUT\nRET\n")
