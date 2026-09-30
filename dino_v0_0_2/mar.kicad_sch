@@ -2364,7 +2364,7 @@
 			(embedded_fonts no)
 		)
 	)
-	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: W0-7 <- ALU Module, Input, Memory Data Register\nIN: ~{MAR_HI_LOAD}, ~{MAR_LO_LOAD} <- Control Word Module\nIN: CW14=PC_MAR_MUX <- Microcode_Decoder\nIN: CLK <- root\nOUT: ~{RAM_EN} -> Memory, Memory Data Register\nOUT: M0-14 -> Memory, Program Counter\nOUT: ~{PC_MAR_MUX} -> Program Counter\nBIDIR: M15 <-> Memory, Program Counter"
+	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nIN: W0-7 <- ALU Module, Memory Data Register\nIN: ~{MAR_HI_LOAD}, ~{MAR_LO_LOAD} <- Control Word Module\nIN: CW14=PC_MAR_MUX <- Microcode_Decoder\nIN: CLK <- root\nOUT: ~{RAM_EN} -> Memory, Memory Data Register\nOUT: M0-14 -> Memory, Peripheral Bus, Program Counter\nOUT: ~{PC_MAR_MUX} -> Program Counter\nBIDIR: M15 <-> Memory, Peripheral Bus, Program Counter"
 		(exclude_from_sim no)
 		(at 177.546 164.338 0)
 		(effects
@@ -4057,17 +4057,17 @@
 	)
 	(global_label "CW14"
 		(shape passive)
-		(at 53.34 99.06 0)
+		(at 50.8 104.14 180)
 		(fields_autoplaced yes)
 		(effects
 			(font
 				(size 1.27 1.27)
 			)
-			(justify left)
+			(justify right)
 		)
 		(uuid "1e087f5e-1f87-522b-8ff4-564e68785859")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 53.34 99.06 0)
+			(at 50.8 104.14 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)
@@ -4075,7 +4075,7 @@
 				(font
 					(size 1.27 1.27)
 				)
-				(justify left)
+				(justify right)
 			)
 		)
 	)

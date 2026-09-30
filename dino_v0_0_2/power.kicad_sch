@@ -1365,6 +1365,17 @@
 			(embedded_fonts no)
 		)
 	)
+	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nOUT: +12V, +3.3V, -12V -> Peripheral Bus"
+		(exclude_from_sim no)
+		(at 15.24 121.25 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
+		(uuid "43f6ac66-230a-589e-b8da-66909db4e17c")
+	)
 	(text "POWER IS OFF THE SHELF: picoPSU-160-XT or picoPSU-120-WI-25 in J9.\nRails drawn are what the unit delivers: +5V, +3.3V, +12V, -12V, GND.\nNo -5V exists on any 24-pin ATX unit since 2003; none is drawn.\n-12V is 50-100mA for the WHOLE machine (unit dependent): every card\nstates its +/-12V draw on its root page.\nPS_ON#: the unit runs while J10 is shorted. Panel switch or jumper.\n+5VSB and PWR_OK: real pins, nothing consumes them."
 		(exclude_from_sim no)
 		(at 25.4 40.64 0)

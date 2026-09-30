@@ -5,27 +5,33 @@ schematic change; do not hand-edit. Direction is derived from pin
 types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 
 ## root
-- IN    CW12=END, CW15=HALT  <- Microcode_Decoder
-- OUT   ~{RESET}  -> ALU Module
-- OUT   CLK  -> ALU Module, Control Word Module, Memory, Memory Address Regiser, Memory Data Register, Program Counter, Register Modules, Stack Pointer
-- OUT   ~{CLK}  -> ALU Module, Peripheral Bus, Program Counter
+- IN    END_OR_ACCEPT  <- Interrupt
+- IN    CW15=HALT  <- Microcode_Decoder
+- OUT   CLK  -> ALU Module, Control Word Module, Interrupt, Memory, Memory Address Regiser, Memory Data Register, Program Counter, Register Modules, Stack Pointer
+- OUT   ~{RESET}  -> ALU Module, Interrupt
+- OUT   ~{CLK}  -> ALU Module, Interrupt, Peripheral Bus, Program Counter
 - OUT   ~{TO0}  -> Control Word Module
 - OUT   RESET  -> Memory, Program Counter
 - OUT   T0-3  -> Microcode_Decoder
 
 ## ALU Module
 - IN    ~{ALU_OUT}, ~{REG_A_LOAD}, ~{REG_B_LOAD}  <- Control Word Module
+- IN    FLAG_D0-3  <- Interrupt
 - IN    CW10=SA1, CW11=SA0, CW21=FLAG_SEL0, CW9=SA2  <- Microcode_Decoder
 - IN    CLK, ~{CLK}, ~{RESET}  <- root
 - OUT   COND_FLAG  -> Control Word Module
-- BIDIR W0-7  <-> Front Panel, Memory Address Regiser, Memory Data Register, Peripheral Bus
+- OUT   FLAG_C, FLAG_N, FLAG_NEXT0-3, FLAG_V, FLAG_Z  -> Interrupt
+- BIDIR W0-3  <-> Front Panel, Interrupt, Memory Address Regiser, Memory Data Register, Peripheral Bus
+- BIDIR W4-7  <-> Front Panel, Memory Address Regiser, Memory Data Register, Peripheral Bus
 
 ## Control Word Module
 - IN    COND_FLAG  <- ALU Module
+- IN    INJECT  <- Interrupt
 - IN    CW0-8, CW17=~{SRC_BANK}, CW18=~{DST_BANK}  <- Microcode_Decoder
 - IN    CLK, ~{TO0}  <- root
 - OUT   ~{ALU_OUT}  -> ALU Module, Memory Data Register
 - OUT   ~{REG_A_LOAD}, ~{REG_B_LOAD}  -> ALU Module, Register Modules
+- OUT   ~{FLAGS_LOAD}, ~{FLAGS_OUT}, ~{IE_CLR}, ~{IE_SET}, ~{KONST}  -> Interrupt
 - OUT   WR_GATE  -> Memory
 - OUT   ~{MAR_HI_LOAD}, ~{MAR_LO_LOAD}  -> Memory Address Regiser
 - OUT   SRC_ACTIVE, ~{IR_LOAD}, ~{MDR_OUT}, ~{PC_HI_OUT}, ~{PC_LO_OUT}, ~{RAM_LOAD}, ~{RAM_OUT}, ~{ROM_OUT}  -> Memory Data Register
@@ -36,6 +42,19 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 ## Front Panel
 - IN    W0-7  <- ALU Module, Memory Data Register
 - IN    OB0-7  <- Register Modules
+
+## Interrupt
+- IN    ~{IRQ}  <- 
+- IN    FLAG_NEXT0-3  <- ALU Module
+- IN    W0-3  <- ALU Module, Memory Data Register
+- IN    ~{FLAGS_LOAD}, ~{FLAGS_OUT}, ~{IE_CLR}, ~{IE_SET}, ~{KONST}  <- Control Word Module
+- IN    CW12=END, CW13=PC_UP, CW15=HALT  <- Microcode_Decoder
+- IN    CLK, ~{CLK}, ~{RESET}  <- root
+- OUT   FLAG_C, FLAG_D0-3, FLAG_N, FLAG_V, FLAG_Z  -> ALU Module
+- OUT   INJECT  -> Control Word Module
+- OUT   MDR0-7  -> Memory, Memory Data Register, Register Modules, Stack Pointer
+- OUT   PC_UP_GATED  -> Program Counter
+- OUT   END_OR_ACCEPT  -> root
 
 ## Memory Address Regiser
 - IN    W0-7  <- ALU Module, Memory Data Register
@@ -55,8 +74,9 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - OUT   RAM_OE_ON, READS_IDLE, WRITE_DIR, ~{ROM_BUF_EN}  -> Memory
 - OUT   IRB0-7  -> Microcode_Decoder
 - OUT   PC0-15  -> Program Counter
-- BIDIR W0-7  <-> ALU Module, Front Panel, Memory Address Regiser, Peripheral Bus
-- BIDIR MDR0-7  <-> Memory, Register Modules, Stack Pointer
+- BIDIR W0-3  <-> ALU Module, Front Panel, Interrupt, Memory Address Regiser, Peripheral Bus
+- BIDIR W4-7  <-> ALU Module, Front Panel, Memory Address Regiser, Peripheral Bus
+- BIDIR MDR0-7  <-> Interrupt, Memory, Register Modules, Stack Pointer
 
 ## Memory
 - IN    WR_GATE  <- Control Word Module
@@ -64,8 +84,8 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - IN    M0-15  <- Memory Address Regiser, Program Counter
 - IN    RAM_OE_ON, READS_IDLE, WRITE_DIR, ~{ROM_BUF_EN}  <- Memory Data Register
 - IN    CLK, RESET  <- root
+- OUT   MDR0-7  -> Interrupt, Memory Data Register, Register Modules, Stack Pointer
 - OUT   ~{IO_RD}, ~{ROM_SEL}  -> Memory Data Register
-- OUT   MDR0-7  -> Memory Data Register, Register Modules, Stack Pointer
 - OUT   RESET_B, ~{IO_RD_Q}, ~{IO_SEL}, ~{IO_WR}  -> Peripheral Bus
 
 ## Microcode_Decoder
@@ -73,11 +93,12 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - IN    T0-3  <- root
 - OUT   CW10=SA1, CW11=SA0, CW21=FLAG_SEL0, CW9=SA2  -> ALU Module
 - OUT   CW0-8, CW17=~{SRC_BANK}, CW18=~{DST_BANK}  -> Control Word Module
+- OUT   CW12=END, CW13=PC_UP  -> Interrupt
+- OUT   CW15=HALT  -> Interrupt, root
 - OUT   CW14=PC_MAR_MUX  -> Memory Address Regiser
-- OUT   CW13=PC_UP  -> Program Counter
-- OUT   CW12=END, CW15=HALT  -> root
 
 ## Peripheral Bus
+- IN    ~{IRQ}  <- 
 - IN    W0-7  <- ALU Module, Memory Data Register
 - IN    RESET_B, ~{IO_RD_Q}, ~{IO_SEL}, ~{IO_WR}  <- Memory
 - IN    M0-15  <- Memory Address Regiser, Program Counter
@@ -89,8 +110,8 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 
 ## Program Counter
 - IN    ~{PC_CLEAR}, ~{PC_LOAD}  <- Control Word Module
+- IN    PC_UP_GATED  <- Interrupt
 - IN    ~{PC_MAR_MUX}  <- Memory Address Regiser
-- IN    CW13=PC_UP  <- Microcode_Decoder
 - IN    CLK, RESET, ~{CLK}  <- root
 - OUT   PC0-15  -> Memory Data Register
 - OUT   M0-15  -> Memory, Memory Address Regiser, Peripheral Bus
@@ -99,10 +120,10 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - IN    ~{REG_A_LOAD}, ~{REG_A_OUT}, ~{REG_B_LOAD}, ~{REG_B_OUT}, ~{REG_C_LOAD}, ~{REG_C_OUT}, ~{REG_OUT_LOAD}  <- Control Word Module
 - IN    CLK  <- root
 - OUT   OB0-7  -> Front Panel
-- OUT   MDR0-7  -> Memory, Memory Data Register, Stack Pointer
+- OUT   MDR0-7  -> Interrupt, Memory, Memory Data Register, Stack Pointer
 
 ## Stack Pointer
 - IN    ~{SP_DOWN}, ~{SP_HI_LOAD}, ~{SP_HI_OUT}, ~{SP_LO_LOAD}, ~{SP_LO_OUT}, ~{SP_UP}  <- Control Word Module
 - IN    CLK  <- root
-- BIDIR MDR0-7  <-> Memory, Memory Data Register, Register Modules
+- BIDIR MDR0-7  <-> Interrupt, Memory, Memory Data Register, Register Modules
 
