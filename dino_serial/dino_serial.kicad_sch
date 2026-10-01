@@ -14,7 +14,7 @@
 		(comment 4 "A Turing-Complete 8-bit \"Computer\"")
 	)
 	(lib_symbols
-		(symbol "74xx:74LS05"
+		(symbol "74xx:74LS06"
 		(pin_names
 			(offset 1.016)
 		)
@@ -33,7 +33,7 @@
 				)
 			)
 		)
-		(property "Value" "74LS05"
+		(property "Value" "74LS06"
 			(at 0 -1.27 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -54,7 +54,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/gpn/sn74LS05"
+		(property "Datasheet" "http://www.ti.com/lit/gpn/sn74LS06"
 			(at 0 0 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -108,7 +108,7 @@
 				)
 			)
 		)
-		(symbol "74LS05_1_0"
+		(symbol "74LS06_1_0"
 			(polyline
 				(pts
 					(xy -3.81 3.81) (xy -3.81 -3.81) (xy 3.81 0) (xy -3.81 3.81)
@@ -158,7 +158,7 @@
 				)
 			)
 		)
-		(symbol "74LS05_2_0"
+		(symbol "74LS06_2_0"
 			(polyline
 				(pts
 					(xy -3.81 3.81) (xy -3.81 -3.81) (xy 3.81 0) (xy -3.81 3.81)
@@ -208,7 +208,7 @@
 				)
 			)
 		)
-		(symbol "74LS05_3_0"
+		(symbol "74LS06_3_0"
 			(polyline
 				(pts
 					(xy -3.81 3.81) (xy -3.81 -3.81) (xy 3.81 0) (xy -3.81 3.81)
@@ -258,7 +258,7 @@
 				)
 			)
 		)
-		(symbol "74LS05_4_0"
+		(symbol "74LS06_4_0"
 			(polyline
 				(pts
 					(xy -3.81 3.81) (xy -3.81 -3.81) (xy 3.81 0) (xy -3.81 3.81)
@@ -308,7 +308,7 @@
 				)
 			)
 		)
-		(symbol "74LS05_5_0"
+		(symbol "74LS06_5_0"
 			(polyline
 				(pts
 					(xy -3.81 3.81) (xy -3.81 -3.81) (xy 3.81 0) (xy -3.81 3.81)
@@ -358,7 +358,7 @@
 				)
 			)
 		)
-		(symbol "74LS05_6_0"
+		(symbol "74LS06_6_0"
 			(polyline
 				(pts
 					(xy -3.81 3.81) (xy -3.81 -3.81) (xy 3.81 0) (xy -3.81 3.81)
@@ -408,7 +408,7 @@
 				)
 			)
 		)
-		(symbol "74LS05_7_0"
+		(symbol "74LS06_7_0"
 			(pin power_in line
 				(at 0 -12.7 90)
 				(length 5.08)
@@ -446,7 +446,7 @@
 				)
 			)
 		)
-		(symbol "74LS05_7_1"
+		(symbol "74LS06_7_1"
 			(rectangle
 				(start -5.08 7.62)
 				(end 5.08 -7.62)
@@ -6941,7 +6941,7 @@
 		(uuid "9db9fe95-f23b-4bdd-92d6-70c220eff99b")
 	)
 	(symbol
-		(lib_id "74xx:74LS05")
+		(lib_id "74xx:74LS06")
 		(at 114.3 139.7 0)
 		(unit 1)
 		(body_style 1)
@@ -6962,7 +6962,7 @@
 				)
 			)
 		)
-		(property "Value" "74LS05"
+		(property "Value" "7406N"
 			(at 114.3 133.35 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -6983,7 +6983,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/gpn/sn74ls05"
+		(property "Datasheet" "http://www.ti.com/lit/gpn/sn7406"
 			(at 114.3 139.7 0)
 			(hide yes)
 			(show_name no)
@@ -6994,7 +6994,7 @@
 				)
 			)
 		)
-		(property "Description" "Hex Inverter Open Collector"
+		(property "Description" "Hex Inverter Open Collector, 30 V outputs"
 			(at 114.3 139.7 0)
 			(hide yes)
 			(show_name no)
@@ -7097,7 +7097,7 @@
 		(uuid "58841e84-f7c9-414d-8fe8-d7df164de70d")
 	)
 	(symbol
-		(lib_id "74xx:74LS05")
+		(lib_id "74xx:74LS06")
 		(at 114.3 154.94 0)
 		(unit 2)
 		(body_style 1)
@@ -7118,7 +7118,7 @@
 				)
 			)
 		)
-		(property "Value" "74LS05"
+		(property "Value" "7406N"
 			(at 114.3 148.59 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7139,7 +7139,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/gpn/sn74ls05"
+		(property "Datasheet" "http://www.ti.com/lit/gpn/sn7406"
 			(at 114.3 154.94 0)
 			(hide yes)
 			(show_name no)
@@ -7150,7 +7150,7 @@
 				)
 			)
 		)
-		(property "Description" "Hex Inverter Open Collector"
+		(property "Description" "Hex Inverter Open Collector, 30 V outputs"
 			(at 114.3 154.94 0)
 			(hide yes)
 			(show_name no)
@@ -7305,7 +7305,7 @@
 		(uuid "3f260c4e-8caa-43ed-b3f8-41d1c297020a")
 	)
 	(symbol
-		(lib_id "74xx:74LS05")
+		(lib_id "74xx:74LS06")
 		(at 114.3 170.18 0)
 		(unit 3)
 		(body_style 1)
@@ -7326,7 +7326,7 @@
 				)
 			)
 		)
-		(property "Value" "74LS05"
+		(property "Value" "7406N"
 			(at 114.3 163.83 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7347,7 +7347,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/gpn/sn74ls05"
+		(property "Datasheet" "http://www.ti.com/lit/gpn/sn7406"
 			(at 114.3 170.18 0)
 			(hide yes)
 			(show_name no)
@@ -7358,7 +7358,7 @@
 				)
 			)
 		)
-		(property "Description" "Hex Inverter Open Collector"
+		(property "Description" "Hex Inverter Open Collector, 30 V outputs"
 			(at 114.3 170.18 0)
 			(hide yes)
 			(show_name no)
@@ -7513,7 +7513,7 @@
 		(uuid "b46e71fe-6a6c-4074-a78c-c0b96d6071ed")
 	)
 	(symbol
-		(lib_id "74xx:74LS05")
+		(lib_id "74xx:74LS06")
 		(at 149.86 139.7 0)
 		(unit 4)
 		(body_style 1)
@@ -7534,7 +7534,7 @@
 				)
 			)
 		)
-		(property "Value" "74LS05"
+		(property "Value" "7406N"
 			(at 149.86 133.35 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7555,7 +7555,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/gpn/sn74ls05"
+		(property "Datasheet" "http://www.ti.com/lit/gpn/sn7406"
 			(at 149.86 139.7 0)
 			(hide yes)
 			(show_name no)
@@ -7566,7 +7566,7 @@
 				)
 			)
 		)
-		(property "Description" "Hex Inverter Open Collector"
+		(property "Description" "Hex Inverter Open Collector, 30 V outputs"
 			(at 149.86 139.7 0)
 			(hide yes)
 			(show_name no)
@@ -7721,7 +7721,7 @@
 		(uuid "f3023335-f37f-400c-9a0e-13bd35545b43")
 	)
 	(symbol
-		(lib_id "74xx:74LS05")
+		(lib_id "74xx:74LS06")
 		(at 149.86 154.94 0)
 		(unit 5)
 		(body_style 1)
@@ -7742,7 +7742,7 @@
 				)
 			)
 		)
-		(property "Value" "74LS05"
+		(property "Value" "7406N"
 			(at 149.86 148.59 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7763,7 +7763,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/gpn/sn74ls05"
+		(property "Datasheet" "http://www.ti.com/lit/gpn/sn7406"
 			(at 149.86 154.94 0)
 			(hide yes)
 			(show_name no)
@@ -7774,7 +7774,7 @@
 				)
 			)
 		)
-		(property "Description" "Hex Inverter Open Collector"
+		(property "Description" "Hex Inverter Open Collector, 30 V outputs"
 			(at 149.86 154.94 0)
 			(hide yes)
 			(show_name no)
@@ -7929,7 +7929,7 @@
 		(uuid "a7fdd8d4-bf0e-450f-89eb-73f68052e2ce")
 	)
 	(symbol
-		(lib_id "74xx:74LS05")
+		(lib_id "74xx:74LS06")
 		(at 149.86 170.18 0)
 		(unit 6)
 		(body_style 1)
@@ -7950,7 +7950,7 @@
 				)
 			)
 		)
-		(property "Value" "74LS05"
+		(property "Value" "7406N"
 			(at 149.86 163.83 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7971,7 +7971,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/gpn/sn74ls05"
+		(property "Datasheet" "http://www.ti.com/lit/gpn/sn7406"
 			(at 149.86 170.18 0)
 			(hide yes)
 			(show_name no)
@@ -7982,7 +7982,7 @@
 				)
 			)
 		)
-		(property "Description" "Hex Inverter Open Collector"
+		(property "Description" "Hex Inverter Open Collector, 30 V outputs"
 			(at 149.86 170.18 0)
 			(hide yes)
 			(show_name no)
@@ -8137,7 +8137,7 @@
 		(uuid "017c0afc-ee05-4234-9b8d-afdcc3ca5171")
 	)
 	(symbol
-		(lib_id "74xx:74LS05")
+		(lib_id "74xx:74LS06")
 		(at 185.42 154.94 0)
 		(unit 7)
 		(body_style 1)
@@ -8158,7 +8158,7 @@
 				)
 			)
 		)
-		(property "Value" "74LS05"
+		(property "Value" "7406N"
 			(at 185.42 148.59 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -8179,7 +8179,7 @@
 				)
 			)
 		)
-		(property "Datasheet" "http://www.ti.com/lit/gpn/sn74ls05"
+		(property "Datasheet" "http://www.ti.com/lit/gpn/sn7406"
 			(at 185.42 154.94 0)
 			(hide yes)
 			(show_name no)
@@ -8190,7 +8190,7 @@
 				)
 			)
 		)
-		(property "Description" "Hex Inverter Open Collector"
+		(property "Description" "Hex Inverter Open Collector, 30 V outputs"
 			(at 185.42 154.94 0)
 			(hide yes)
 			(show_name no)

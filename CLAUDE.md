@@ -137,7 +137,7 @@ pins good (2026-09-29). An alternative form, `AND(WRITE_DIR, TO0)` on
 - Seven boards sit at 124-180 mV of ground offset after the starring
   (`HANDOFF_HALT.md`); first suspects if anything analog returns.
 - Interrupts: microcode BURNED and I-1 passed; six images and the ICs on
-  the bench; the SECTION 3 build (U80-U87 + the '05) not started
+  the bench; the SECTION 3 build (U80-U87 + the serial card's '06, U104) not started
   (`.git/sdd/PHASE_INT.md`). Rico says when.
 - The PCB: 4-layer mainboard placed, GND and +5V planes, not routed;
   power supply undecided (`.git/sdd/POWER.md`; draw 1.25-1.34 A).
