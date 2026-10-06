@@ -78,10 +78,19 @@ monitor").
 GND/VCC starring; `0xB4` and `0x00` again on 2026-09-29 on the interrupt
 microcode with the write gate in.
 
-Microcode in the sockets: `U9 0xEE1F  U15 0x1DE7  U23 0x0C0A`, the interrupt
-microcode, burned 2026-09-29 (PHASE_INT I-1: `isa 0xB4`, `isasoak 0x00`).
-Pinned in `test_microcode_gen.py`; every non-interrupt row is byte-
-identical to the previous image, and the 09-08 OUT settle is gone.
+Microcode in the sockets: `U9 0x4102  U15 0x9BC4  U23 0x8A40`, the carry
+microcode, burned 2026-10-06 (`isa 0xB4` x10, `isasoak 0x00` x10,
+`carry 0xAD` x10). Pinned in `test_microcode_gen.py`; every row outside
+0x96-0x99 is byte-identical to the 0x0C0A interrupt image (`test_carry.py`
+pins it).
+
+**FACT — ADC/SBB/ACI/SBI work (2026-10-06).** `U76` ('157, ALU board)
+picks the '382's CN: `S <- CW16` (`U23.11`), `I0a <- FLAG_C` (`U49.2`),
+`I1a <- ALU_CIN` (`U50.13`, the NAND term), `Za -> ALU_CN` (`U38.15`).
+`CW16` is low only on the ALU rows of `0x96 ADC`, `0x97 SBB`, `0x98 ACI`,
+`0x99 SBI`; `check_word` refuses it anywhere but `src=ALU` with
+ADD/SUB/BSUB. `PROG_carry` `0xAD`: 12 subtests x 256 passes, each op with
+the carry flipping across it, 10/10 at 1.024 MHz.
 
 Coverage images and their expected `OB` (all oracle-computed, all
 bench-green on the dates in `roms/README.md`):
@@ -94,6 +103,7 @@ bench-green on the dates in `roms/README.md`):
     serloop 0x53  sertx "DINO" on the host  serrx echo   isa 0xB4
     intmask 0x39  inthalt 0x5A  intflags 0x5A  intaddrsw 0x40/42/43/45
     intcount "MI" per loop  intser echo  (all UNORACLED, terminal-read)
+    carry 0xAD
 
 `NOP` is the only opcode that has never executed on silicon, by design.
 22 further instructions and the 15-opcode `OUT_` family have never
@@ -203,7 +213,9 @@ convention.
 **ALU.** Two '382s (`U38`, `U40`), ripple carry `U38.14 -> U40.15`.
 `ALU_CIN = NAND(SA1, SA0)` (`U53` '08 + `U50` g4 as inverter): `ADD` gets
 CIN=0, `SUB`/`BSUB` CIN=1, and `CN+4` is a NOT-borrow (`FLAG_C` = 1 means
-A >= B unsigned). All four flags latch in `U49`; `U48` ('157, select
+A >= B unsigned). `U76` section a passes `ALU_CIN` to `U38.15` while `CW16`
+is high and `FLAG_C` while it is low (ADC/SBB/ACI/SBI); CN = FLAG_C is
+right for both ADC and SBB because CN is a not-borrow on SUB. All four flags latch in `U49`; `U48` ('157, select
 `~ALU_OUT`) makes them update when the ALU is the source and hold
 otherwise. `U62` g1 computes `COND_TAKEN = NOR(~COND, COND_FLAG)`,
 `COND_FLAG` off `U77.4`; `CW21` is a real crossing, `CW22`/`CW23` are
@@ -225,7 +237,7 @@ through the transparent '373s). All 15 `src=ROM` rows carry `mux_pc=True`.
 **Memory map.** ROM 0x0000-0x3FFF (`U24`), I/O window 0x4000-0x7FFF
 (`U74` '00 + `U75` '32 on the memory board; eight 2K slots decoded on
 M11-M13), RAM 0x8000-0xFFFF (`U26`). Card 0 = the DIP switch at 0x4000
-(`U76` '138). Card 1 = the serial card at 0x4800 (`U101` '138, `U102`
+(`dino_io/`'s `U76` '138 -- not the ALU board's `U76` '157). Card 1 = the serial card at 0x4800 (`U101` '138, `U102`
 '245, `U103` PC16550D, `dino_serial/`), 9600 8N1, 3.6864 MHz can,
 `~IO_WR` from `U75.6` to `U103.18`. Cards see `M0-M15` as an input only;
 no DMA, by construction and by ruling (2026-09-24).
@@ -242,6 +254,8 @@ board; inputs strapped GND), `U36` g4 (PC board, '00), `U69` g2/g3/g4 (SP board,
 13->12 ('14, root), `U78` five inverters (peripheral bus), `U61` g3/g4
 ('02, root). `U74` and `U75` are fully used. `U62` g4 and `U56` 3->4 are
 taken by the T0 write gate (`WR_GATE`). `U37` inv 5 is `CLK_ALU`.
+`U76` b/c/d ('157, ALU board) are grounded and hostage to `CW16`'s select,
+like `U77` b/c/d to `CW21`: not a spare-gate resource.
 
 **Clock.** 4 MHz can divided to 1.024 MHz; 500 kHz option for timing
 discrimination. `CLK` = `U27.5`, `RESET` = `U27.9`, both '74 totem-pole.

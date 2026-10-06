@@ -23,9 +23,9 @@ writes rows in every byte of the word. `U9`/`U15` stay untouched only for
 changes confined to `CW16-23`.
 
     IMAGE            BITS      SET    CRC16
-    U9.bin           CW0-7     REAL   0xEE1F
-    U15.bin          CW8-15    REAL   0x1DE7
-    U23.bin          CW16-23   REAL   0x0C0A
+    U9.bin           CW0-7     REAL   0x4102
+    U15.bin          CW8-15    REAL   0x9BC4
+    U23.bin          CW16-23   REAL   0x8A40
     U9_diag.bin      CW0-7     DIAG   0x0F69
     U15_diag.bin     CW8-15    DIAG   0xF1B9
     U23_diag.bin     CW16-23   DIAG   0x56CC
@@ -429,7 +429,7 @@ time the DIAG image is reburned — no reason to reburn just for this.
     139 STAND    140 STOR     141 STXOR    142 STADDS   143 STSUBS   144 STBSUBS  
     145 STANDS   146 STORS    147 STXORS   
 
-    NOT covered by PROG_isa (33): NOP, RST, RET, OUT, OUTB, OUTC, OUTSPL, OUTSPH, OUTPCL, OUTPCH, OUTI, OUTM, OUTMX, OUTMS, PUSHPCH, MOVAPCH, INT, IRET, EI, DI, PUSHF, POPF, STPCL, STPCH, OUTADD, OUTSUB, OUTBSUB, OUTAND, OUTOR, OUTXOR, MOVBPCH, MOVCPCH, HALT
+    NOT covered by PROG_isa (37): NOP, RST, RET, OUT, OUTB, OUTC, OUTSPL, OUTSPH, OUTPCL, OUTPCH, OUTI, OUTM, OUTMX, OUTMS, PUSHPCH, MOVAPCH, INT, IRET, EI, DI, PUSHF, POPF, ADC, SBB, ACI, SBI, STPCL, STPCH, OUTADD, OUTSUB, OUTBSUB, OUTAND, OUTOR, OUTXOR, MOVBPCH, MOVCPCH, HALT
     The OUT family cannot be tested this way at all -- OB is
     write-only, so an OUT's result cannot be read back and
     compared inside the program. It needs its own image.
@@ -445,6 +445,7 @@ time the DIAG image is reburned — no reason to reburn just for this.
     interpreting the same microcode the machine will run.
 
     IMAGE            CRC16   OB    SOURCE
+    PROG_carry.bin   0xCA1F  0xAD  asm/carry.asm
     PROG_hello.bin   0x9C68  0x96  asm/hello.asm
     PROG_imon.bin    0xC12B  UNORACLED asm/imon.asm
     PROG_intaddr.bin 0x7F01  UNORACLED asm/intaddr.asm

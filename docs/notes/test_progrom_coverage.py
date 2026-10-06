@@ -293,6 +293,11 @@ def test_coverage_is_progressive():
          "INTERRUPTS, 2026-09-25: every row names a decoder output that is "
          "a no-connect until the PROPOSAL_INT hardware lands. Witnessed by "
          "the int* images (PROPOSAL_INT 6.3) on that hardware, not here"),
+        (lambda n: n in ("ADC", "SBB", "ACI", "SBI"),
+         "CARRY, 2026-10-06: CW16 low hands FLAG_C to the '382 through "
+         "U76. Blank blocks on the 0x0C0A microcode, so no coverage image "
+         "may lean on them until the reburn; PROG_carry is their witness "
+         "(test_carry.py)"),
         (lambda n: n.startswith(("LDSP", "STSP", "STPC", "LXI")),
          "_MARFILL with a pointer half as the source or destination; the "
          "prefix is LDA's verbatim and the codes are PROG_sp's"),
@@ -338,7 +343,7 @@ def test_coverage_is_progressive():
     check_eq(multi, [],
              "no instruction matches two rules -- overlapping rules mean the "
              "reason printed is arbitrary")
-    check_eq(len(unreached), 141,
+    check_eq(len(unreached), 145,                  # +4 carry, 2026-10-06
              "the uncovered count is a TRIPWIRE: adding an instruction "
              "without an image is fine, doing it silently is not")
 

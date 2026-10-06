@@ -80,7 +80,10 @@ def test_coverage_is_accounted_for():
     int_family = set(skipped) & g.INT_SKIP
     check_eq(sorted(int_family), sorted(g.INT_SKIP),
              "all six interrupt instructions are skipped, not half of them")
-    rest = set(skipped) - out_family - pc_high - int_family
+    carry_family = set(skipped) & g.CARRY_SKIP
+    check_eq(sorted(carry_family), sorted(g.CARRY_SKIP),
+             "all four carry instructions are skipped (PROG_carry is theirs)")
+    rest = set(skipped) - out_family - pc_high - int_family - carry_family
     check_eq(sorted(rest), ["HALT", "NOP", "RET", "RST"],
              "the only un-grouped skips are the four with no readable result")
     check_eq(len(out_family), 17,

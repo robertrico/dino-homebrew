@@ -954,6 +954,39 @@ if _collide:
 OPCODES.update(_OPCODES_INT)
 INSTRUCTIONS.update(_INT)
 
+# ==========================================================================
+# CARRY INTO THE ALU -- 2026-10-06, Rico. PHASE_F 3.3, built as U76 (a '157
+# on the ALU board; PHASE_F called it U80 before the INT block took that
+# number). S <- CW16, I0a <- FLAG_C, I1a <- NAND(SA1, SA0), Za -> U38.15.
+#
+# CN is a true carry on ADD and a not-borrow on SUB, so both want FLAG_C
+# straight: ADC = A + B + C, SBB = A - B - (1 - C). The immediate forms are
+# ADI/SUI with CW16 cleared on the ALU row only -- the operand fetch is
+# src=ROM, and U48 holds the flags unless the ALU is the source, so the
+# carry they read is the one the previous instruction left.
+# ==========================================================================
+_OPCODES_CARRY = {"ADC": 0x96, "SBB": 0x97, "ACI": 0x98, "SBI": 0x99}
+
+_CARRY = {
+    "ADC": (1, [word(end=True, sa="ADD", src="ALU", dst="REG_A",
+                     cin_from_flag_c=True)]),
+    "SBB": (1, [word(end=True, sa="SUB", src="ALU", dst="REG_A",
+                     cin_from_flag_c=True)]),
+    "ACI": (2, INSTRUCTIONS["ADI"][1][:-1] + [
+        INSTRUCTIONS["ADI"][1][-1] & ~CIN_SEL_N]),
+    "SBI": (2, INSTRUCTIONS["SUI"][1][:-1] + [
+        INSTRUCTIONS["SUI"][1][-1] & ~CIN_SEL_N]),
+}
+
+if set(_CARRY) != set(_OPCODES_CARRY):
+    raise BuildError("carry tables disagree")
+_collide = set(_OPCODES_CARRY.values()) & set(OPCODES.values())
+if _collide:
+    raise BuildError(f"carry opcode collision: "
+                     f"{sorted(hex(o) for o in _collide)}")
+OPCODES.update(_OPCODES_CARRY)
+INSTRUCTIONS.update(_CARRY)
+
 # Assemblers refuse these by name. INT exists only as an injected opcode:
 # fetched from memory, the FETCH row would count the PC and INT would push
 # a return address one byte past the truth.
@@ -1045,6 +1078,16 @@ def check_word(addr, w):
     if src == SRC["ROM"] and not (w & MUX_PC):
         raise BuildError(f"{where}: src=ROM without mux_pc -- M carries MAR, "
                          f"so the fetch reads the wrong address")
+    # THE FLAG CARRY IS FOR ARITHMETIC ON THE ALU. CW16 low hands U38.15
+    # FLAG_C through U76; the '382 ignores CN on its logic codes, and with
+    # no ALU source nothing computes. Either row encodes cleanly, burns,
+    # and silently does what the same row without the bit does.
+    if not (w & CIN_SEL_N):
+        sa_code = _sa_bits((w >> 9) & 7)
+        if src != SRC["ALU"] or sa_code not in (SA["ADD"], SA["SUB"],
+                                                SA["BSUB"]):
+            raise BuildError(f"{where}: flag carry (CW16 low) needs src=ALU "
+                             f"and ADD/SUB/BSUB -- CN means nothing else")
     # PC_UP + PC_LOAD same word: defined-but-fragile on '193 internals
     if (w & PC_UP) and misc == MISC["PC_LOAD"]:
         raise BuildError(f"{where}: PC_UP with /PC_LOAD")

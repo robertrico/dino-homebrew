@@ -128,6 +128,13 @@ PC_SKIP = {n: "the difference between two reads would be 0x00, which a dead "
 # images (PROPOSAL_INT 6.3), which are OB-driven like everything else.
 INT_SKIP = frozenset(mc._OPCODES_INT)
 
+# THE CARRY FOUR STAY OUT TOO, 2026-10-06, for the same reason: PROG_isa
+# is the witness that must read 0xB4 on BOTH sides of the burn that adds
+# them -- it is how the burn proves no old row moved. On the 0x0C0A
+# microcode ADC is a blank block; in PROG_isa it would read as a failure
+# and stop the run. Their witness is PROG_carry (asm/carry.asm).
+CARRY_SKIP = frozenset(mc._OPCODES_CARRY)
+
 
 def mode(name):
     """The addressing mode, read off the instruction's own leading rows.
@@ -456,7 +463,7 @@ def build():
     tid = 0
     for name in sorted(mc.INSTRUCTIONS, key=lambda n: mc.OPCODES[n]):
         cand = tid + 1
-        if name in INT_SKIP:
+        if name in INT_SKIP or name in CARRY_SKIP:
             skipped.append(name)
             continue
         if name in FLAG_ONLY:

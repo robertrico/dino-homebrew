@@ -9,7 +9,7 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - IN    CW15=HALT  <- Microcode_Decoder
 - OUT   CLK  -> ALU Module, Control Word Module, Interrupt, Memory, Memory Address Regiser, Memory Data Register, Program Counter, Register Modules, Stack Pointer
 - OUT   ~{RESET}  -> ALU Module, Interrupt
-- OUT   ~{CLK}  -> ALU Module, Interrupt, Peripheral Bus, Program Counter
+- OUT   ~{CLK}  -> ALU Module, Interrupt, Memory Data Register, Peripheral Bus, Program Counter
 - OUT   ~{TO0}  -> Control Word Module
 - OUT   RESET  -> Memory, Program Counter
 - OUT   T0-3  -> Microcode_Decoder
@@ -17,7 +17,8 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 ## ALU Module
 - IN    ~{ALU_OUT}, ~{REG_A_LOAD}, ~{REG_B_LOAD}  <- Control Word Module
 - IN    FLAG_D0-3  <- Interrupt
-- IN    CW10=SA1, CW11=SA0, CW21=FLAG_SEL0, CW9=SA2  <- Microcode_Decoder
+- IN    CLK_ALU  <- Memory Data Register
+- IN    CW10=SA1, CW11=SA0, CW16=~{CIN_SEL}, CW21=FLAG_SEL0, CW9=SA2  <- Microcode_Decoder
 - IN    CLK, ~{CLK}, ~{RESET}  <- root
 - OUT   COND_FLAG  -> Control Word Module
 - OUT   FLAG_C, FLAG_N, FLAG_NEXT0-3, FLAG_V, FLAG_Z  -> Interrupt
@@ -70,7 +71,8 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 - IN    SRC_ACTIVE, ~{ALU_OUT}, ~{IR_LOAD}, ~{MDR_OUT}, ~{PC_HI_OUT}, ~{PC_LO_OUT}, ~{RAM_LOAD}, ~{RAM_OUT}, ~{ROM_OUT}  <- Control Word Module
 - IN    ~{IO_RD}, ~{ROM_SEL}  <- Memory
 - IN    ~{RAM_EN}  <- Memory Address Regiser
-- IN    CLK  <- root
+- IN    CLK, ~{CLK}  <- root
+- OUT   CLK_ALU  -> ALU Module
 - OUT   RAM_OE_ON, READS_IDLE, WRITE_DIR, ~{ROM_BUF_EN}  -> Memory
 - OUT   IRB0-7  -> Microcode_Decoder
 - OUT   PC0-15  -> Program Counter
@@ -91,7 +93,7 @@ types: OUT(tri) means drives-when-enabled (a tri-state bus driver).
 ## Microcode_Decoder
 - IN    IRB0-7  <- Memory Data Register
 - IN    T0-3  <- root
-- OUT   CW10=SA1, CW11=SA0, CW21=FLAG_SEL0, CW9=SA2  -> ALU Module
+- OUT   CW10=SA1, CW11=SA0, CW16=~{CIN_SEL}, CW21=FLAG_SEL0, CW9=SA2  -> ALU Module
 - OUT   CW0-8, CW17=~{SRC_BANK}, CW18=~{DST_BANK}  -> Control Word Module
 - OUT   CW12=END, CW13=PC_UP  -> Interrupt
 - OUT   CW15=HALT  -> Interrupt, root

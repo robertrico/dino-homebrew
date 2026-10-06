@@ -186,7 +186,7 @@ _SRC = {v: k for k, v in SRC.items()}
 _MISC = {v: k for k, v in MISC.items()}
 _SA = {v: k for k, v in SA.items()}
 from microcode_gen import (SRC_BANK_N, DST_BANK_N, MISC_BANK_N,  # noqa: E402
-                           MUX_PC)
+                           MUX_PC, CIN_SEL_N)
 
 RAM_BASE = 0x8000       # ROM 0x0000-0x3FFF, I/O 0x4000-0x7FFF, RAM 0x8000+
 
@@ -220,8 +220,13 @@ def sim_supports(name):
 _CARRY_DEFINED = ("ADD", "SUB", "BSUB")
 
 
-def _alu_op(op, a, b):
+def _alu_op(op, a, b, cin=None):
     """(result, carry, carry_is_defined).
+
+    `cin` is None for every row with CW16 high: the '382 then gets today's
+    NAND(SA1, SA0), 0 on ADD and 1 on SUB/BSUB. With CW16 low (ADC/SBB/
+    ACI/SBI) U76 hands it FLAG_C instead, and the same A + B + CN / A + ~B
+    + CN arithmetic runs with that CN.
 
     CARRY IS NOT BORROW. ALU_CIN = NAND(SA1, SA0), so SUB (0b010) and BSUB
     (0b001) both get CIN=1 and the '382 computes A + ~B + 1. CN+4 is then a
@@ -234,12 +239,14 @@ def _alu_op(op, a, b):
     if op == "SET":
         return 0xFF, 0, False
     if op == "ADD":
-        r = a + b
+        r = a + b + (cin or 0)
         return r & 0xFF, (r >> 8) & 1, True
     if op == "SUB":
-        return (a - b) & 0xFF, 1 if a >= b else 0, True
+        r = a + (~b & 0xFF) + (1 if cin is None else cin)
+        return r & 0xFF, (r >> 8) & 1, True
     if op == "BSUB":
-        return (b - a) & 0xFF, 1 if b >= a else 0, True
+        r = b + (~a & 0xFF) + (1 if cin is None else cin)
+        return r & 0xFF, (r >> 8) & 1, True
     if op == "XOR":
         return a ^ b, 0, False
     if op == "OR":
@@ -684,7 +691,18 @@ def simulate(program, max_steps=100000, switches=0x00,
             if val is not None and (src in ("ROM", "RAM") or dst == "RAM"):
                 mdr = val
             elif src == "ALU":
-                val, flag_c, flag_c_defined = _alu_op(sa, tmp_a, tmp_b)
+                cin = None
+                if not (w & CIN_SEL_N):
+                    # U76 S=0: CN = FLAG_C. Same refusal as JNC -- a carry
+                    # left by a LOGIC code is undefined on the '382.
+                    if not flag_c_defined:
+                        raise Unoracled(
+                            f"pc=0x{pc:04X}: {name} reads a carry that no "
+                            f"arithmetic op defined -- the last ALU op was a "
+                            f"LOGIC function code and the '382 does not "
+                            f"specify CN+4 for those")
+                    cin = flag_c
+                val, flag_c, flag_c_defined = _alu_op(sa, tmp_a, tmp_b, cin)
                 flag_z = 1 if val == 0 else 0       # U48 mux: commits only
                                                     # while ~{ALU_OUT} is low
             if pc_up:

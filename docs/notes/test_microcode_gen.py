@@ -273,13 +273,15 @@ def _may_touch_third(rows):
             return True
         if ((w >> 6) & 7) == g.MISC["COND"]:
             return True                      # FLAG_SEL0/1 + FLAG_POL
+        if not (w & g.CIN_SEL_N):
+            return True                      # CW16: carry from FLAG_C (U76)
     return False
 
 
 _THIRD_ROM_OPS = {g.OPCODES[n] for n, (_, rows) in g.INSTRUCTIONS.items()
                   if _may_touch_third(rows)}
-assert len(_THIRD_ROM_OPS) == 74, (   # +6 interrupts, 2026-09-25
-    f"the third-ROM group is {len(_THIRD_ROM_OPS)}, not 74 -- an instruction "
+assert len(_THIRD_ROM_OPS) == 78, (   # +6 interrupts 09-25, +4 carry 10-06
+    f"the third-ROM group is {len(_THIRD_ROM_OPS)}, not 78 -- an instruction "
     f"started or stopped spending a CW16-23 bit. Deliberate?")
 _actually = {a >> 4 for a in range(4096) if third(real[a]) != 0xFF}
 assert _actually == _THIRD_ROM_OPS, (
@@ -443,9 +445,16 @@ except g.BuildError:
 #                    (test_interrupts pins 0x8007 over the 250 old blocks).
 #                    NOT BURNED. Burning it also reverts the socket's OUT
 #                    settle, which is the revert CLAUDE.md asks for.
-assert g.crc16(bins["U9.bin"][:4096]) == 0xEE1F, "U9 changed -- reburn intended?"
-assert g.crc16(bins["U15.bin"][:4096]) == 0x1DE7, "U15 changed -- reburn intended?"
-assert g.crc16(bins["U23.bin"][:4096]) == 0x0C0A, "U23 changed -- reburn intended?"
+#   INTERRUPTS       U9 0xEE1F   U15 0x1DE7   U23 0x0C0A   BURNED 2026-09-29
+#   CARRY            below, 2026-10-06. ADC/SBB/ACI/SBI at 0x96-0x99, CW16
+#                    low on their ALU rows (U76 in copper, inert-proven with
+#                    the 0x0C0A image: isa 0xB4, isasoak 0x00 x10). All three
+#                    move: the new blocks write every byte. Every OLD row is
+#                    identical (test_carry pins 0x103C over the 252 others).
+#                    NOT BURNED.
+assert g.crc16(bins["U9.bin"][:4096]) == 0x4102, "U9 changed -- reburn intended?"
+assert g.crc16(bins["U15.bin"][:4096]) == 0x9BC4, "U15 changed -- reburn intended?"
+assert g.crc16(bins["U23.bin"][:4096]) == 0x8A40, "U23 changed -- reburn intended?"
 
 
 def test_no_row_asks_the_address_bus_for_two_things():

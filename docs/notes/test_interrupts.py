@@ -53,6 +53,11 @@ def test_every_existing_row_is_byte_identical():
     0x45F9, the 09-08 OUT settle, which never reached the generator.) If
     this moves, an old instruction changed: a burn nobody asked for."""
     w = g.build_real()
+    # 0x96-0x99 became ADC/SBB/ACI/SBI on 2026-10-06 (test_carry pins them
+    # and everything else). They were blank when this was pinned; put the
+    # blank back so 0x8007 keeps meaning what it meant.
+    for op in range(0x96, 0x9A):
+        w[op * 16:op * 16 + 16] = [g.FETCH] + [g.FILL] * 15
     b = bytearray()
     for op in range(256):
         if 0x90 <= op <= 0x95:
