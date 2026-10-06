@@ -3830,10 +3830,6 @@
 		(color 0 0 0 0)
 		(uuid "cf05061a-251e-40c9-ba8c-e9954b771783")
 	)
-	(no_connect
-		(at 88.9 186.69)
-		(uuid "7a3890a3-7bcd-40c7-ad70-2ed2402bb371")
-	)
 	(bus_entry
 		(at 69.85 26.67)
 		(size 2.54 2.54)
@@ -5059,16 +5055,6 @@
 			(type default)
 		)
 		(uuid "a211653b-ca42-4616-95fa-c2859ebea9ac")
-	)
-	(wire
-		(pts
-			(xy 71.12 186.69) (xy 73.66 186.69)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "a217a440-2d91-411c-88f7-20e6bbf77eef")
 	)
 	(wire
 		(pts
@@ -7308,6 +7294,30 @@
 			)
 		)
 	)
+	(global_label "~{CLK}"
+		(shape passive)
+		(at 73.66 186.69 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "86e35f89-c37c-4cb8-9da4-059209db78c5")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 68.218 186.69 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
+	)
 	(global_label "MDR0"
 		(shape passive)
 		(at 213.36 35.56 180)
@@ -8169,6 +8179,30 @@
 					(size 1.27 1.27)
 				)
 				(justify right)
+			)
+		)
+	)
+	(global_label "CLK_ALU"
+		(shape passive)
+		(at 88.9 186.69 0)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left)
+		)
+		(uuid "ce8df149-1e4e-40fc-857f-31002736dc13")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 98.7568 186.69 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
 			)
 		)
 	)
@@ -13017,84 +13051,6 @@
 			(project "dino_v0_0_2"
 				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541/dfdf99e6-2845-4ba5-89ea-a5852382fb95"
 					(reference "#PWR014")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:GND")
-		(at 71.12 186.69 0)
-		(mirror y)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(uuid "acf10804-ed06-4d3a-a378-623f20333d4b")
-		(property "Reference" "#PWR0225"
-			(at 71.12 193.04 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "GND"
-			(at 71.12 191.516 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 71.12 186.69 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 71.12 186.69 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Power symbol creates a global label with name \"GND\" , ground"
-			(at 71.12 186.69 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "76964025-7023-468c-95b5-2e9cd438cbd9")
-		)
-		(instances
-			(project "dino_v0_0_2"
-				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541/dfdf99e6-2845-4ba5-89ea-a5852382fb95"
-					(reference "#PWR0225")
 					(unit 1)
 				)
 			)

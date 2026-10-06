@@ -335,6 +335,11 @@ def _ser_reg(addr, uart, verb):
 # stops there with st["idle"] = True. A THRE poll never reads LSR twice in
 # a row (THRE is always set), so a transmit-only program runs to its HALT.
 IDLE_LSR_READS = 3
+# INTERRUPT MODE (IER bit 0 set): a program that takes its input through the
+# RDA interrupt spins on its own buffer, not on LSR, so the LSR rule cannot
+# see it wait. Script exhausted + RDA enabled + this many boundaries with no
+# UART access at all = idle.
+IDLE_QUIET_ENDS = 3000
 
 
 def _serial_result(st, uart):
@@ -345,23 +350,65 @@ def _serial_result(st, uart):
     return st
 
 
-def uart_script(data):
-    """Card state for a scripted session: `data` is what the host types."""
+def uart_script(data, gap=None):
+    """Card state for a scripted session: `data` is what the host types.
+
+    `gap`: the bytes ARRIVE one per `gap` instruction boundaries instead of
+    all being waiting at once -- a stand-in for typing or pasting at 9600
+    baud, which an interrupt-driven program needs (it would otherwise see
+    the whole script in its first handler call). Still no UART time model:
+    a boundary is not a clock."""
     from collections import deque
-    return {"scr": 0x00, "rx": deque(bytes(data)), "tx": bytearray(),
-            "lcr": 0x00, "regs": {}, "lsr_run": 0}
+    u = {"scr": 0x00, "rx": deque(), "tx": bytearray(),
+         "lcr": 0x00, "regs": {}, "lsr_run": 0, "pending": deque(),
+         "gap": gap, "since": 0, "quiet": 0}
+    if gap:
+        u["pending"].extend(bytes(data))
+    else:
+        u["rx"].extend(bytes(data))
+    return u
+
+
+def _uart_tick(uart):
+    """One instruction boundary of scripted time: release the next byte when
+    its gap has passed, and spot an interrupt-mode program waiting on an
+    exhausted script."""
+    if uart is None or "rx" not in uart:
+        return
+    if uart["pending"]:
+        uart["since"] += 1
+        if uart["since"] >= uart["gap"]:
+            uart["rx"].append(uart["pending"].popleft())
+            uart["since"] = 0
+    uart["quiet"] += 1
+    if (not uart["rx"] and not uart["pending"] and _rda(uart)
+            and uart["quiet"] >= IDLE_QUIET_ENDS):
+        uart["idle"] = True
+
+
+def _rda(uart):
+    """IER bit 0, the received-data interrupt enable."""
+    return bool(uart["regs"].get("ier", 0) & 0x01)
+
+
+def _rx_irq(uart):
+    """The 16550's RDA interrupt as a LEVEL: asserted while RDA is enabled
+    and a byte is waiting; reading RBR clears it (datasheet 8.4)."""
+    return (uart is not None and "rx" in uart and _rda(uart)
+            and bool(uart["rx"]))
 
 
 def _ser_read(addr, uart):
     if "rx" not in uart:
         return _ser_reg(addr, uart, "read")["scr"]
+    uart["quiet"] = 0
     reg = addr & SER_REG
     if reg == 5:                                  # LSR: DR | THRE | TEMT
         if uart["rx"]:
             uart["lsr_run"] = 0
             return 0x61
         uart["lsr_run"] += 1
-        if uart["lsr_run"] >= IDLE_LSR_READS:
+        if uart["lsr_run"] >= IDLE_LSR_READS and not uart["pending"]:
             uart["idle"] = True                   # simulate() stops here
         return 0x60
     if reg == 0:
@@ -383,6 +430,7 @@ def _ser_write(addr, val, uart):
     if "rx" not in uart:
         _ser_reg(addr, uart, "write")["scr"] = val
         return
+    uart["quiet"] = 0
     reg = addr & SER_REG
     dlab = uart["lcr"] & 0x80
     if reg == 0:
@@ -425,7 +473,7 @@ def io_write(addr, val, uart):
 
 def simulate(program, max_steps=100000, switches=0x00,
              image=None, rom_window=None, serial=True, serial_in=None,
-             irq_at=None, trace=None):
+             irq_at=None, trace=None, serial_gap=None):
     """Execute an assembled image by interpreting its microcode rows.
 
     `serial=False` pulls the serial card out of slot 1 -- the phase-E
@@ -473,7 +521,7 @@ def simulate(program, max_steps=100000, switches=0x00,
     mdr = 0
     out = None
     if serial_in is not None:
-        uart = uart_script(serial_in)         # the scripted session
+        uart = uart_script(serial_in, serial_gap)   # the scripted session
     else:
         uart = uart_reset() if serial else None   # slot 1 after MR, or empty
     # THE FLAG MODEL. U49 is a '273 with NO clock enable -- it re-clocks every
@@ -754,18 +802,30 @@ def simulate(program, max_steps=100000, switches=0x00,
                     irq.discard(min(wake))
                     inject = True
                     break
+                if ie and uart is not None and uart.get("pending") \
+                        and _rda(uart):
+                    # asleep until the next scripted byte arrives
+                    uart["rx"].append(uart["pending"].popleft())
+                    uart["since"] = 0
+                    inject = True
+                    break
                 st.update(out=out, halted=True, A=A, B=B, C=C,
                           flag_z=flag_z, flag_c=flag_c,
                           flag_c_defined=flag_c_defined, sp=sp, ie=ie)
                 return _serial_result(st, uart)
             if (w >> 12) & 1:                       # END
                 st["ends"] += 1
+                _uart_tick(uart)
                 # ACCEPT = PEND AND IE AND END, sampled on the edge that
                 # ends this state -- after this row's own IE_SET/IE_CLR.
+                # The UART's RDA level (scripted sessions) is a second
+                # source on the same ~{IRQ} wire.
                 if st["ends"] in irq:
                     irq.discard(st["ends"])
                     if ie:
                         inject = True
+                elif ie and _rx_irq(uart):
+                    inject = True
                 break
     st.update(out=out, halted=False, A=A, B=B, C=C,
               flag_z=flag_z, flag_c=flag_c,

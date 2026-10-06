@@ -129,6 +129,66 @@ def test_intaddr_loop_is_where_the_header_says():
     assert lab["loop"] == 0x0140
 
 
+# ---- I4 witness: intaddrsw ----------------------------------------------
+# intaddr never showed 0x45 in 34+ RESETs. THRE lands a fixed ~4.17 ms
+# after the first THR write, give or take 1/16 bit (~6.5 us, ~7 clocks), so
+# the request only ever reaches a ~7-clock slice of the 10-clock loop.
+# intaddrsw pads SW1 & 7 passes of DCR/JNZ (8 T each) in front of the loop,
+# so SW1 = 1..5 slides that slice through every boundary. (SW1 = 0 skips
+# the pad and lands on SW1 = 3's phase.)
+
+def _tstates(trace):
+    import microcode_gen as mc
+    return [1 + len(mc.INSTRUCTIONS[t["op"]][1]) for t in trace]
+
+
+def _loop_phase(sw):
+    """T-states from the first THR write to the first fetch at `loop`,
+    mod the loop's own length. Where THRE lands depends on this."""
+    tr = []
+    _, lab = _run(_text("intaddrsw"), switches=sw, trace=tr, max_steps=200)
+    costs = _tstates(tr)
+    pcs = [t["pc"] for t in tr]
+    ops = [t["op"] for t in tr]
+    # UART init is seven STAs (IER LCR DLL DLM LCR FCR MCR); the 8th is
+    # the first THR write, where the UART's clock starts counting.
+    first_thr = [i for i, o in enumerate(ops) if o == "STA"][7]
+    enter = pcs.index(lab["loop"])
+    loop_len = sum(costs[enter:enter + 4])
+    return sum(costs[first_thr:enter]) % loop_len, loop_len
+
+
+def test_intaddrsw_loop_is_intaddrs_loop():
+    _, lab = _run(_text("intaddrsw"), max_steps=200)
+    assert lab["loop"] == 0x0140
+
+
+def test_intaddrsw_sw1_slides_the_loop_through_five_phases():
+    phases = {sw: _loop_phase(sw) for sw in range(1, 6)}
+    assert all(n == 10 for _, n in phases.values()), phases
+    assert len({p for p, _ in phases.values()}) == 5, phases
+
+
+def test_intaddrsw_pushes_only_opcode_addresses_at_every_setting():
+    for sw in range(1, 6):
+        seen = set()
+        # EI lands later with the pad; requests before it are lost
+        for k in range(50, 150):
+            st, _ = _run(_text("intaddrsw"), switches=sw, irq_at={k},
+                         max_steps=2000)
+            assert st["halted"], f"sw {sw} irq at {k}: no halt"
+            assert st["out"] in (0x40, 0x42, 0x43, 0x45), \
+                f"sw {sw} irq at {k}: OB {st['out']:#04x}"
+            seen.add(st["out"])
+        assert seen == {0x40, 0x42, 0x43, 0x45}, (sw, sorted(seen))
+
+
+def test_intaddrsw_arms_four_bytes():
+    st, _ = _run(_text("intaddrsw"), switches=3, irq_at={80},
+                 max_steps=2000)
+    assert st["tx"] == b"...."
+
+
 # ---- I5/I6 intflags -----------------------------------------------------
 
 def test_intflags_passes_under_dense_interrupts():
@@ -184,8 +244,10 @@ def test_inthalt_final_halt_cannot_be_woken():
 # ---- I8 intser ----------------------------------------------------------
 
 def test_intser_echoes_with_no_poll_loop():
-    st, _ = _run(_text("intser"), serial_in=b"Hi!",
-                 irq_at={MANY, MANY + 1, MANY + 2})
+    # The RDA level (scripted sessions, 2026-10-06) is the interrupt now;
+    # irq_at stood in for it before the oracle modelled it, and on top of
+    # the real level it would inject requests with nothing waiting.
+    st, _ = _run(_text("intser"), serial_in=b"Hi!", serial_gap=50)
     assert st["tx"] == b"Hi!"
     assert st["outs"][-1] == ord("!")
     assert len(st["ints"]) == 3 and st["halted"]
@@ -196,12 +258,49 @@ def test_intser_never_reads_lsr():
     assert "SER_LSR" not in text and "0x4805" not in text
 
 
+# ---- I3 witness: intcount ------------------------------------------------
+# intresume reports on OB, and OB holds each count for ~1 ms against 0.5 s
+# of 0xE7: nothing the eye can read. intcount says it on the terminal
+# instead: "R" once at boot, "M" per main loop, "I" per handler entry.
+
+def _fast_count():
+    t = _sub(_text("intcount"), "OUTER:    .equ  128", "OUTER:    .equ  2")
+    return _sub(t, "INNER:    .equ  0xFF", "INNER:    .equ  3")
+
+
+def test_intcount_says_r_then_one_m_per_count_without_interrupts():
+    st, _ = _run(_fast_count(), max_steps=2000)
+    counts = _counts(st["outs"])
+    assert counts[:5] == [1, 2, 3, 4, 5], counts[:10]
+    assert st["tx"] == b"R" + b"M" * len(counts), st["tx"][:20]
+
+
+def test_intcount_one_i_per_m_when_each_request_is_one_pulse():
+    """The PASS shape: R M I M I M I ... -- never II, never a second R."""
+    st, _ = _run(_fast_count(), irq_at=set(range(40, 6000, 90)),
+                 max_steps=6000)
+    tx = st["tx"]
+    assert tx[:1] == b"R" and b"R" not in tx[1:], tx[:40]
+    assert tx.count(b"I") >= 3, tx[:40]
+    assert b"II" not in tx, tx[:40]
+    counts = _counts(st["outs"])
+    assert counts == list(range(1, len(counts) + 1)), counts[:20]
+
+
+def test_intcount_a_request_that_never_clears_shows_as_i_runs():
+    """The witness can fail: a request held at every boundary re-enters on
+    every IRET, and the terminal shows it as a run of I with no M."""
+    st, _ = _run(_fast_count(), irq_at=set(range(40, 3000)),
+                 max_steps=3000)
+    assert b"III" in st["tx"], st["tx"][:40]
+
+
 # ---- the ruling ---------------------------------------------------------
 
 def test_every_image_arms_the_uart_itself():
     """No button, no 555: each image raises its own interrupt."""
-    for name in ("intmask", "inthalt", "intresume", "intaddr",
-                 "intflags", "intser"):
+    for name in ("intmask", "inthalt", "intresume", "intcount", "intaddr",
+                 "intaddrsw", "intflags", "intser"):
         assert "SER_IER" in _text(name), name
     assert not os.path.exists(os.path.join(ASM, "intbtn.asm"))
 

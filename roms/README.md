@@ -446,7 +446,10 @@ time the DIAG image is reburned — no reason to reburn just for this.
 
     IMAGE            CRC16   OB    SOURCE
     PROG_hello.bin   0x9C68  0x96  asm/hello.asm
+    PROG_imon.bin    0xC12B  UNORACLED asm/imon.asm
     PROG_intaddr.bin 0x7F01  UNORACLED asm/intaddr.asm
+    PROG_intaddrsw.bin 0x4C07  UNORACLED asm/intaddrsw.asm
+    PROG_intcount.bin 0xDACD  UNORACLED asm/intcount.asm
     PROG_intflags.bin 0xB071  UNORACLED asm/intflags.asm
     PROG_inthalt.bin 0xE500  UNORACLED asm/inthalt.asm
     PROG_intmask.bin 0x5C73  UNORACLED asm/intmask.asm

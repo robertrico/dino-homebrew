@@ -7736,7 +7736,7 @@
 			)
 		)
 	)
-	(global_label "CLK"
+	(global_label "CLK_ALU"
 		(shape passive)
 		(at 170.18 52.07 180)
 		(fields_autoplaced yes)
@@ -7748,7 +7748,7 @@
 		)
 		(uuid "c2f1145d-b14b-4674-b3fa-01941431f424")
 		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 170.18 52.07 180)
+			(at 160.3232 52.07 0)
 			(hide yes)
 			(show_name no)
 			(do_not_autoplace no)

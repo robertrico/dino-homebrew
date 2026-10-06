@@ -52,14 +52,25 @@ A number without a source is not a measurement: delete it or go measure it.
 8. **Say which ROM is in `U24` with every reading.** The coverage and test
    images HALT at their own end; the monitor never halts.
 
-## Status, as of 2026-09-29
+## Status, as of 2026-10-06
 
 **FACT — the machine is complete, executes from RAM, has a memory map, a
 serial card and a ROM monitor.** Phases B (stack), C (CALL/RET), D
 (execute-from-RAM), E (I/O window + DIP card), F (174-instruction ISA), G
 (serial card) and G_0 (monitor) are on silicon and drawn. Instruments:
-Siglent SDS1204X-E, DSLogic LA (20 MHz max), DMM, TL866. The ATmega rig and the FPGA twin are retired
-(see "Retired").
+Siglent SDS1204X-E, DSLogic Plus LA (16 ch at 100 MHz in buffer mode,
+2026-10-06 CSV headers), DMM, TL866. The ATmega rig and the FPGA twin are
+retired (see "Retired").
+
+**FACT — interrupts work (2026-10-06).** The INT core (U80-U87), the
+serial card's 7406N (U104) and the ~{IRQ} jumper are wired; every rung of
+PHASE_INT SECTION 4 passes at 1.024 MHz: `intmask 0x39`, `inthalt 0x5A`,
+`intcount` one interrupt per loop, `intaddrsw` opcode addresses only,
+`intflags 0x5A` (10/10 at 1.024 MHz and 500 kHz), `intser` echo. One soft
+vector, `0x9090` in RAM: INT pushes PC and jumps there; whoever EIs plants
+`JMP handler`. **`PROG_imon` is in `U24`**: the monitor's language with
+input on the RDA interrupt, a 16-byte ring, Ctrl-C break (SECTION "The
+monitor").
 
 **FACT — the ISA is bench-proven at 1.024 MHz.** `PROG_isa` reads `0xB4`
 (147 subtests), `PROG_isalive` `0xB4` every run, `PROG_isasoak` `0x00` on
@@ -81,6 +92,8 @@ bench-green on the dates in `roms/README.md`):
     window 0x5A   dip 0x4D   suite (SW1 = 1..12 selects)  test3 0x4D
     romsoak 0x00  serid 0x55 serid_aa 0xAA serlsr 0x60 seriir 0xC1
     serloop 0x53  sertx "DINO" on the host  serrx echo   isa 0xB4
+    intmask 0x39  inthalt 0x5A  intflags 0x5A  intaddrsw 0x40/42/43/45
+    intcount "MI" per loop  intser echo  (all UNORACLED, terminal-read)
 
 `NOP` is the only opcode that has never executed on silicon, by design.
 22 further instructions and the 15-opcode `OUT_` family have never
@@ -136,9 +149,11 @@ pins good (2026-09-29). An alternative form, `AND(WRITE_DIR, TO0)` on
 - Bus levels have never been characterised on a healthy machine.
 - Seven boards sit at 124-180 mV of ground offset after the starring
   (`HANDOFF_HALT.md`); first suspects if anything analog returns.
-- Interrupts: microcode BURNED and I-1 passed; six images and the ICs on
-  the bench; the SECTION 3 build (U80-U87 + the serial card's '06, U104) not started
-  (`.git/sdd/PHASE_INT.md`). Rico says when.
+- Why `isa` passed for months before the INT build if `U47` was this
+  marginal (load/ground current on the ALU board? unmeasured), and why
+  100 pF on `U47.11` helped (the race model predicts worse).
+- DMA: off this board by the 2026-09-24 ruling; Rico re-decides before
+  the first PCB (`.git/sdd/PROPOSAL_DMA.md`).
 - The PCB: 4-layer mainboard placed, GND and +5V planes, not routed;
   power supply undecided (`.git/sdd/POWER.md`; draw 1.25-1.34 A).
 
@@ -157,6 +172,8 @@ banks; bank 1 (`U70`/`U71`) is selected by disabling `U28`.
 and commits on CLK low:
 
     register/IR/MAR/ALU loads   NOR(~LOAD, CLK)
+    ALU output latch U47 LE     CLK_ALU = INV(~CLK), U37 inv 5 (a gate, not
+                                raw CLK: see "Rules", 2026-10-06)
     RAM write                   NAND(WRITE_DIR, WR_GATE), WR_GATE = NOR(CLK, ~TO0)
     PC load                     NAND(PC_LOAD, ~CLK)
     PC clear                    NOR(~PC_CLEAR, CLK)
@@ -220,14 +237,16 @@ through two sections of `U56` (`SN7414`), ~90 ms power-on reset; the
 board (2026-09-01). The RESET wire runs clear of CLK and the buses and is
 GND-wrapped (2026-09-06/27). 22 pF on `U103.28` (see OPEN).
 
-**Free gate sections** (netlist 2026-09-29): `U37` inv 5 (MDR board),
-`U36` g4 (PC board, '00), `U69` g2/g3/g4 (SP board, '08), `U56` 5->6 and
+**Free gate sections** (netlist 2026-10-06): `U83` g3/g4 ('00, INT
+board; inputs strapped GND), `U36` g4 (PC board, '00), `U69` g2/g3/g4 (SP board, '08), `U56` 5->6 and
 13->12 ('14, root), `U78` five inverters (peripheral bus), `U61` g3/g4
 ('02, root). `U74` and `U75` are fully used. `U62` g4 and `U56` 3->4 are
-taken by the T0 write gate (`WR_GATE`).
+taken by the T0 write gate (`WR_GATE`). `U37` inv 5 is `CLK_ALU`.
 
 **Clock.** 4 MHz can divided to 1.024 MHz; 500 kHz option for timing
 discrimination. `CLK` = `U27.5`, `RESET` = `U27.9`, both '74 totem-pole.
+Taps: `U20.14` 1.024 MHz, `.13` 512 kHz, `.12` 256 kHz, `.11` 128 kHz;
+**`U20.15` is TC, NOT a tap** (also 128 kHz: hit 2026-10-06).
 STEP-CLOCK (Y1 out, `CLKIN` driven at `U20.2`) has no driver since the rig
 left; a debounced button would restore it.
 
@@ -237,6 +256,15 @@ returns to the prompt). Host side: `docs/notes/dinoload.py` (load, `--go`),
 `docs/notes/serprobe_host.py`, `.git/sdd/tools/mon.py` (commands),
 `listen.py`, `sinstop.py` (RX witness). RAM programs live in `asm/ram/`,
 `.org 0x8100`.
+
+**`PROG_imon`** (`asm/imon.asm`, crc `0xC12B`, banner `DINO IMON`) is the
+same language with input on the 16550 RDA interrupt: every prompt plants
+`JMP isr` at `0x9090`, sets IER = 0x01 and EIs; `isr` puts bytes in a ring
+at `0x80A0-0x80AF` and Ctrl-C (0x03) resets SP and returns to the prompt.
+`putc 0x0345`, `puthex 0x02C4`, `crlf 0x036B`, `puts 0x0376` are pinned to
+the polling monitor's addresses (`test_imon.py`). Reserved: `0x80A0-0x80FF`,
+stack `0x80DF` down. HALT in a G program waits for a key: Ctrl-C returns,
+any other key resumes. `asm/ram/spin.asm` is the Ctrl-C witness.
 
 ## Decisions
 
@@ -268,6 +296,16 @@ returns to the prompt). Host side: `docs/notes/dinoload.py` (load, `--go`),
 Each is a rule because something broke. The narrative behind each is in
 `.git/sdd/MISTAKES_MISSTEPS.md` under its date.
 
+- **No raw CLK on a latch pin at the end of a stub.** A gate output
+  regenerates the edge. `U47`'s LE on raw CLK sat at 1.0-1.2 V for ~20 ns
+  while TMP_A opened on the same edge; the ALU latched half its next
+  answer. Same class as the SP '169s and `R2`. (2026-10-06)
+- **A blip is not a failure.** Run the image that would fail before
+  prescribing copper (the ~FLAGS_OUT gate: intflags passed ungated).
+  (2026-10-06)
+- **An interrupt source the CPU starts is not random relative to it.**
+  THRE after four characters lands in a ~7-clock window; slide it (SW1)
+  before trusting "all boundaries were hit". (2026-10-06, intaddr)
 - **Rails first.** Random, probe-sensitive, program-independent faults:
   DMM GND and VCC of every board against the supply terminal, machine
   running, before any logic model. (2026-09-01: 460 mV of ground.)
