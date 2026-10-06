@@ -36,6 +36,10 @@
 ; page boundaries 0x81..0x89 (every image so far kept its pointer in one
 ; page); JNC on ADD's carry to ripple a 16-bit sum (JNC has only ever
 ; followed SUB/CPI). Everything else is monitor idiom.
+;
+; 2026-10-06: the sum ripples with ACI 0 now, not JNC/INR -- NEEDS THE
+; CARRY MICROCODE (U9 0x4102 U15 0x9BC4 U23 0x8A40). First RAM program on
+; ACI; first ACI whose carry crossed LDA/STA rows to reach it.
 
 PUTHEX:   .equ  0x02C4          ; monitor.asm, `make listing-monitor`
 PUTC:     .equ  0x0345
@@ -71,11 +75,10 @@ loop:     LDB   PTRH
           LDA   S16L
           ADD
           STA   S16L
-          JNC   no_carry
-          LDA   S16H
-          INR
+          LDA   S16H            ; LDA/STA hold the flags: ADD's carry
+          ACI   0x00            ;   is still C here
           STA   S16H
-no_carry: LDB   CUR             ; XR ^= CUR
+          LDB   CUR             ; XR ^= CUR
           LDA   XR
           XOR
           STA   XR

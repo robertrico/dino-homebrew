@@ -95,6 +95,20 @@ def test_streams_itself_back_exactly():
     check(not st.get("halted"), "did not HALT")
 
 
+def test_the_sum_carries_with_aci():
+    """2026-10-06: the 16-bit sum is ADD then ACI 0, no branch -- the first
+    RAM program on the carry microcode (U9 0x4102 U15 0x9BC4 U23 0x8A40).
+    The stream test above is the witness that it carries right: 2K of
+    bytes sums far past 0xFF."""
+    print("ACI")
+    from microcode_gen import OPCODES
+    r = program()
+    src = open(SRC).read()
+    check(" ACI " in src.replace("\t", " "), "the sum uses ACI")
+    check("no_carry" not in src, "the JNC/INR carry branch is gone")
+    check(bytes([OPCODES["ACI"], 0x00]) in bytes(r.code), "ACI 0x00 assembled")
+
+
 def test_parser_names_a_bad_byte():
     print("parser")
     code = bytes(range(64))
