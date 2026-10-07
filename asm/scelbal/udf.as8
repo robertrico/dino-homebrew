@@ -1,0 +1,35 @@
+;;; udf.as8 -- DINO patch to SCELBAL: UDF(x) reaches the hardware.
+;;; 8008 source, as8 dialect, applied by docs/notes/scelbal_ref.source():
+;;; upstream's "UDEFX: HLT" becomes "UDEFX: JMP UDF8" and this is appended.
+;;; The upstream file is never edited.
+;;;
+;;;   UDF(0)    the byte on SW1 (card zero, 0x4000)       INP 0
+;;;   UDF(N)    N = 1..256: N-1 to the OB LEDs; returns N-1   OUT 010
+;;;
+;;; The translator maps INP 0 to LDA 0x4000 and OUT 010 to DINO's OUT.
+;;; Entered by a jump from the function dispatch with x in the FPACC
+;;; (page 001, 123-127); leaves the result there, as CHRX/INTX do.
+
+	ORG 060#000		; past every page SCELBAL uses (057 is the last)
+UDF8:	CAL FPFIX		; FPACC -> 24-bit fixed, LSW at 001 124
+	LHI \HB\OLDPG1
+	LLI 124
+	LAM			; LSW
+	INL
+	ORM			; | NSW: zero only for UDF(0)
+	JTZ UDFRD
+	DCL
+	LAM
+	SUI 001			; N-1 (UDF(256): LSW 0 -> 377)
+	OUT 010
+	JMP UDFRT
+UDFRD:	INP 0
+UDFRT:	LLI 124			; result -> fixed LSW, upper bytes and
+	LMA			; extension cleared, then back to float
+	INL
+	LMI 000
+	INL
+	LMI 000
+	LLI 123
+	LMI 000
+	JMP FPFLT		; FPFLT's RET returns to UDF's caller

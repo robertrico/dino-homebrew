@@ -68,9 +68,19 @@ PHASE_INT SECTION 4 passes at 1.024 MHz: `intmask 0x39`, `inthalt 0x5A`,
 `intcount` one interrupt per loop, `intaddrsw` opcode addresses only,
 `intflags 0x5A` (10/10 at 1.024 MHz and 500 kHz), `intser` echo. One soft
 vector, `0x9090` in RAM: INT pushes PC and jumps there; whoever EIs plants
-`JMP handler`. **`PROG_imon` is in `U24`**: the monitor's language with
-input on the RDA interrupt, a 16-byte ring, Ctrl-C break (SECTION "The
-monitor").
+`JMP handler`. `PROG_imon` is the monitor's language with input on the
+RDA interrupt, a 16-byte ring, Ctrl-C break (SECTION "The monitor").
+
+**FACT — SCELBAL BASIC runs on DINO (2026-10-06).** **`PROG_basic` is in
+`U24`** (crc `0xC34C`): `PROG_imon` verbatim at 0x0000, then SCELBAL
+(8008, 1974) translated by `docs/notes/scelbal_xlate.py` into
+`asm/basic.asm` (GENERATED). `G 0A00` cold, `G 0A03` warm. On silicon:
+HELLO/GOTO loop, LIST, Ctrl-C, `PRINT 2/3` = ` 0.6666667` (the 8008's
+digits), `PRINT PEEK(16384)` = 28. Host: byte-for-byte transcripts
+against the original on `i8008.py` (`test_scelbal_dino.py`, 93% of the
+8008 code executed). U24 is a 28C256 but only 16K is decoded (A14 = M14,
+`~CE` needs M14 = 0); ~700 bytes free. Design, rulings, wishlist:
+`.git/sdd/PHASE_BASIC.md`.
 
 **FACT — the ISA is bench-proven at 1.024 MHz.** `PROG_isa` reads `0xB4`
 (147 subtests), `PROG_isalive` `0xB4` every run, `PROG_isasoak` `0x00` on
@@ -437,6 +447,8 @@ generated. Any stale in-tree reference to a process doc resolves to
 LIVE:
 
     .git/sdd/HANDOFF.md                 bench state and the next action. FIRST
+    .git/sdd/PHASE_BASIC.md             SCELBAL on DINO: translator, rulings,
+                                        UDF/PEEK/POKE, microcode wishlist
     .git/sdd/MISTAKES_MISSTEPS.md       every retraction and wrong model, dated
     .git/sdd/RAM_RET_FETCH.md           the RAM-fetch halt: chase, cause, gate,
                                         witnesses. CLOSED and DRAWN 2026-09-29

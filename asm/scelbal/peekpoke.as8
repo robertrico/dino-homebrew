@@ -1,0 +1,167 @@
+;;; peekpoke.as8 -- DINO patch to SCELBAL: PEEK(a) and POKE a,v.
+;;; 8008 source, as8 dialect. Applied by docs/notes/scelbal_ref.source()
+;;; together with five anchored substitutions in upstream (SUBST there);
+;;; the upstream file is never edited.
+;;;
+;;;   PEEK(a)     the byte at DINO address a (0..65535): PEEK(16384) = SW1
+;;;   POKE a,v    v (0..255) to DINO address a.  "PK" error without a comma
+;;;
+;;; a is a REAL DINO address, not an 8008 one: it bypasses SCELBAL's page
+;;; map, so POKE can overwrite BASIC's own memory -- as POKE always could.
+;;; The translator maps the two pseudo-ports onto DINO memory:
+;;;     INP 1      A <- DINO [D:E]          LDAX through VD:VE
+;;;     OUT 011    DINO [D:E] <- A          STAX through VD:VE
+;;;
+;;; Page 061 holds read-only tables and lives in ROM on DINO (the
+;;; translator maps it there); upstream's own tables stay where they were,
+;;; because IF and NEXT find GOTO and FOR at fixed offsets in page 027.
+
+	ORG 061#000
+;;; FUNCTION table, 8-byte slots (upstream's are 4: no room for PEEK).
+;;; FUNAR1 scans it with LCI 003 (x8) from FUNM8, the table less eight.
+FUNM8:	DATA *8
+	DATA 3
+	DATA "INT"
+	DATA *4
+	DATA 3
+	DATA "SGN"
+	DATA *4
+	DATA 3
+	DATA "ABS"
+	DATA *4
+	DATA 3
+	DATA "SQR"
+	DATA *4
+	DATA 3
+	DATA "TAB"
+	DATA *4
+	DATA 3
+	DATA "RND"
+	DATA *4
+	DATA 3
+	DATA "CHR"
+	DATA *4
+	DATA 3
+	DATA "UDF"
+	DATA *4
+	DATA 4			; token 011
+	DATA "PEEK"
+	DATA *3
+COMMA:	DATA 1			; INSTR's test string for POKE
+	DATA ","
+
+	ORG 061#200
+;;; KEYWORD table: upstream's twelve, two entries that can never match
+;;; (015 and 016 are IMPLIED LET and ARRAY IMPLIED LET), then POKE = 017.
+KEYTB:	DATA 3
+	DATA "REM"
+	DATA 2
+	DATA "IF"
+	DATA 3
+	DATA "LET"
+	DATA 4
+	DATA "GOTO"
+	DATA 5
+	DATA "PRINT"
+	DATA 5
+	DATA "INPUT"
+	DATA 3
+	DATA "FOR"
+	DATA 4
+	DATA "NEXT"
+	DATA 5
+	DATA "GOSUB"
+	DATA 6
+	DATA "RETURN"
+	DATA 3
+	DATA "DIM"
+	DATA 3
+	DATA "END"
+	DATA 1,377		; 015: never matches (377 is rubout, never stored)
+	DATA 1,377		; 016: never matches
+	DATA 4			; 017
+	DATA "POKE"
+	DATA 0
+
+	ORG 062#000
+;;; PEEK: function token 011, x in the FPACC, result back in the FPACC.
+PEEKX:	CAL FPFIX		; address -> fixed: LSW 001 124, NSW 001 125
+	LHI \HB\OLDPG1
+	LLI 124
+	LEM
+	INL
+	LDM
+	INP 1			; A <- DINO [D:E]
+	JMP UDFRT		; udf.as8: A -> FPACC as an integer
+
+;;; Statement dispatch tail: upstream jumped to SYNERR for anything past 016.
+POKCHK:	CPI 017
+	JTZ POKEX
+	JMP SYNERR
+
+;;; POKE a,v
+POKEX:	CAL CLESYM
+	LLI 202			; SCAN pointer: last letter of POKE
+	LHI \HB\OLDPG26
+	LBM
+	INB
+	LLI 276			; EVAL from the first char after POKE
+	LMB
+	LLI \LB\COMMA
+	LHI \HB\COMMA
+	CAL INSTR		; E = the comma's position, 0 if none
+	LAE
+	NDA
+	JTZ POKERR
+	LHI \HB\POKSCR
+	LLI \LB\POKSCR		; comma position
+	LME
+	DCE
+	LHI \HB\OLDPG26
+	LLI 277			; EVAL FINISH = just before the comma
+	LME
+	CAL EVAL
+	CAL FPFIX
+	LHI \HB\OLDPG1		; save the address (LSW, NSW)
+	LLI 124
+	LBM
+	INL
+	LCM
+	LHI \HB\POKSCR
+	LLI \LB\POKADR
+	LMB
+	INL
+	LMC
+	LLI \LB\POKSCR		; EVAL from after the comma to the end of line
+	LBM
+	INB
+	LHI \HB\OLDPG26
+	LLI 276
+	LMB
+	LLI 000
+	LBM
+	LLI 277
+	LMB
+	CAL EVAL
+	CAL FPFIX
+	LHI \HB\OLDPG1
+	LLI 124
+	LBM			; the value
+	LHI \HB\POKSCR
+	LLI \LB\POKADR
+	LEM
+	INL
+	LDM
+	LAB
+	OUT 011			; DINO [D:E] <- A
+	JMP NXTLIN
+POKERR:	LAI 320			; "PK"
+	LCI 313
+	JMP ERROR
+
+	ORG 063#000
+;;; POKE's scratch, a page nothing else touches (RAM on DINO). Upstream
+;;; calls 026 371-377 "not assigned", but variable lookup in EVAL uses
+;;; them: the first cut kept the comma there and POKE 61441+I,5 wrote 0.
+POKSCR:	DATA 000		; comma position
+POKADR:	DATA 000,000		; address LSW, NSW

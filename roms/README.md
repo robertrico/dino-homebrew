@@ -445,6 +445,7 @@ time the DIAG image is reburned — no reason to reburn just for this.
     interpreting the same microcode the machine will run.
 
     IMAGE            CRC16   OB    SOURCE
+    PROG_basic.bin   0xC34C  UNORACLED asm/basic.asm
     PROG_carry.bin   0xCA1F  0xAD  asm/carry.asm
     PROG_hello.bin   0x9C68  0x96  asm/hello.asm
     PROG_imon.bin    0xC12B  UNORACLED asm/imon.asm

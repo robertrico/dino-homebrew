@@ -357,18 +357,29 @@ def _serial_result(st, uart):
     return st
 
 
-def uart_script(data, gap=None):
+ECHO_WAIT_MAX = 3_000_000
+
+
+def uart_script(data, gap=None, echo_paced=False):
     """Card state for a scripted session: `data` is what the host types.
 
     `gap`: the bytes ARRIVE one per `gap` instruction boundaries instead of
     all being waiting at once -- a stand-in for typing or pasting at 9600
     baud, which an interrupt-driven program needs (it would otherwise see
     the whole script in its first handler call). Still no UART time model:
-    a boundary is not a clock."""
+    a boundary is not a clock.
+
+    `echo_paced`: also hold each byte until the PREVIOUS byte's echo has
+    come back -- dinoload's discipline ("one character, its echo, the
+    next") and a careful typist's. A byte that is never echoed (Ctrl-C
+    prints ^C) releases the next after ECHO_WAIT_MAX boundaries. Without it a
+    program busy for longer than 16 gaps overflows imon's ring, which is
+    true of a paste on the bench and not what a correctness test asks."""
     from collections import deque
     u = {"scr": 0x00, "rx": deque(), "tx": bytearray(),
          "lcr": 0x00, "regs": {}, "lsr_run": 0, "pending": deque(),
-         "gap": gap, "since": 0, "quiet": 0}
+         "gap": gap, "since": 0, "quiet": 0,
+         "echo_paced": echo_paced, "tx_mark": 0, "await": None}
     if gap:
         u["pending"].extend(bytes(data))
     else:
@@ -384,9 +395,16 @@ def _uart_tick(uart):
         return
     if uart["pending"]:
         uart["since"] += 1
-        if uart["since"] >= uart["gap"]:
-            uart["rx"].append(uart["pending"].popleft())
+        held = False
+        if uart["echo_paced"] and uart["await"] is not None:
+            echoed = uart["await"] in uart["tx"][uart["tx_mark"]:]
+            held = not echoed and uart["since"] < ECHO_WAIT_MAX
+        if uart["since"] >= uart["gap"] and not held:
+            b = uart["pending"].popleft()
+            uart["rx"].append(b)
             uart["since"] = 0
+            uart["tx_mark"] = len(uart["tx"])
+            uart["await"] = b & 0x7F
     uart["quiet"] += 1
     if (not uart["rx"] and not uart["pending"] and _rda(uart)
             and uart["quiet"] >= IDLE_QUIET_ENDS):
@@ -480,7 +498,8 @@ def io_write(addr, val, uart):
 
 def simulate(program, max_steps=100000, switches=0x00,
              image=None, rom_window=None, serial=True, serial_in=None,
-             irq_at=None, trace=None, serial_gap=None):
+             irq_at=None, trace=None, serial_gap=None, ram_init=None,
+             serial_echo_paced=False):
     """Execute an assembled image by interpreting its microcode rows.
 
     `serial=False` pulls the serial card out of slot 1 -- the phase-E
@@ -503,6 +522,9 @@ def simulate(program, max_steps=100000, switches=0x00,
     `ints` in the result lists the PC pushed by each accepted interrupt --
     the address of the instruction that was NOT fetched.
 
+    `ram_init={addr: byte}` preloads RAM (PHASE_BASIC's per-instruction
+    differential tests); the result always carries `ram`, the final RAM.
+
     `trace=[]` gets one dict per instruction executed, {"pc", "op"}: the
     address its opcode was FETCHED from (None for an injected INT) and its
     name. Timing faults the oracle cannot model are classified from this
@@ -514,7 +536,7 @@ def simulate(program, max_steps=100000, switches=0x00,
     code = assemble(program) if image is None else image
     poison = {i for i, _ in _poison_spans(program)} if program else set()
     window = ROM_WINDOW if rom_window is None else rom_window
-    ram = {}
+    ram = dict(ram_init or {})
     A = B = C = 0
     tmp_a = tmp_b = 0
     pc = 0
@@ -528,7 +550,8 @@ def simulate(program, max_steps=100000, switches=0x00,
     mdr = 0
     out = None
     if serial_in is not None:
-        uart = uart_script(serial_in, serial_gap)   # the scripted session
+        uart = uart_script(serial_in, serial_gap,   # the scripted session
+                           serial_echo_paced)
     else:
         uart = uart_reset() if serial else None   # slot 1 after MR, or empty
     # THE FLAG MODEL. U49 is a '273 with NO clock enable -- it re-clocks every
@@ -690,6 +713,10 @@ def simulate(program, max_steps=100000, switches=0x00,
             # was corrected.
             if val is not None and (src in ("ROM", "RAM") or dst == "RAM"):
                 mdr = val
+                if src != "RAM":
+                    # MDR now holds this byte, not a PUSHF byte: a ROM
+                    # immediate MVI will replay (PHASE_BASIC, 2026-10-06)
+                    mdr_is_flags = None
             elif src == "ALU":
                 cin = None
                 if not (w & CIN_SEL_N):
@@ -827,7 +854,7 @@ def simulate(program, max_steps=100000, switches=0x00,
                     uart["since"] = 0
                     inject = True
                     break
-                st.update(out=out, halted=True, A=A, B=B, C=C,
+                st.update(out=out, halted=True, A=A, B=B, C=C, ram=ram,
                           flag_z=flag_z, flag_c=flag_c,
                           flag_c_defined=flag_c_defined, sp=sp, ie=ie)
                 return _serial_result(st, uart)
@@ -845,7 +872,7 @@ def simulate(program, max_steps=100000, switches=0x00,
                 elif ie and _rx_irq(uart):
                     inject = True
                 break
-    st.update(out=out, halted=False, A=A, B=B, C=C,
+    st.update(out=out, halted=False, A=A, B=B, C=C, ram=ram,
               flag_z=flag_z, flag_c=flag_c,
               flag_c_defined=flag_c_defined, sp=sp, ie=ie)
     return _serial_result(st, uart)
