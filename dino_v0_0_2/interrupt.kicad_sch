@@ -11338,7 +11338,7 @@
 		(dnp no)
 		(fields_autoplaced yes)
 		(uuid "7ec00217-0485-4ea7-924f-a7a4a72bf033")
-		(property "Reference" "#PWR158"
+		(property "Reference" "#PWR253"
 			(at 166.37 22.86 0)
 			(hide yes)
 			(show_name no)
@@ -11398,7 +11398,7 @@
 		(instances
 			(project "dino_v0_0_2"
 				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541/1863a028-8776-49b5-9e5f-9ccae3bb73a6"
-					(reference "#PWR158")
+					(reference "#PWR253")
 					(unit 1)
 				)
 			)

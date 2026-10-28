@@ -176,8 +176,10 @@ pins good (2026-09-29). An alternative form, `AND(WRITE_DIR, TO0)` on
   PROPOSAL_DMA D6). The edge keeps `~{DMARQ}`/`~{DMAAK}`/`RDY`; the core
   does not honour `RDY`. The floppy card owns its timing (16 us/byte at
   1.44M, 32 us at 720K).
-- The PCB: 4-layer mainboard placed, GND and +5V planes, not routed;
-  power supply undecided (`.git/sdd/POWER.md`; draw 1.25-1.34 A).
+- The PCB: 4-layer mainboard placed, GND and +5V planes, not routed.
+  Power is an old ATX tower supply into `J9` (ATX-24, Mini-Fit Jr), Rico
+  2026-10-28 (`.git/sdd/POWER.md` SECTION 8; draw 1.25-1.34 A). Open: the
+  unit's make and 5V rating, group regulation (TASK 2), the board fuse.
 
 ## Architecture, netlist-extracted
 
