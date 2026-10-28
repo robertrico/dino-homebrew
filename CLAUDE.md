@@ -172,8 +172,10 @@ pins good (2026-09-29). An alternative form, `AND(WRITE_DIR, TO0)` on
 - Why `isa` passed for months before the INT build if `U47` was this
   marginal (load/ground current on the ALU board? unmeasured), and why
   100 pF on `U47.11` helped (the race model predicts worse).
-- DMA: off this board by the 2026-09-24 ruling; Rico re-decides before
-  the first PCB (`.git/sdd/PROPOSAL_DMA.md`).
+- Rev A: `RDY` (edge pin 22) needs its pull-up drawn (Rico, 2026-10-28;
+  PROPOSAL_DMA D6). The edge keeps `~{DMARQ}`/`~{DMAAK}`/`RDY`; the core
+  does not honour `RDY`. The floppy card owns its timing (16 us/byte at
+  1.44M, 32 us at 720K).
 - The PCB: 4-layer mainboard placed, GND and +5V planes, not routed;
   power supply undecided (`.git/sdd/POWER.md`; draw 1.25-1.34 A).
 
@@ -250,7 +252,7 @@ M11-M13), RAM 0x8000-0xFFFF (`U26`). Card 0 = the DIP switch at 0x4000
 (`dino_io/`'s `U76` '138 -- not the ALU board's `U76` '157). Card 1 = the serial card at 0x4800 (`U101` '138, `U102`
 '245, `U103` PC16550D, `dino_serial/`), 9600 8N1, 3.6864 MHz can,
 `~IO_WR` from `U75.6` to `U103.18`. Cards see `M0-M15` as an input only;
-no DMA, by construction and by ruling (2026-09-24).
+nothing but the CPU drives it: no DMA on DINO (Rico, 2026-10-28).
 
 **Analog parts of the design.** `R2` 100R series in the SP board's CLK
 branch (without it the '169s double-clock). `C1` 10 uF / `R1` 10k reset RC
@@ -314,6 +316,8 @@ any other key resumes. `asm/ram/spin.asm` is the Ctrl-C witness.
 - 2026-09-24: DMA stays off this board, Rev A included; interrupts go on.
 - 2026-09-29: mistakes and retractions live in
   `.git/sdd/MISTAKES_MISSTEPS.md`, not here.
+- 2026-10-28: no DMA on DINO; DMA goes to DINO 2.0 (16-bit, probably a
+  real CPU). Next: PCB, then CF and a floppy hack (PROPOSAL_DMA header).
 
 ## Rules derived from specific failures
 

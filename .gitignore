@@ -68,3 +68,6 @@ docs/superpowers/
 
 # Claude Code local state (settings, worktrees) -- never tracked.
 .claude/
+
+# bench photos and the as-built map: local only (Rico, 2026-10-28)
+docs/layout/
