@@ -194,7 +194,7 @@ pins good (2026-09-29). An alternative form, `AND(WRITE_DIR, TO0)` on
   RESET 0.3/0.6, PWR 1.0, PWR_IN 2.0. Placement by an annealing script,
   routing by Freerouting 2.5.0 on JDK 25. 2.1.0 headless cannot finish
   this board: it never joins two neighbouring pins on one net. Scripts are
-  in `.git/sdd/pcbwork/tools/`. PCBWay quote $219.54 for 5. Not ordered.
+  in `.git/sdd/pcbwork/tools/`.
   Copper per clock net: CLK_B 162 mm, CLK 296, ~{CLK} 283, CLK_ALU 48,
   CLK_R 177, CLK_INT 183; `test_pcb_envelope.py` passes 7/7. Test points
   (Keystone 5005-5009): 15 GND loops, TP1-TP5 and TP7-TP16, every IC but
@@ -203,7 +203,7 @@ pins good (2026-09-29). An alternative form, `AND(WRITE_DIR, TO0)` on
   `dino_v0_0_2/fabrication/dino_rev_1_0_gerbers_20261029_1153.zip`. CLK and
   RESET runs reviewed net by net 2026-10-29 (`docs/captures/rev1_0/`); the
   reset RC node's 301 mm run to SW2 passes 50 mm beside M7 and is left as
-  is (10 uF at U56.11 swamps the coupling; Rico). Ordering from PCBWay. Power is an old ATX tower supply into
+  is (10 uF at U56.11 swamps the coupling; Rico). Ordered from PCBWay, 5 boards; their audit passed 2026-10-29. Power is an old ATX tower supply into
   `J9` (`.git/sdd/POWER.md` SECTION 8; draw 1.25-1.34 A); open: the unit's
   make and 5V rating, group regulation (TASK 2).
 
