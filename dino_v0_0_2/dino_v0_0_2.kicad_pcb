@@ -517,7 +517,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U4"
-			(at 3.48 20.16 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "04ece681-eaeb-4b97-883f-844f8bf19fc9")
 			(effects
@@ -1096,7 +1096,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U3"
-			(at 3.65 20.06 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "24ce4400-c369-47e5-bfb3-3c9a005f32cb")
 			(effects
@@ -1495,13 +1495,13 @@
 		(descr "PLACEHOLDER 2x25 0.1in card-edge socket, THT. Replace with the chosen part.")
 		(tags "DINO bus card edge 2.54mm")
 		(property "Reference" "J5"
-			(at 0 -3 0)
+			(at -33.48 0 90)
 			(layer "F.SilkS")
 			(uuid "4d63d2f5-5ebc-4290-8a05-94073722b143")
 			(effects
 				(font
-					(size 1 1)
-					(thickness 0.15)
+					(size 1.2 1.2)
+					(thickness 0.18)
 				)
 			)
 		)
@@ -2134,7 +2134,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U20"
-			(at 1.54 -2.33 270)
+			(at 3.81 8.89 0)
 			(layer "F.SilkS")
 			(uuid "4f0a248d-9a36-4a93-b853-da87531cf64c")
 			(effects
@@ -2533,7 +2533,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U77"
-			(at 1.375 -2.33 270)
+			(at 3.81 8.89 0)
 			(layer "F.SilkS")
 			(uuid "91e7b3f0-b834-4682-a511-8244f5f9747b")
 			(effects
@@ -2932,7 +2932,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U16"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "6297d0e2-a818-4099-83ac-25e002373f7c")
 			(effects
@@ -3555,7 +3555,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U75"
-			(at 1.375 -2.33 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "3de1c073-51a7-4308-b272-37db1229b159")
 			(effects
@@ -6769,7 +6769,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U76"
-			(at 3.81 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "d097541f-236b-484c-ba37-37e235dab1bf")
 			(effects
@@ -7894,7 +7894,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U10"
-			(at 4.16 17.71 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "fc69ca15-eea1-495e-8e7f-72ed8809306e")
 			(effects
@@ -8273,7 +8273,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U14"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "206c4c38-a249-4b86-b086-40915316a8ba")
 			(effects
@@ -8716,7 +8716,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U63"
-			(at 1.375 -2.33 90)
+			(at 3.81 8.89 0)
 			(layer "F.SilkS")
 			(uuid "1516c70d-4b85-439a-b6e1-1f318ac27618")
 			(effects
@@ -9295,7 +9295,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U7"
-			(at 1.7 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "868cd83d-4912-45aa-9738-c4bfaa8793b1")
 			(effects
@@ -9694,7 +9694,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U27"
-			(at 1.375 -2.33 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "cdcaaf52-5617-41e5-8b75-8dd6199ebeb4")
 			(effects
@@ -10077,7 +10077,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U84"
-			(at 3.81 -2.33 90)
+			(at 3.81 7.62 0)
 			(layer "F.SilkS")
 			(uuid "f0dbf287-894f-4625-89e5-98528ab430cc")
 			(effects
@@ -11377,7 +11377,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U17"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "96d6bb25-ca28-4aa7-ab58-a878076766f9")
 			(effects
@@ -11820,7 +11820,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U46"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "f85c12a2-99f3-44e1-bf36-f7024ba04c26")
 			(effects
@@ -12263,7 +12263,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U41"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "31847e71-22fa-48b7-95a1-0584cdc40282")
 			(effects
@@ -12706,7 +12706,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U44"
-			(at 3.48 25.45 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "7e031e7b-db7f-4337-9da7-56b8e68f1edf")
 			(effects
@@ -13700,7 +13700,7 @@
 		(descr "28-lead though-hole mounted DIP package, row spacing 15.24mm (600 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 15.24mm 600mil")
 		(property "Reference" "U24"
-			(at 7.62 -2.33 0)
+			(at 7.62 16.51 90)
 			(layer "F.SilkS")
 			(uuid "d8d5713a-0fd0-4045-ac86-e243098bb1aa")
 			(effects
@@ -14230,7 +14230,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U59"
-			(at 1.375 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "2fce7f9d-50b0-469c-ba97-ce21aff9e562")
 			(effects
@@ -14673,7 +14673,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U67"
-			(at 1.7 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "e219f7a2-af81-43df-acd9-86e5e4beb3e7")
 			(effects
@@ -15296,13 +15296,13 @@
 		(descr "PLACEHOLDER 2x25 0.1in card-edge socket, THT. Replace with the chosen part.")
 		(tags "DINO bus card edge 2.54mm")
 		(property "Reference" "J4"
-			(at 0 -3 0)
+			(at -33.48 0 90)
 			(layer "F.SilkS")
 			(uuid "44f5e52d-1d54-46d1-8703-d23389e6650e")
 			(effects
 				(font
-					(size 1 1)
-					(thickness 0.15)
+					(size 1.2 1.2)
+					(thickness 0.18)
 				)
 			)
 		)
@@ -15935,7 +15935,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U31"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "1c7dbf68-95de-431e-b2b3-2303ec4af331")
 			(effects
@@ -16378,7 +16378,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U29"
-			(at 1.375 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "f7bf583d-b253-44a5-ae92-688723c9182e")
 			(effects
@@ -16957,7 +16957,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U55"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "d97afb15-80fb-43d8-8886-9faf7a103faf")
 			(effects
@@ -17962,7 +17962,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U53"
-			(at 3.81 -2.33 270)
+			(at 3.81 7.62 0)
 			(layer "F.SilkS")
 			(uuid "63c2022c-c75f-4530-b257-66012977143e")
 			(effects
@@ -18701,7 +18701,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U60"
-			(at 3.81 -2.33 270)
+			(at 3.81 7.62 0)
 			(layer "F.SilkS")
 			(uuid "b329428a-63bb-42b6-aa8e-0ac6bc792223")
 			(effects
@@ -20489,7 +20489,7 @@
 		(descr "28-lead though-hole mounted DIP package, row spacing 15.24mm (600 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 15.24mm 600mil")
 		(property "Reference" "U9"
-			(at 7.62 -2.33 0)
+			(at 7.62 16.51 90)
 			(layer "F.SilkS")
 			(uuid "2ad34013-a2f0-45d0-bc89-8bd6d734179e")
 			(effects
@@ -21570,7 +21570,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U83"
-			(at 3.81 -2.33 90)
+			(at 3.81 7.62 0)
 			(layer "F.SilkS")
 			(uuid "dec7e9b4-a1af-4984-b53f-f68a9f695a01")
 			(effects
@@ -21955,7 +21955,7 @@
 		(descr "28-lead though-hole mounted DIP package, row spacing 15.24mm (600 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 15.24mm 600mil")
 		(property "Reference" "U26"
-			(at 7.62 -2.33 0)
+			(at 7.62 16.51 90)
 			(layer "F.SilkS")
 			(uuid "97a8831b-6386-41cc-8ef3-edd70c62cdcf")
 			(effects
@@ -22485,7 +22485,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U73"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "9212f8c4-daee-4550-b413-49857c61c96e")
 			(effects
@@ -22928,13 +22928,13 @@
 		(descr "PLACEHOLDER 2x25 0.1in card-edge socket, THT. Replace with the chosen part.")
 		(tags "DINO bus card edge 2.54mm")
 		(property "Reference" "J6"
-			(at 0 -3 0)
+			(at -33.48 0 90)
 			(layer "F.SilkS")
 			(uuid "af14dbf0-ea6c-4b6d-8c17-72839a0da58a")
 			(effects
 				(font
-					(size 1 1)
-					(thickness 0.15)
+					(size 1.2 1.2)
+					(thickness 0.18)
 				)
 			)
 		)
@@ -24107,7 +24107,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U33"
-			(at 1.7 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "15aca823-2ef1-45c3-99a8-3d509182604c")
 			(effects
@@ -25090,7 +25090,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U51"
-			(at 3.81 -2.33 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "ab26e021-599d-459f-8351-035316092944")
 			(effects
@@ -26009,7 +26009,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U34"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "ab54f90a-856e-4528-aa0c-baa7b5de075c")
 			(effects
@@ -26452,7 +26452,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U5"
-			(at 1.54 -2.33 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "cb2b06db-9958-4359-b8b7-98245a683760")
 			(effects
@@ -26831,7 +26831,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U81"
-			(at 3.81 -2.33 90)
+			(at 3.81 7.62 0)
 			(layer "F.SilkS")
 			(uuid "bb1db0e7-672e-4779-bbca-30a14df9e6bf")
 			(effects
@@ -27396,13 +27396,13 @@
 		(descr "PLACEHOLDER 2x25 0.1in card-edge socket, THT. Replace with the chosen part.")
 		(tags "DINO bus card edge 2.54mm")
 		(property "Reference" "J1"
-			(at 0 -3 0)
+			(at -33.48 0 90)
 			(layer "F.SilkS")
 			(uuid "8f14d09f-3339-4e59-9fc9-c5d7385bd55a")
 			(effects
 				(font
-					(size 1 1)
-					(thickness 0.15)
+					(size 1.2 1.2)
+					(thickness 0.18)
 				)
 			)
 		)
@@ -28035,13 +28035,13 @@
 		(descr "PLACEHOLDER 2x25 0.1in card-edge socket, THT. Replace with the chosen part.")
 		(tags "DINO bus card edge 2.54mm")
 		(property "Reference" "J8"
-			(at 0 -3 0)
+			(at -33.48 0 90)
 			(layer "F.SilkS")
 			(uuid "3108ae70-7495-4fb7-834e-82b113bd7154")
 			(effects
 				(font
-					(size 1 1)
-					(thickness 0.15)
+					(size 1.2 1.2)
+					(thickness 0.18)
 				)
 			)
 		)
@@ -28854,7 +28854,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U25"
-			(at 1.7 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "caa30485-7650-49a7-8da1-6b51f9621c6b")
 			(effects
@@ -29297,7 +29297,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U52"
-			(at 3.81 -2.33 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "f1f23a95-6ef9-4a96-8c6e-cbaa631420a9")
 			(effects
@@ -30036,7 +30036,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U39"
-			(at 1.375 -2.33 270)
+			(at 3.81 7.62 0)
 			(layer "F.SilkS")
 			(uuid "677cbd6c-88d7-4c0c-b946-0d39a7d9f29e")
 			(effects
@@ -30415,7 +30415,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U72"
-			(at 1.54 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "d40e2dae-7880-4470-b03b-e4e27b0d5aa4")
 			(effects
@@ -31409,7 +31409,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U49"
-			(at 1.54 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "8c9b8f6f-0f62-4232-9dab-63838907e1f5")
 			(effects
@@ -32212,7 +32212,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U87"
-			(at 3.81 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "e2aee29d-c48c-49fe-a5c5-45601d2a537a")
 			(effects
@@ -34899,7 +34899,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U61"
-			(at 1.375 -2.33 270)
+			(at 3.81 7.62 0)
 			(layer "F.SilkS")
 			(uuid "ec9d8d7f-815f-4951-90e7-f2fa09b326eb")
 			(effects
@@ -35715,7 +35715,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U68"
-			(at 1.375 -2.33 270)
+			(at 3.81 11.43 0)
 			(layer "F.SilkS")
 			(uuid "6864bebb-8f07-4d9d-bfa9-289d770c33b2")
 			(effects
@@ -36338,7 +36338,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U78"
-			(at 3.81 -2.33 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "9d433c1a-c28c-4d63-bb4a-6987fc26e7e4")
 			(effects
@@ -36905,7 +36905,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U54"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "3f99c033-acf8-4768-8b06-f898e509e1ef")
 			(effects
@@ -37348,7 +37348,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U38"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "88f5f093-bfcb-404a-adc5-c7938532fb6d")
 			(effects
@@ -38511,7 +38511,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U18"
-			(at 1.7 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "050615c5-7500-49a1-9e3b-c465ebf84166")
 			(effects
@@ -38954,7 +38954,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U12"
-			(at 1.54 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "403a5abf-2e5b-4060-acec-a9bc919425cd")
 			(effects
@@ -39397,7 +39397,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U11"
-			(at 1.54 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "93508503-6415-4ffa-90e5-51dc4feb09f8")
 			(effects
@@ -40020,7 +40020,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U66"
-			(at 1.7 -2.33 270)
+			(at 3.81 8.89 0)
 			(layer "F.SilkS")
 			(uuid "d169c141-fbcc-448d-8644-6f533ea7c217")
 			(effects
@@ -40419,7 +40419,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U74"
-			(at 3.81 -2.33 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "cae15931-42fd-4875-afd0-4b3d2b705d39")
 			(effects
@@ -41349,7 +41349,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U8"
-			(at 1.7 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "72dfa9ee-08a7-4425-97b4-3c561c01a7b2")
 			(effects
@@ -41748,7 +41748,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U40"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "7a46c795-06ec-4ea5-80cd-71d86d22105d")
 			(effects
@@ -42371,7 +42371,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U35"
-			(at 1.7 -2.33 90)
+			(at 3.81 11.43 0)
 			(layer "F.SilkS")
 			(uuid "6da20908-7f40-42a5-b5dc-0f42bd3bda23")
 			(effects
@@ -43354,7 +43354,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U13"
-			(at 1.54 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "222a2b11-9eae-413d-ae46-49657ff5d2f6")
 			(effects
@@ -43797,7 +43797,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U21"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "ba71debd-a51a-4ba9-a71e-3429b109d6a8")
 			(effects
@@ -44240,7 +44240,7 @@
 		(descr "28-lead though-hole mounted DIP package, row spacing 15.24mm (600 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 15.24mm 600mil")
 		(property "Reference" "U23"
-			(at 7.62 -2.33 0)
+			(at 7.62 16.51 90)
 			(layer "F.SilkS")
 			(uuid "3e48e3bb-ba7a-4e7d-b6e5-c317cf8e36cf")
 			(effects
@@ -44770,13 +44770,13 @@
 		(descr "PLACEHOLDER 2x25 0.1in card-edge socket, THT. Replace with the chosen part.")
 		(tags "DINO bus card edge 2.54mm")
 		(property "Reference" "J3"
-			(at 0 -3 0)
+			(at -33.48 0 90)
 			(layer "F.SilkS")
 			(uuid "8313e2ef-5afc-4ae1-98c5-a891770c6b55")
 			(effects
 				(font
-					(size 1 1)
-					(thickness 0.15)
+					(size 1.2 1.2)
+					(thickness 0.18)
 				)
 			)
 		)
@@ -45589,7 +45589,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U2"
-			(at 1.54 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "56099819-fd27-4c4b-8618-c1a1f4c1cecf")
 			(effects
@@ -45988,7 +45988,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U6"
-			(at 1.375 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "9fdd6598-2ba0-4978-a8e5-22481d145cfa")
 			(effects
@@ -46567,7 +46567,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U47"
-			(at 1.54 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "3561e316-09fc-498b-803d-35b98aeadf3c")
 			(effects
@@ -47010,7 +47010,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U62"
-			(at 1.375 -2.33 270)
+			(at 3.81 7.62 0)
 			(layer "F.SilkS")
 			(uuid "e77ad73a-0570-4ed8-87bd-60e7c1dd2fd7")
 			(effects
@@ -47749,7 +47749,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U71"
-			(at 3.81 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "0e2c0999-9e68-4796-af18-0dde4b153615")
 			(effects
@@ -48148,7 +48148,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U32"
-			(at 1.54 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "5824948a-6c0e-45d2-812d-74926d8e595a")
 			(effects
@@ -48951,7 +48951,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U80"
-			(at 3.81 -2.33 180)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "35535789-6d70-4aac-b3b0-5b4d7a33b120")
 			(effects
@@ -49340,7 +49340,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U69"
-			(at 1.7 -2.33 90)
+			(at 3.81 7.62 0)
 			(layer "F.SilkS")
 			(uuid "aab5de44-6379-4e97-921a-12900a66777d")
 			(effects
@@ -49899,7 +49899,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U30"
-			(at 3.81 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "8d4a77c9-adab-4c40-ab1b-3d97c056e221")
 			(effects
@@ -50838,7 +50838,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U19"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "f9db2648-69b7-496e-9a4d-8100841f80a0")
 			(effects
@@ -51281,7 +51281,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U57"
-			(at 4.04 17.54 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "376051eb-8408-4dd9-90e0-268f6660eaef")
 			(effects
@@ -51660,7 +51660,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U22"
-			(at 3.81 -2.33 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "9a60466c-97de-49db-8c9d-2d802c9bdc36")
 			(effects
@@ -52399,7 +52399,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U85"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "a8840d70-349c-484d-95ce-a012e311c34c")
 			(effects
@@ -52848,7 +52848,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U56"
-			(at 1.7 -2.33 90)
+			(at 3.81 7.62 0)
 			(layer "F.SilkS")
 			(uuid "491ab9b6-baf7-4a5a-b580-c2dd326978ee")
 			(effects
@@ -53235,7 +53235,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U48"
-			(at 1.54 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "414c668f-6c06-45f7-9335-e33123a53090")
 			(effects
@@ -54359,7 +54359,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U42"
-			(at 1.54 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "b0aad097-f72b-4d45-8948-347b10f96639")
 			(effects
@@ -54802,7 +54802,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U82"
-			(at 3.81 -2.33 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "0e3d15b4-40a6-454c-a170-611418ea1882")
 			(effects
@@ -55187,7 +55187,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U37"
-			(at 3.81 -2.33 90)
+			(at 3.81 7.62 0)
 			(layer "F.SilkS")
 			(uuid "5d883545-18f3-41e1-b6b9-443ef2a6aeae")
 			(effects
@@ -55574,7 +55574,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U86"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "1c57dd2b-7344-4906-bb91-2bb7fd1ad8f1")
 			(effects
@@ -56934,7 +56934,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U70"
-			(at 3.81 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "801c5259-f882-4917-92a9-54d2d921e8ae")
 			(effects
@@ -58040,13 +58040,13 @@
 		(descr "PLACEHOLDER 2x25 0.1in card-edge socket, THT. Replace with the chosen part.")
 		(tags "DINO bus card edge 2.54mm")
 		(property "Reference" "J7"
-			(at 0 -3 0)
+			(at -33.48 0 90)
 			(layer "F.SilkS")
 			(uuid "f84d202f-5b48-4e02-80f5-267259fe6945")
 			(effects
 				(font
-					(size 1 1)
-					(thickness 0.15)
+					(size 1.2 1.2)
+					(thickness 0.18)
 				)
 			)
 		)
@@ -58679,7 +58679,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U64"
-			(at 1.7 -2.33 180)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "280ec50c-148a-4462-b243-8a4dc1c498dd")
 			(effects
@@ -59078,13 +59078,13 @@
 		(descr "PLACEHOLDER 2x25 0.1in card-edge socket, THT. Replace with the chosen part.")
 		(tags "DINO bus card edge 2.54mm")
 		(property "Reference" "J2"
-			(at 0 -3 0)
+			(at -33.48 0 90)
 			(layer "F.SilkS")
 			(uuid "a250ce8e-b154-45ba-afd9-f6edc8ebb58f")
 			(effects
 				(font
-					(size 1 1)
-					(thickness 0.15)
+					(size 1.2 1.2)
+					(thickness 0.18)
 				)
 			)
 		)
@@ -59717,7 +59717,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U58"
-			(at 1.375 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "52f6483c-3c0f-4c0b-b2e3-fce32ab275b6")
 			(effects
@@ -60401,7 +60401,7 @@
 		(descr "28-lead though-hole mounted DIP package, row spacing 15.24mm (600 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 15.24mm 600mil")
 		(property "Reference" "U15"
-			(at 7.62 -2.33 0)
+			(at 7.62 16.51 90)
 			(layer "F.SilkS")
 			(uuid "2efbdeee-5513-442d-a052-5385d35b6fa1")
 			(effects
@@ -60931,7 +60931,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U1"
-			(at 1.54 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "a5f99c13-dab5-4ab0-b75f-6d94d449a2fb")
 			(effects
@@ -62083,7 +62083,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U50"
-			(at 3.81 -2.33 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "da47c7b8-b33b-4633-83af-566b6293d206")
 			(effects
@@ -63002,7 +63002,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U65"
-			(at 1.7 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "297ae6a6-6449-4ab1-96b4-f52416383d47")
 			(effects
@@ -64763,7 +64763,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U43"
-			(at 1.7 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "ac98d34d-7563-40c2-bf76-e8e7482491e4")
 			(effects
@@ -65397,7 +65397,7 @@
 		(descr "16-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U28"
-			(at 1.54 -2.33 0)
+			(at 3.81 8.89 90)
 			(layer "F.SilkS")
 			(uuid "84db0f2c-0d8a-4762-bd7c-07926305b31e")
 			(effects
@@ -65796,7 +65796,7 @@
 		(descr "20-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U45"
-			(at 3.81 -2.33 0)
+			(at 3.81 11.43 90)
 			(layer "F.SilkS")
 			(uuid "2a66aaec-4ed9-4b88-9785-fc87dc848bfb")
 			(effects
@@ -66239,7 +66239,7 @@
 		(descr "14-lead though-hole mounted DIP package, row spacing 7.62mm (300 mils)")
 		(tags "THT DIP DIL PDIP 2.54mm 7.62mm 300mil")
 		(property "Reference" "U36"
-			(at 3.81 -2.33 0)
+			(at 3.81 7.62 90)
 			(layer "F.SilkS")
 			(uuid "390350a9-9949-4332-b05e-4328f452cd92")
 			(effects
