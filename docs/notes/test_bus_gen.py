@@ -147,6 +147,21 @@ class TestLibrary(unittest.TestCase):
         self.assertGreaterEqual(x1 - x0, 70.10)
         self.assertIn("EBC25DCWN", src)
         self.assertNotIn("PLACEHOLDER", src)
+        # the socket is unkeyed and a reversed card shorts +5V: silk outline
+        # plus a pin-1 mark outside the outline at pin 1's end (Rico 2026-10-29)
+        silk = [n for n in tree if isinstance(n, list) and str(n[0]).startswith("fp_")
+                and child(n, "layer") and child(n, "layer")[1] == "F.SilkS"]
+        rects = [n for n in silk if n[0] == "fp_rect"]
+        self.assertEqual(len(rects), 1)
+        sx0 = float(child(rects[0], "start")[1])
+        sy0 = float(child(rects[0], "start")[2])
+        self.assertLess(sx0, at("1")[0] - 1.7)                        # outline clears pin 1
+        marks = [n for n in silk if n[0] == "fp_poly"]
+        self.assertEqual(len(marks), 1)
+        xs = [float(p[1]) for p in children(child(marks[0], "pts"), "xy")]
+        ys = [float(p[2]) for p in children(child(marks[0], "pts"), "xy")]
+        self.assertLess(max(ys), sy0)                                 # above the outline...
+        self.assertLess(abs(sum(xs) / len(xs) - at("1")[0]), 1.5)    # ...over pin 1
         # Rico's Sullins STEP (inch, Y up, top of insulator at y=0): stood up
         # about X and lifted by the insulator height so it sits on the board.
         model = child(tree, "model")

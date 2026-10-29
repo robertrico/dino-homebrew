@@ -2130,6 +2130,13 @@
 		)
 		(uuid "18331319-b1ff-44c8-96c1-ffa385ac4c7c")
 	)
+	(wire
+		(pts
+			(xy 119.38 86.36)
+			(xy 127 86.36)
+		)
+		(uuid "783c08b2-c177-4b23-9c1c-fa17e6553953")
+	)
 	(text "MODULE CONTRACT — generated, do not hand-edit (kicad_contracts.py --stamp)\nOUT: +12V, +3.3V, -12V -> Peripheral Bus"
 		(at 15.24 121.25 0)
 		(effects
@@ -2149,16 +2156,6 @@
 			(justify left bottom)
 		)
 		(uuid "cae92ae9-d965-405c-8fa2-5c3a3fed4a02")
-	)
-	(label "+5V_IN"
-		(at 116.84 86.36 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
-		(uuid "39e72be6-7b04-4873-a195-2974ed43fc70")
 	)
 	(symbol
 		(lib_id "Connector:ATX-24")
@@ -2854,66 +2851,6 @@
 		)
 	)
 	(symbol
-		(lib_id "Device:Fuse")
-		(at 123.19 86.36 90)
-		(unit 1)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "bdd00abf-4604-44c7-8e4a-1d5a8276493e")
-		(property "Reference" "F1"
-			(at 121.92 81.28 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "3A slow"
-			(at 123.19 88.9 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" "Fuse:Fuseholder_Cylinder-5x20mm_Schurter_0031_8201_Horizontal_Open"
-			(at 123.19 86.36 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 123.19 86.36 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Fuse"
-			(at 123.19 86.36 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(instances
-			(project "dino_v0_0_2"
-				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541/10bea0ab-627a-4d28-8ace-426d08390de5"
-					(reference "F1")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
 		(lib_id "Device:C_Polarized")
 		(at 157.48 88.9 0)
 		(unit 1)
@@ -2992,7 +2929,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "10µF"
+		(property "Value" "10µF ceramic"
 			(at 170.815 91.44 0)
 			(effects
 				(font
@@ -3001,7 +2938,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Capacitor_THT:CP_Radial_D5.0mm_P2.00mm"
+		(property "Footprint" "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm"
 			(at 170.18 88.9 0)
 			(hide yes)
 			(effects
@@ -3154,67 +3091,6 @@
 			(project "dino_v0_0_2"
 				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541/10bea0ab-627a-4d28-8ace-426d08390de5"
 					(reference "#PWR255")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
-		(lib_id "power:PWR_FLAG")
-		(at 170.18 85.09 0)
-		(unit 1)
-		(in_bom yes)
-		(on_board yes)
-		(dnp no)
-		(uuid "3581c827-d4ba-4204-abd6-039016916b04")
-		(property "Reference" "#FLG01"
-			(at 170.18 83.185 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Value" "PWR_FLAG"
-			(at 170.18 81.28 0)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Footprint" ""
-			(at 170.18 85.09 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 170.18 85.09 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Special symbol for telling ERC where power comes from"
-			(at 170.18 85.09 0)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(instances
-			(project "dino_v0_0_2"
-				(path "/e43166a5-d972-471d-b3cf-9f4f12c7f541/10bea0ab-627a-4d28-8ace-426d08390de5"
-					(reference "#FLG01")
 					(unit 1)
 				)
 			)

@@ -230,6 +230,13 @@ def socket_footprint():
     out += _fp_rect(name, "F.CrtYd", -SOCKET_BODY / 2 - 0.25, -6, SOCKET_BODY / 2 + 0.25, 6, 0.05)
     out += _fp_rect(name, "F.Fab", -SOCKET_BODY / 2, -SOCKET_WIDTH / 2,
                     SOCKET_BODY / 2, SOCKET_WIDTH / 2, 0.1)
+    # unkeyed socket, and a reversed card shorts +5V: outline plus a pin-1 arrow
+    sx, sy = SOCKET_BODY / 2 + 0.15, SOCKET_WIDTH / 2 + 0.15
+    out += _fp_rect(name, "F.SilkS", -sx, -sy, sx, sy, 0.15)
+    p1 = -w / 2 + PITCH / 2
+    out += (f"\t(fp_poly\n\t\t(pts\n\t\t\t(xy {p1 - 0.8:g} {-sy - 1.5:g}) (xy {p1 + 0.8:g} {-sy - 1.5:g}) "
+            f"(xy {p1:g} {-sy - 0.4:g})\n\t\t)\n\t\t(stroke\n\t\t\t(width 0.15)\n\t\t\t(type solid)\n\t\t)\n"
+            f'\t\t(fill yes)\n\t\t(layer "F.SilkS")\n\t\t(uuid "{uid(name, "pin1")}")\n\t)\n')
     for pin in range(1, 51):
         col = (pin - 1) % 25
         x = -w / 2 + PITCH / 2 + col * PITCH

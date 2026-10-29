@@ -171,27 +171,37 @@ pins good (2026-09-29). An alternative form, `AND(WRITE_DIR, TO0)` on
   (`HANDOFF_HALT.md`); first suspects if anything analog returns.
 - Why `isa` passed for months before the INT build if `U47` was this
   marginal (load/ground current on the ALU board? unmeasured), and why
-  100 pF on `U47.11` helped (the race model predicts worse).
-- Rev A: `RDY` (edge pin 22) needs its pull-up drawn (Rico, 2026-10-28;
+  100 pF on `U47.11` helped (the race model predicts worse). No cap is on
+  `U47` now (Rico, 2026-10-29); the only pF-level cap on the machine is
+  the serial card's 22 pF on `U103.28`.
+- Rev 1.0: `RDY` (edge pin 22) has its pull-up, `R33` 10k (Rico, 2026-10-28;
   PROPOSAL_DMA D6). The edge keeps `~{DMARQ}`/`~{DMAAK}`/`RDY`; the core
   does not honour `RDY`. The floppy card owns its timing (16 us/byte at
   1.44M, 32 us at 720K).
-- The PCB (Rev A): 299 x 270 mm, 4 layers, with the S4 fab-gate parts in
+- The PCB (Rev 1.0): 299 x 270 mm, 4 layers, with the S4 fab-gate parts in
   (JP3/J13 CLKIN, R34 on CLK_B, Sullins EBC25DCWN sockets) and CLK_B on
-  edge pin 1, the row end (was 17; Rico 2026-10-29). Placed and
-  routed, KiCad DRC 0 unconnected / 0 errors, schematic parity 0, silk
-  and text warnings only (2026-10-29, uncommitted). Signals on F.Cu/B.Cu;
+  edge pin 1, the row end (was 17; Rico 2026-10-29). Pre-order batch
+  (2026-10-29, uncommitted): no fuse (F1 removed, J9's +5V solid to the
+  plane), clock-select header J14 at U27.3 (taps + debounced STEP on
+  SW3/R35/C93 into U56 5->6), LA header J15 (16 signals + 16 GND), OB LED
+  power J16, DNP cap pads C94/C95/C96 on CLK at U6.2 / CLK_ALU at U47.11 /
+  CW15 at U61.5, bulk C97-C100 100 uF, U6 moved beside U27, C1/R1 beside
+  U56, thermal gap 0.3 mm, minimum track 0.2 mm. Placed and routed,
+  KiCad DRC 0 unconnected / 0 errors, schematic parity 0, silk and text
+  warnings only. Signals on F.Cu/B.Cu;
   In1.Cu GND and In2.Cu +5V are solid planes, one piece each. Five
   grounded M3 holes H1-H5. Netclasses: Default 0.2/0.15 mm, CLK 0.3/0.4,
   RESET 0.3/0.6, PWR 1.0, PWR_IN 2.0. Placement by an annealing script,
   routing by Freerouting 2.5.0 on JDK 25. 2.1.0 headless cannot finish
   this board: it never joins two neighbouring pins on one net. Scripts are
   in `.git/sdd/pcbwork/tools/`. PCBWay quote $219.54 for 5. Not ordered.
-  Copper per clock net: CLK_B 164 mm, CLK 329, ~{CLK} 290, CLK_ALU 45;
-  `test_pcb_envelope.py` passes 7/7. Fab zip
-  `dino_v0_0_2/fabrication/dino_rev_a_gerbers_20261029_0756.zip`. Open
-  before ordering: review CLK/RESET/+5V_IN runs, check the F1 holder
-  footprint against the part bought. Power is an old ATX tower supply into
+  Copper per clock net: CLK_B 162 mm, CLK 296, ~{CLK} 283, CLK_ALU 48,
+  CLK_R 177, CLK_INT 183; `test_pcb_envelope.py` passes 7/7. Test points
+  (Keystone 5005-5009): 15 GND loops, TP1-TP5 and TP7-TP16, every IC but
+  two within 50 mm of one (U59, U4 at 52), for a short scope ground lead;
+  TP6 +5V. Fab zip
+  `dino_v0_0_2/fabrication/dino_rev_1_0_gerbers_20261029_1153.zip`. Open
+  before ordering: review the CLK/RESET runs by eye. Power is an old ATX tower supply into
   `J9` (`.git/sdd/POWER.md` SECTION 8; draw 1.25-1.34 A); open: the unit's
   make and 5V rating, group regulation (TASK 2).
 
@@ -227,7 +237,7 @@ because MAR/registers are transparent while CLK is low. The machine is
 fully static; the clock can stop.
 
 **Buses.** `MDR0-7` is the internal bus; `W` is the ALU/destination side;
-`U25` bridges them, `DIR = NAND(~ALU_OUT, ~SW_OUT)`. Whenever any source is
+`U25` bridges them, `DIR = NAND(~ALU_OUT, ~IO_RD)` (`U39.8`). Whenever any source is
 active the bridge is on and both buses carry the byte: MAR and IR latch
 from W, registers from MDR. Every bank-1 source lands on MDR. MDR sources:
 ROM `U19`, RAM `U21`, REG A/B/C `U41-43`, SP `U67`/`U68`, PC `U72`/`U73`,
@@ -278,19 +288,23 @@ board (2026-09-01). The RESET wire runs clear of CLK and the buses and is
 GND-wrapped (2026-09-06/27). 22 pF on `U103.28` (see OPEN).
 
 **Free gate sections** (netlist 2026-10-06): `U83` g3/g4 ('00, INT
-board; inputs strapped GND), `U36` g4 (PC board, '00), `U69` g2/g3/g4 (SP board, '08), `U56` 5->6 and
-13->12 ('14, root), `U78` five inverters (peripheral bus), `U61` g3/g4
-('02, root). `U74` and `U75` are fully used. `U62` g4 and `U56` 3->4 are
+board; inputs strapped GND), `U36` g4 (PC board, '00), `U69` g2/g3/g4 (SP board, '08), `U56`
+13->12 ('14, root; 5->6 is the Rev 1.0 STEP debounce), `U78` five inverters (peripheral bus), `U61` g3/g4
+('02, root), `U5` g4 ('08), `U10` g4 ('02), `U50` g3 ('02); netlist
+2026-10-29. `U74` and `U75` are fully used. `U62` g4 and `U56` 3->4 are
 taken by the T0 write gate (`WR_GATE`). `U37` inv 5 is `CLK_ALU`.
 `U76` b/c/d ('157, ALU board) are grounded and hostage to `CW16`'s select,
 like `U77` b/c/d to `CW21`: not a spare-gate resource.
 
-**Clock.** 4 MHz can divided to 1.024 MHz; 500 kHz option for timing
-discrimination. `CLK` = `U27.5`, `RESET` = `U27.9`, both '74 totem-pole.
+**Clock.** 4.096 MHz can divided to 1.024 MHz; on the breadboard a jumper
+at `U27.3` picks a slower tap (500 kHz for timing discrimination). Rev 1.0
+has it as `J14`: 1-2 1.024 MHz, 3-4 512 kHz, 5-6 256 kHz, 7-8 128 kHz,
+9-10 STEP (one press of `SW3` = one CLK edge). `CLK` = `U27.5`, `RESET` = `U27.9`, both '74 totem-pole.
 Taps: `U20.14` 1.024 MHz, `.13` 512 kHz, `.12` 256 kHz, `.11` 128 kHz;
 **`U20.15` is TC, NOT a tap** (also 128 kHz: hit 2026-10-06).
-STEP-CLOCK (Y1 out, `CLKIN` driven at `U20.2`) has no driver since the rig
-left; a debounced button would restore it.
+On the breadboard STEP-CLOCK has no driver since the rig left; Rev 1.0 has
+`SW3` debounced through `U56` 5->6 onto `J14` pin 9, and `J13`/`JP3` 2-3
+take an external clock at `U20.2`.
 
 **The monitor** (`asm/monitor.asm`, `PROG_monitor.bin`): `D addr`,
 `W addr,val`, `O addr`, `L addr,len` + hex, `G addr` (a CALL, so a RET
@@ -329,7 +343,7 @@ any other key resumes. `asm/ram/spin.asm` is the Ctrl-C witness.
 - 2026-09-08: the breadboard phase is over; one mainboard (now 4-layer),
   the phase E slots as its only connectors, power designed and measured
   first; S-100 style cards rejected.
-- 2026-09-24: DMA stays off this board, Rev A included; interrupts go on.
+- 2026-09-24: DMA stays off this board, Rev 1.0 included; interrupts go on.
 - 2026-09-29: mistakes and retractions live in
   `.git/sdd/MISTAKES_MISSTEPS.md`, not here.
 - 2026-10-28: no DMA on DINO; DMA goes to DINO 2.0 (16-bit, probably a

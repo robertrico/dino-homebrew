@@ -10147,7 +10147,7 @@
 				)
 			)
 		)
-		(property "Value" "7400"
+		(property "Value" "DM7400N"
 			(at 39.3617 115.57 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10263,7 +10263,7 @@
 				)
 			)
 		)
-		(property "Value" "7400"
+		(property "Value" "DM7400N"
 			(at 39.3617 99.06 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10379,7 +10379,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "7400"
+		(property "Value" "DM7400N"
 			(at 156.972 83.058 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11046,7 +11046,7 @@
 				)
 			)
 		)
-		(property "Value" "7400"
+		(property "Value" "DM7400N"
 			(at 88.8917 115.57 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11400,7 +11400,7 @@
 				)
 			)
 		)
-		(property "Value" "7400"
+		(property "Value" "DM7400N"
 			(at 39.3617 81.28 0)
 			(show_name no)
 			(do_not_autoplace no)

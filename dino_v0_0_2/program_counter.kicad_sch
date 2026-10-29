@@ -8686,7 +8686,7 @@
 				)
 			)
 		)
-		(property "Value" "7400"
+		(property "Value" "74LS00"
 			(at 52.0617 21.59 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -9473,7 +9473,7 @@
 				)
 			)
 		)
-		(property "Value" "7400"
+		(property "Value" "74LS00"
 			(at 102.8617 181.61 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -10233,7 +10233,7 @@
 				)
 			)
 		)
-		(property "Value" "7400"
+		(property "Value" "74LS00"
 			(at 33.0117 19.05 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11062,7 +11062,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "7400"
+		(property "Value" "74LS00"
 			(at 218.44 128.2699 0)
 			(show_name no)
 			(do_not_autoplace no)
@@ -11380,7 +11380,7 @@
 				)
 			)
 		)
-		(property "Value" "7400"
+		(property "Value" "74LS00"
 			(at 99.0517 17.78 0)
 			(show_name no)
 			(do_not_autoplace no)
