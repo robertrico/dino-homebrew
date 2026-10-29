@@ -48,9 +48,11 @@ import power_sheet_gen as psg  # noqa: E402
 
 # --- SECTION 1: the 50-pin edge -----------------------------------------------
 # (pin, name, kind)  kind: signal | power | reserved | spare
+# CLK_B on pin 1, the row end: from mid-row pin 17 a slot-to-slot run had to
+# go round the other row (0.84 mm between pads < CLK's 0.3 + 2 x 0.4 mm).
 _FRONT = [
-    "GND", "+5V", "~{IO_SEL}", "~{IO_RD_Q}", "~{IO_WR}", "RESET_B", "GND",
-    "W0", "W1", "W2", "W3", "W4", "W5", "W6", "W7", "GND", "CLK_B",
+    "CLK_B", "+5V", "~{IO_SEL}", "~{IO_RD_Q}", "~{IO_WR}", "RESET_B", "GND",
+    "W0", "W1", "W2", "W3", "W4", "W5", "W6", "W7", "GND", "GND",
     "~{IRQ}", "~{NMI}", "~{DMARQ}", "~{DMAAK}", "RDY", "spare", "spare", "+5V",
 ]
 _BACK = ["GND", "+5V"] + [f"M{i}" for i in range(16)] + \

@@ -72,10 +72,9 @@ class TestTable(unittest.TestCase):
 
     def test_grounds_bracket_both_buses(self):
         by = {p: n for p, n, _ in bg.BUS}
-        self.assertEqual({p for p, n, _ in bg.BUS if n == "GND"}, {1, 7, 16, 26, 44, 50})
+        self.assertEqual({p for p, n, _ in bg.BUS if n == "GND"}, {7, 16, 17, 26, 44, 50})
         self.assertEqual((by[7], by[8], by[15], by[16]), ("GND", "W0", "W7", "GND"))
         self.assertEqual((by[26], by[28], by[43], by[44]), ("GND", "M0", "M15", "GND"))
-        self.assertEqual((by[1], by[26]), ("GND", "GND"))   # the one true opposite pair
 
     def test_signal_names_are_spelled_as_the_core_spells_them(self):
         core = set()
@@ -88,7 +87,11 @@ class TestTable(unittest.TestCase):
     def test_the_agreed_pins(self):
         by = {p: n for p, n, _ in bg.BUS}
         self.assertEqual(by[3], "~{IO_SEL}")
-        self.assertEqual(by[17], "CLK_B")
+        # CLK_B at the row end (Rico 2026-10-29): mid-row pin 17 forced every
+        # slot-to-slot hop round the other row's end at CLK clearance (~510 mm);
+        # pin 1 runs straight down the slot column, +5V beside, GND across.
+        self.assertEqual((by[1], by[2], by[26]), ("CLK_B", "+5V", "GND"))
+        self.assertEqual(by[17], "GND")
         self.assertEqual([by[p] for p in range(8, 16)], [f"W{i}" for i in range(8)])
         self.assertEqual([by[p] for p in range(28, 44)], [f"M{i}" for i in range(16)])
         self.assertEqual((by[45], by[46], by[47], by[48]), ("+12V", "-12V", "spare", "+3.3V"))
@@ -207,8 +210,12 @@ class TestSplit(unittest.TestCase):
                 self.assertTrue({(f"J{i}", str(p)) for i in range(1, 9)} <= net[0], n)
 
     def test_clk_b_is_one_gate_off_the_inverted_clock(self):
-        pins = [s for s in self.core_after.values() if ("U78", "2") in s][0]
-        self.assertIn(("J1", "17"), pins)
+        # U78.2 -> R34 (100R series, S4.2) -> CLK_B on every slot's pin 1
+        out = [s for s in self.core_after.values() if ("U78", "2") in s][0]
+        self.assertIn(("R34", "1"), out)
+        clk_b = [s for s in self.core_after.values() if ("R34", "2") in s][0]
+        self.assertEqual({p for r, p in clk_b if r.startswith("J")}, {"1"})
+        self.assertEqual({r for r, p in clk_b if r.startswith("J")}, {"J%d" % i for i in range(1, 9)})
         src = [s for s in self.core_after.values() if ("U78", "1") in s][0]
         self.assertIn(("U27", "6"), src)          # ~{CLK}
 

@@ -81,7 +81,7 @@
 			(pin passive line
 				(at -12.7 30.48 0)
 				(length 2.54)
-				(name "GND"
+				(name "CLK_B"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -369,7 +369,7 @@
 			(pin passive line
 				(at -12.7 -10.16 0)
 				(length 2.54)
-				(name "CLK_B"
+				(name "GND"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -1057,10 +1057,10 @@
 			)
 		)
 		(symbol "DINO_BUS_EDGE_1_1"
-			(pin power_out line
+			(pin output line
 				(at -12.7 30.48 0)
 				(length 2.54)
-				(name "GND"
+				(name "CLK_B"
 					(effects
 						(font
 							(size 1.27 1.27)
@@ -1165,7 +1165,7 @@
 					)
 				)
 			)
-			(pin passive line
+			(pin power_out line
 				(at -12.7 15.24 0)
 				(length 2.54)
 				(name "GND"
@@ -1345,10 +1345,10 @@
 					)
 				)
 			)
-			(pin output line
+			(pin passive line
 				(at -12.7 -10.16 0)
 				(length 2.54)
-				(name "CLK_B"
+				(name "GND"
 					(effects
 						(font
 							(size 1.27 1.27)

@@ -176,13 +176,21 @@ pins good (2026-09-29). An alternative form, `AND(WRITE_DIR, TO0)` on
   PROPOSAL_DMA D6). The edge keeps `~{DMARQ}`/`~{DMAAK}`/`RDY`; the core
   does not honour `RDY`. The floppy card owns its timing (16 us/byte at
   1.44M, 32 us at 720K).
-- The PCB (Rev A): 299 x 270 mm, 4 layers, placed and routed, KiCad DRC
-  0 unconnected / 0 errors / 0 warnings, schematic parity 0 (2026-10-28,
-  `cd224ea`). Signals on F.Cu/B.Cu; In1.Cu GND and In2.Cu +5V are solid
-  planes, one piece each. Five grounded M3 holes H1-H5. Placement by an
-  annealing script, routing by Freerouting 2.1.0 (scripts in
-  `.git/sdd/pcbwork/tools/`). PCBWay quote $219.54 for 5. Not ordered.
-  Open before ordering: review CLK/RESET/+5V_IN runs, check the F1 holder
+- The PCB (Rev A): 299 x 270 mm, 4 layers, with the S4 fab-gate parts in
+  (JP3/J13 CLKIN, R34 on CLK_B, Sullins EBC25DCWN sockets) and CLK_B on
+  edge pin 1, the row end (was 17; Rico 2026-10-29). Placed and
+  routed, KiCad DRC 0 unconnected / 0 errors, schematic parity 0, silk
+  and text warnings only (2026-10-29, uncommitted). Signals on F.Cu/B.Cu;
+  In1.Cu GND and In2.Cu +5V are solid planes, one piece each. Five
+  grounded M3 holes H1-H5. Netclasses: Default 0.2/0.15 mm, CLK 0.3/0.4,
+  RESET 0.3/0.6, PWR 1.0, PWR_IN 2.0. Placement by an annealing script,
+  routing by Freerouting 2.5.0 on JDK 25. 2.1.0 headless cannot finish
+  this board: it never joins two neighbouring pins on one net. Scripts are
+  in `.git/sdd/pcbwork/tools/`. PCBWay quote $219.54 for 5. Not ordered.
+  Copper per clock net: CLK_B 164 mm, CLK 329, ~{CLK} 290, CLK_ALU 45;
+  `test_pcb_envelope.py` passes 7/7. Fab zip
+  `dino_v0_0_2/fabrication/dino_rev_a_gerbers_20261029_0756.zip`. Open
+  before ordering: review CLK/RESET/+5V_IN runs, check the F1 holder
   footprint against the part bought. Power is an old ATX tower supply into
   `J9` (`.git/sdd/POWER.md` SECTION 8; draw 1.25-1.34 A); open: the unit's
   make and 5V rating, group regulation (TASK 2).

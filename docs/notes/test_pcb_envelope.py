@@ -8,10 +8,11 @@ spec in `.git/sdd/PCB_LAYOUT.md` SECTION 2/4 depends on.
 
 Geometry, FACT from the dino_bus footprints (2026-09-12):
 
-    EdgeSocket_2x25   67.5 mm long, origin centre, pads x +/-30.48
+    EdgeSocket_2x25   Sullins EBC25DCWN, insulator 70.10 mm long, origin
+                      centre, pads x +/-30.48 (courtyard +/-35.30)
     EdgeFingers_2x25  card is 103.5 mm wide (Edge.Cuts +/-51.75)
 
-so a seated card overhangs its socket by 18 mm at EACH end. The outboard
+so a seated card overhangs its socket by about 16.5 mm at EACH end. The outboard
 end hangs past the board edge in free air; the INBOARD end sweeps a strip
 of the mainboard. Apple II / 5150 rule (Rico, 2026-09-12): the card body
 emerges ~10 mm above the board at the socket's top face and passes over
@@ -31,7 +32,7 @@ PCB = os.path.join(HERE, "..", "..", "dino_v0_0_2", "dino_v0_0_2.kicad_pcb")
 SLOT_PITCH = 20.32          # Rico, 2026-09-12: 0.8 in (ISA); was 0.7 in until the hand layout
 SLOT_TOL = 0.02
 CARD_HALF = 51.75           # EdgeFingers Edge.Cuts half-width
-SOCKET_HALF = 33.75         # EdgeSocket courtyard half-length
+SOCKET_HALF = 35.30         # EdgeSocket courtyard half-length (Sullins C = 70.10 + 0.25)
 CARD_ZONE_HALF_Y = 9.0      # card + its parts, either side of the slot line
 STRIP_Y_MARGIN = 6.0        # socket courtyard half-height
 
@@ -86,6 +87,50 @@ def load_segments(path=PCB):
         net = name if name is not None else names.get(num, num)
         segs.append((net, ((float(x2) - float(x1)) ** 2 + (float(y2) - float(y1)) ** 2) ** 0.5))
     return segs
+
+
+def load_tracks(path=PCB):
+    """[(net, layer, x1, y1, x2, y2, width)] for every track segment."""
+    with open(path) as fh:
+        txt = fh.read()
+    out = []
+    for blk in re.findall(r"\(segment\n(.*?)\(uuid", txt, re.S):
+        st = re.search(r"\(start ([-\d.]+) ([-\d.]+)\)", blk)
+        en = re.search(r"\(end ([-\d.]+) ([-\d.]+)\)", blk)
+        w = re.search(r"\(width ([\d.]+)\)", blk)
+        lay = re.search(r'\(layer "([^"]+)"\)', blk)
+        net = re.search(r'\(net "([^"]*)"\)', blk)
+        if st and en and w and lay and net:
+            out.append((net.group(1), lay.group(1), float(st.group(1)), float(st.group(2)),
+                        float(en.group(1)), float(en.group(2)), float(w.group(1))))
+    return out
+
+
+RESET_NETS = ("RESET", "~{RESET}", "RESET_B")
+AGGRESSORS = re.compile(r"^(CLK|~\{CLK\}|CLK_B|CLK_ALU|M\d+|W\d+|MDR\d+)$")
+COUPLE_GAP = 0.6      # mm edge to edge (PCB_REV_A_HOOKS S4.3; RESET class clearance 0.6)
+COUPLE_RUN = 5.0      # mm of parallel run allowed ("a few mm")
+
+
+def parallel_run(a, b):
+    """Overlap length of two segments that are parallel and within COUPLE_GAP."""
+    import math
+    ax, ay, bx, by = a[2], a[3], a[4], a[5]
+    cx, cy, dx, dy = b[2], b[3], b[4], b[5]
+    ux, uy = bx - ax, by - ay
+    L = math.hypot(ux, uy)
+    if L == 0 or math.hypot(dx - cx, dy - cy) == 0:
+        return 0.0
+    ux, uy = ux / L, uy / L
+    vx, vy = (dx - cx), (dy - cy)
+    vL = math.hypot(vx, vy)
+    if abs(ux * vy / vL - uy * vx / vL) > 0.09:          # more than ~5 degrees apart
+        return 0.0
+    dist = abs((cx - ax) * uy - (cy - ay) * ux) - (a[6] + b[6]) / 2
+    if dist >= COUPLE_GAP:
+        return 0.0
+    t1, t2 = sorted(((cx - ax) * ux + (cy - ay) * uy, (dx - ax) * ux + (dy - ay) * uy))
+    return max(0.0, min(L, t2) - max(0.0, t1))
 
 
 def board_right(path=PCB):
@@ -149,6 +194,21 @@ class Envelope(unittest.TestCase):
                     bad.append(f["ref"])
                     break
         self.assertEqual(bad, [], f"tall parts under a card: {bad}")
+
+    def test_reset_not_parallel_to_clk_or_bus(self):
+        """S4.3: RESET never runs beside a clock or a bus (the 09-06 wire)."""
+        trk = load_tracks()
+        if not trk:
+            self.skipTest("board has no tracks yet")
+        victims = [t for t in trk if t[0] in RESET_NETS]
+        aggr = [t for t in trk if AGGRESSORS.match(t[0])]
+        runs = {}
+        for v in victims:
+            for g in aggr:
+                if v[1] == g[1]:
+                    runs[(v[0], g[0])] = runs.get((v[0], g[0]), 0.0) + parallel_run(v, g)
+        bad = {k: round(r, 1) for k, r in runs.items() if r > COUPLE_RUN}
+        self.assertEqual(bad, {}, f"RESET coupled runs over {COUPLE_RUN} mm: {bad}")
 
     def test_clk_branch_length(self):
         segs = load_segments()
