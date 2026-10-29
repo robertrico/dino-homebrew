@@ -121,6 +121,36 @@ class TestLibrary(unittest.TestCase):
             self.assertTrue(any(child(n, "layer") and child(n, "layer")[1] == "F.CrtYd"
                                 for n in tree if isinstance(n, list) and str(n[0]).startswith("fp_")))
 
+    def test_socket_matches_sullins_ebc25dcwn(self):
+        # Sullins catalog p.54-55 (.100 HP DS WW RA CE): 2x25, .100 pitch,
+        # .200 row to row; CW tail fits min hole .035 (0.89), CS fits .040
+        # (1.02): drill 1.1 takes either. Insulator C = 70.10 mm (no ears).
+        path = os.path.join(self.tmp, "dino_bus", "dino_bus.pretty",
+                            "EdgeSocket_2x25_P2.54mm_THT.kicad_mod")
+        with open(path) as f:
+            src = f.read()
+        tree = parse(tokenize(src))
+        pads = {p[1]: p for p in children(tree, "pad")}
+        at = lambda n: tuple(float(v) for v in child(pads[n], "at")[1:3])
+        self.assertAlmostEqual(at("26")[1] - at("1")[1], 5.08)        # row to row
+        self.assertAlmostEqual(at("2")[0] - at("1")[0], 2.54)         # pitch
+        self.assertEqual(at("1")[0], at("26")[0])                     # n opposite n+25
+        for p in pads.values():
+            self.assertAlmostEqual(float(child(p, "drill")[1]), 1.1)
+            self.assertAlmostEqual(float(child(p, "size")[1]), 1.7)
+        crt = [n for n in tree if isinstance(n, list) and n[0] == "fp_rect"
+               and child(n, "layer")[1] == "F.CrtYd"][0]
+        x0, x1 = float(child(crt, "start")[1]), float(child(crt, "end")[1])
+        self.assertGreaterEqual(x1 - x0, 70.10)
+        self.assertIn("EBC25DCWN", src)
+        self.assertNotIn("PLACEHOLDER", src)
+        # Rico's Sullins STEP (inch, Y up, top of insulator at y=0): stood up
+        # about X and lifted by the insulator height so it sits on the board.
+        model = child(tree, "model")
+        self.assertTrue(model and model[1].endswith("dino_bus.3dshapes/EBC25DCWN_color.step"))
+        self.assertEqual([float(v) for v in child(child(model, "offset"), "xyz")[1:]], [0.0, 0.0, 15.49])
+        self.assertEqual([float(v) for v in child(child(model, "rotate"), "xyz")[1:]], [-90.0, 0.0, 0.0])
+
 
 @unittest.skipUnless(HAVE_KICAD, "KiCad 10 not installed")
 class TestSplit(unittest.TestCase):

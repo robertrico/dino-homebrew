@@ -207,24 +207,38 @@ def fingers_footprint():
     return out + "\t(embedded_fonts no)\n)\n"
 
 
+SOCKET_BODY = 70.10        # Sullins insulator length C, 25/50 positions, no ears
+SOCKET_WIDTH = 9.40        # Sullins insulator width .370
+SOCKET_DRILL = 1.1         # CW tail fits min .035 (0.89), CS fits min .040 (1.02)
+SOCKET_PAD = 1.7
+SOCKET_MODEL = "${KIPRJMOD}/../dino_bus/dino_bus.3dshapes/EBC25DCWN_color.step"  # step_color.py: blue PBT, gold contacts
+SOCKET_MODEL_LIFT = 15.49  # STEP top of insulator at y=0, Y up: KiCad rotate X -90 maps it to +Z, lift by the height
+
+
 def socket_footprint():
-    """PLACEHOLDER: two rows of 25 THT pads, 0.1in pitch, rows 5.08mm apart.
-    Real edge sockets stagger or space their rows by part; replace when the
-    part is chosen (PERIPHERAL_BUS.md OPEN 2). Courtyard is the pad field
-    plus a generous body."""
+    """Sullins EBC25DCWN (or EBC25DCSN): 2x25 female card edge, .100 pitch,
+    .200 row to row, dip solder, no mounting ears, for a .062 card. Sullins
+    catalog p.54-55 (.100 HP DS WW RA CE). Pin n opposite pin n+25, which is
+    where the card's fingers put them; Sullins' own odd/even numbering is
+    not used. Courtyard is the insulator plus 0.25 mm."""
     name = FP_SOCKET
     w = 25 * PITCH
-    out = _fp_head(name, "PLACEHOLDER 2x25 0.1in card-edge socket, THT. Replace with the chosen part.", "through_hole")
-    out += _fp_rect(name, "F.CrtYd", -w / 2 - 2, -6, w / 2 + 2, 6, 0.05)
-    out += _fp_rect(name, "F.Fab", -w / 2 - 1.5, -5.5, w / 2 + 1.5, 5.5, 0.1)
+    out = _fp_head(name, "Sullins EBC25DCWN (or EBC25DCSN) 2x25 0.1in female card edge, "
+                         ".200 row spacing, dip solder, no ears, .062 card.", "through_hole")
+    out += _fp_rect(name, "F.CrtYd", -SOCKET_BODY / 2 - 0.25, -6, SOCKET_BODY / 2 + 0.25, 6, 0.05)
+    out += _fp_rect(name, "F.Fab", -SOCKET_BODY / 2, -SOCKET_WIDTH / 2,
+                    SOCKET_BODY / 2, SOCKET_WIDTH / 2, 0.1)
     for pin in range(1, 51):
         col = (pin - 1) % 25
         x = -w / 2 + PITCH / 2 + col * PITCH
         y = -2.54 if pin <= 25 else 2.54
         shape = "rect" if pin == 1 else "circle"
-        out += (f'\t(pad "{pin}" thru_hole {shape}\n\t\t(at {x:.3f} {y:g})\n\t\t(size 1.6 1.6)\n'
-                f'\t\t(drill 0.9)\n\t\t(layers "*.Cu" "*.Mask")\n\t\t(remove_unused_layers no)\n'
+        out += (f'\t(pad "{pin}" thru_hole {shape}\n\t\t(at {x:.3f} {y:g})\n'
+                f'\t\t(size {SOCKET_PAD} {SOCKET_PAD})\n'
+                f'\t\t(drill {SOCKET_DRILL})\n\t\t(layers "*.Cu" "*.Mask")\n\t\t(remove_unused_layers no)\n'
                 f"\t\t(uuid \"{uid(name, 'pad', pin)}\")\n\t)\n")
+    out += (f'\t(model "{SOCKET_MODEL}"\n\t\t(offset\n\t\t\t(xyz 0 0 {SOCKET_MODEL_LIFT})\n\t\t)\n'
+            "\t\t(scale\n\t\t\t(xyz 1 1 1)\n\t\t)\n\t\t(rotate\n\t\t\t(xyz -90 0 0)\n\t\t)\n\t)\n")
     return out + "\t(embedded_fonts no)\n)\n"
 
 
