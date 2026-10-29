@@ -16,7 +16,7 @@ over a 16550 serial card, and SCELBAL BASIC running on it.
 <td><b>The prototype</b> (2026-09-10). Every module on breadboards, wired
 by hand, running at 1.024 MHz.</td>
 <td><b>Rev 1.0</b> (2026-10-29). The same netlist on one 4-layer board,
-299 x 270 mm, eight card slots. Ordered.</td>
+299 x 270 mm, eight card slots. Through fab review.</td>
 </tr>
 </table>
 
@@ -40,7 +40,7 @@ crystal, executes from ROM and RAM, takes interrupts, and talks over serial.
 - **SCELBAL BASIC** (the 1974 8008 BASIC), machine-translated into DINO
   assembly, runs out of ROM: `PRINT 2/3` gives ` 0.6666667`.
 
-**Rev 1.0, the PCB.** Five boards ordered from PCBWay, through their audit.
+**Rev 1.0, the PCB.** Five boards through PCBWay's audit; the order goes in once shipping is settled.
 4 layers (GND and +5V planes inside), KiCad DRC 0 unconnected / 0 errors,
 schematic parity 0. Routed by Freerouting 2.5.0. Added for bring-up: a clock
 select header (1.024 MHz, 512k, 256k, 128k, or a debounced single-step
