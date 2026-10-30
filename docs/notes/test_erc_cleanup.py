@@ -51,15 +51,23 @@ KICAD_CLI = "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
 HAVE_KICAD = os.path.exists(KICAD_CLI)
 
 
-def copy_project(dst):
+def copy_project(top):
+    """The project into top/dino_v0_0_2, with ../dino_bus beside it as the
+    lib tables expect (${KIPRJMOD}/../dino_bus). Returns the project dir."""
+    dst = os.path.join(top, "dino_v0_0_2")
+    os.mkdir(dst)
     for f in fg.sheets(PROJ) + [os.path.join(PROJ, "dino_v0_0_2.kicad_pro"),
                                 os.path.join(PROJ, "fp-lib-table"),
                                 os.path.join(PROJ, "sym-lib-table")]:
         shutil.copy(f, dst)
-    shutil.copytree(os.path.join(PROJ, "74F382PC"), os.path.join(dst, "74F382PC"))
+    for d in ("74F382PC", "dino.pretty"):
+        shutil.copytree(os.path.join(PROJ, d), os.path.join(dst, d))
+    os.symlink(os.path.abspath(os.path.join(PROJ, "..", "dino_bus")),
+               os.path.join(top, "dino_bus"))
     lib = os.path.join(PROJ, ec.LIB_FILE)
     if os.path.exists(lib):
         shutil.copy(lib, dst)
+    return dst
 
 
 def erc(proj, extra=()):
@@ -114,6 +122,35 @@ class TestKey(unittest.TestCase):
                          "pin_to_pin|1000000|1000000|A|B|/M|/M|/P")
 
 
+class TestWrite(unittest.TestCase):
+    def test_write_merges_and_never_drops_an_existing_exclusion(self):
+        # 2026-10-30: write_exclusions REPLACED the list, so a re-run that
+        # only sees the still-visible warnings wiped every working key.
+        # KiCad 10 stores entries as [key, comment]; both shapes count.
+        d = tempfile.mkdtemp()
+        pro = os.path.join(d, "dino_v0_0_2.kicad_pro")
+        with open(pro, "w") as f:
+            json.dump({"erc": {"erc_exclusions": [["old|1", ""], "older|2"]}}, f)
+        ec.write_exclusions(d, ["new|3", "old|1"])
+        with open(pro) as f:
+            keys = json.load(f)["erc"]["erc_exclusions"]
+        self.assertEqual(keys, [["old|1", ""], "older|2", "new|3"])
+        shutil.rmtree(d)
+
+
+class TestAliasMarker(unittest.TestCase):
+    def test_alias_pair_is_excluded_at_either_label(self):
+        # KiCad puts the multiple_net_names marker on either label of the
+        # pair, run to run (three identical runs: 0, 0, 4 left). Both keys.
+        a = {"pos": {"x": 1.0, "y": 1.0}, "uuid": "A", "description": "Global Label 'CW15'"}
+        b = {"pos": {"x": 2.0, "y": 3.0}, "uuid": "B", "description": "Global Label 'HALT'"}
+        rep = {"sheets": [{"uuid_path": "/S", "violations": [
+            {"type": "multiple_net_names", "items": [a, b]}]}]}
+        self.assertEqual(sorted(ec.exclusions(rep)), sorted([
+            "multiple_net_names|2000000|3000000|A|B|/S|/S|/S",
+            "multiple_net_names|1000000|1000000|B|A|/S|/S|/S"]))
+
+
 class TestAppend(unittest.TestCase):
     def test_append_merges_new_keys_and_keeps_existing_ones_once(self):
         d = tempfile.mkdtemp()
@@ -133,22 +170,43 @@ class TestAppend(unittest.TestCase):
         added_again = ec.append_report(d, rp)
         with open(pro) as f:
             keys = json.load(f)["erc"]["erc_exclusions"]
-        self.assertEqual(added, 1)
+        self.assertEqual(added, 2)          # the alias pair, at either label
         self.assertEqual(added_again, 0)
         self.assertEqual(keys, ["old|1|2|A|B|/S|/S|/S",
-                                "multiple_net_names|2000000|3000000|A|B|/S|/S|/S"])
+                                "multiple_net_names|2000000|3000000|A|B|/S|/S|/S",
+                                "multiple_net_names|1000000|1000000|B|A|/S|/S|/S"])
         shutil.rmtree(d)
 
 
 class TestLibrary(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.mkdtemp()
-        copy_project(self.tmp)
+        self.top = tempfile.mkdtemp()
+        self.tmp = copy_project(self.top)
 
     def tearDown(self):
-        shutil.rmtree(self.tmp)
+        shutil.rmtree(self.top)
+
+    def test_the_project_carries_no_orphan_and_the_library_holds_each(self):
+        # the 2026-09-12 move is done: the checked-in sheets name only the
+        # project library, and it holds every former orphan
+        with open(os.path.join(PROJ, ec.LIB_FILE)) as fh:
+            lib = fh.read()
+        for lib_id in ec.ORPHANS:
+            name = lib_id.split(":")[1]
+            self.assertIn(f'(symbol "{name}"', lib, name)
+            for f in fg.sheets(PROJ):
+                with open(f) as fh:
+                    self.assertNotIn(f'"{lib_id}"', fh.read(), (f, lib_id))
 
     def test_orphan_symbols_move_into_a_project_library_unchanged(self):
+        # replays the move on a copy whose sheets still embed the orphans
+        for f in fg.sheets(self.tmp):
+            with open(f) as fh:
+                src = fh.read()
+            for lib_id in ec.ORPHANS:
+                src = src.replace(f'"dino:{lib_id.split(":")[1]}"', f'"{lib_id}"')
+            with open(f, "w") as fh:
+                fh.write(src)
         before = {}
         for f in fg.sheets(self.tmp):
             with open(f) as fh:
@@ -191,8 +249,8 @@ class TestLibrary(unittest.TestCase):
 class TestWholePass(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.mkdtemp()
-        copy_project(cls.tmp)
+        cls.top = tempfile.mkdtemp()
+        cls.tmp = copy_project(cls.top)
         cls.nets_before = nets(cls.tmp)
         cls.before = counts(erc(cls.tmp))
         cls.report = ec.run(cls.tmp)
@@ -202,26 +260,26 @@ class TestWholePass(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        shutil.rmtree(cls.tmp)
+        shutil.rmtree(cls.top)
 
     def test_connectivity_is_byte_for_byte_the_same(self):
         self.assertEqual(self.nets_after, self.nets_before)
 
-    def test_every_written_exclusion_is_honoured(self):
-        # each exclusion silences exactly one warning, and KiCad lists it
-        # back under --severity-exclusions
-        self.assertEqual(sum(self.excluded.values()), self.report["exclusions"])
+    def test_every_visible_warning_becomes_an_excluded_one(self):
+        # what was visible before the pass is listed back by KiCad under
+        # --severity-exclusions, kind for kind
         for kind in ("pin_to_pin", "multiple_net_names", "isolated_pin_label"):
-            self.assertEqual(self.before[kind] - self.after[kind],
-                             self.excluded[kind], kind)
+            self.assertGreaterEqual(self.excluded[kind], self.before[kind], kind)
 
-    def test_only_the_bus_signals_remain(self):
-        self.assertEqual(sum(1 for s in erc(self.tmp)["sheets"]
-                             for v in s["violations"] if v["severity"] == "error"), 0)
-        self.assertEqual(dict(self.after), {"isolated_pin_label": 2})
-        left = [i["description"] for s in erc(self.tmp)["sheets"]
-                for v in s["violations"] for i in v["items"]]
-        self.assertEqual(sorted(left), ["Label 'RESET_B'", "Label '~{IO_WR}'"])
+    def test_nothing_is_left(self):
+        # RESET_B and ~{IO_WR} were the last two (KEEP_VISIBLE); the bus
+        # sheet consumes both now, so the pass leaves a clean ERC. Run three
+        # times: the alias-pair marker moves between runs.
+        for _ in range(3):
+            rep = erc(self.tmp)
+            self.assertEqual(sum(1 for s in rep["sheets"] for v in s["violations"]
+                                 if v["severity"] == "error"), 0)
+            self.assertEqual(dict(counts(rep)), {})
 
 
 if __name__ == "__main__":

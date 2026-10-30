@@ -53,7 +53,12 @@ class TestNetlist(unittest.TestCase):
     def test_nets_carry_nodes_on_known_refs(self):
         comps, nets = pg.read_netlist(netlist())
         refs = {c.ref for c in comps}
-        self.assertGreater(len(nets), 500)
+        # every net in the export is read: the count comes from the file,
+        # not a typed floor (500 went stale at 498 with the Rev 1.0 batch)
+        import re
+        exported = len(re.findall(r"\(net\s*\(code", open(netlist()).read()))
+        self.assertGreater(exported, 0)
+        self.assertEqual(len(nets), exported)
         stray = [(n.name, r, p) for n in nets for r, p in n.nodes
                  if r not in refs]
         self.assertEqual(stray, [])

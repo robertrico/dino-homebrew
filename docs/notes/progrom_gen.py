@@ -2482,8 +2482,8 @@ def emit_header(real, crcs, path, cov=None):
 
 
 # ---- --expected: the bring-up sheet's own generator --------------------
-# fpga/BRINGUP_FPGA.md and tests/dino_bringup/BRINGUP.md both need "what
-# should OB/the LEDs show for image X" tables. Retyping simulate()'s
+# tests/dino_bringup/BRINGUP.md needs "what should OB/the LEDs show for
+# image X" tables. Retyping simulate()'s
 # output into a doc is exactly the class of drift CLAUDE.md's "everything
 # generated, nothing retyped" rule exists to prevent -- this prints the
 # SAME (crc, out, ends, sw, needs_sw) tuple main()'s own cov dict below

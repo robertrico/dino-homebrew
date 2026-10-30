@@ -43,6 +43,7 @@ EDGE_TAKEN = (
     {f"W{i}" for i in range(8)}
     | {"M0", "M1", "M2", "M11", "M12", "M13"}
     | {"~{IO_SEL}", "~{IO_RD_Q}", "~{IO_WR}", "RESET_B"}
+    | {"~{IRQ}"}          # PHASE_INT: U104's open-collector output
 )
 EDGE_NOT_TAKEN = (
     {f"M{i}" for i in range(3, 11)} | {"M14", "M15", "CLK", "~{CLK}", "~{IO_RD}"}
@@ -50,11 +51,13 @@ EDGE_NOT_TAKEN = (
 )
 POWER = {"+5V", "GND"}
 
-# The three ICs, and nothing else with a U prefix.
-ICS = {"U101": "74LS138", "U102": "74LS245", "U103": "16550"}
+# The four ICs, and nothing else with a U prefix. U104 joined with the
+# interrupt build (PHASE_INT, Rico 2026-10-01: a 7406N).
+ICS = {"U101": "74LS138", "U102": "74LS245", "U103": "16550", "U104": "7406"}
 
-# U103 outputs that are FORBIDDEN to leave the card (CARD-2), by pin.
-U103_NC = {"30": "INTR", "24": "~{TXRDY}", "29": "~{RXRDY}",
+# U103 outputs that are FORBIDDEN to leave the card (CARD-2), by pin. INTR
+# left this list with the interrupt build: it reaches the edge through U104.
+U103_NC = {"24": "~{TXRDY}", "29": "~{RXRDY}",
            "34": "~{OUT1}", "31": "~{OUT2}", "32": "~{RTS}", "33": "~{DTR}"}
 
 
@@ -161,7 +164,7 @@ def test_three_ics_and_their_designators():
     c = card()
     us = {r for r in c.value if r.startswith("U")}
     assert us == set(ICS), (
-        f"the card is U101 '138, U102 '245, U103 16550 and nothing else; "
+        f"the card is U101 '138, U102 '245, U103 16550, U104 '06 and nothing else; "
         f"found {sorted(us)}. Designators are the spec's: they must not "
         f"look like core ones (U1..U80 are spoken for).")
     for r, v in ICS.items():
@@ -287,6 +290,28 @@ def test_u103_forbidden_outputs_unconnected():
         assert not c.others("U103", pin) and not c.labels_on("U103", pin), (
             f"U103.{pin} ({nm}) must reach nothing; it reaches "
             f"{sorted(c.others('U103', pin))} / labels {sorted(c.labels_on('U103', pin))}")
+
+
+def test_intr_reaches_the_edge_only_through_u104():
+    """PHASE_INT: INTR (U103.30) -> U104 g1 A (1); Y (2, open collector)
+    -> ~{IRQ}, the core's pulled-up interrupt line. INTR itself stays on the
+    card: the only thing given back is an open-collector pull-down."""
+    c = card()
+    _joined(c, ("U103", "30"), ("U104", "1"))
+    assert c.others("U103", "30") == {("U104", "1")}, (
+        f"INTR must reach U104.1 and nothing else; it reaches "
+        f"{sorted(c.others('U103', '30'))}")
+    assert not (c.labels_on("U103", "30") & (EDGE_TAKEN | {"~{IRQ}"})), (
+        "INTR must not be an edge net")
+    _on(c, "U104", "2", "~{IRQ}")
+
+
+def test_u104_spare_inputs_grounded():
+    """The five unused '06 sections: inputs to GND, outputs NC."""
+    c = card()
+    for a, y in (("3", "4"), ("5", "6"), ("9", "8"), ("11", "10"), ("13", "12")):
+        _rail(c, "U104", a, "GND")
+        assert ("U104", y) in c.nc, f"U104.{y} (spare output) must carry an NC flag"
 
 
 def test_u103_serial_pins_labelled():

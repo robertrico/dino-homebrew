@@ -59,8 +59,9 @@ serial card and a ROM monitor.** Phases B (stack), C (CALL/RET), D
 (execute-from-RAM), E (I/O window + DIP card), F (174-instruction ISA), G
 (serial card) and G_0 (monitor) are on silicon and drawn. Instruments:
 Siglent SDS1204X-E, DSLogic Plus LA (16 ch at 100 MHz in buffer mode,
-2026-10-06 CSV headers), DMM, TL866. The ATmega rig and the FPGA twin are
-retired (see "Retired").
+2026-10-06 CSV headers), DMM, TL866. The ATmega rig is retired (see
+"Retired"). The machine has one twin, the netlist simulation `netsim/`
+(see "The twin").
 
 **FACT — interrupts work (2026-10-06).** The INT core (U80-U87), the
 serial card's 7406N (U104) and the ~{IRQ} jumper are wired; every rung of
@@ -181,7 +182,7 @@ pins good (2026-09-29). An alternative form, `AND(WRITE_DIR, TO0)` on
 - The PCB (Rev 1.0): 299 x 270 mm, 4 layers, with the S4 fab-gate parts in
   (JP3/J13 CLKIN, R34 on CLK_B, Sullins EBC25DCWN sockets) and CLK_B on
   edge pin 1, the row end (was 17; Rico 2026-10-29). Pre-order batch
-  (2026-10-29, uncommitted): no fuse (F1 removed, J9's +5V solid to the
+  (2026-10-29, e99efb9): no fuse (F1 removed, J9's +5V solid to the
   plane), clock-select header J14 at U27.3 (taps + debounced STEP on
   SW3/R35/C93 into U56 5->6), LA header J15 (16 signals + 16 GND), OB LED
   power J16, DNP cap pads C94/C95/C96 on CLK at U6.2 / CLK_ALU at U47.11 /
@@ -331,9 +332,12 @@ any other key resumes. `asm/ram/spin.asm` is the Ctrl-C witness.
   mutually exclusive by construction.
 - 2026-07-28: integration is control-first and black-box (the block law:
   sample at block level only what depends on more than one member; the
-  driven-wire count may not rise). The ladder is history; the
-  classification survives.
+  driven-wire count may not rise). The ladder and its classifier were
+  retired with their tests 2026-10-30 (Rico): they described the rig's
+  bring-up order and predate the interrupt board.
 - 2026-08-24: the ATmega rig and the FPGA twin are retired, not repaired.
+- 2026-10-30: one twin, `netsim/`: the TTL exactly as drawn, no rewiring;
+  the FPGA twin is deleted (Rico).
 - 2026-08-25: phases E, F and G are independent in both directions.
 - 2026-08-27: `0x00` stays `NOP`; `IN` is retired from the ISA (`0x52`
   free); `0x9x` reserved for hardware-gated opcodes; high nibble = family.
@@ -435,7 +439,6 @@ Each is a rule because something broke. The narrative behind each is in
                                     --continuity <refs>  what to land
                                     --since <rev>        what changed, classified
                                     --stamp              MODULE CONTRACT blocks
-                                    --pinmap             DEAD, throws. Rig retired.
     docs/notes/microcode_gen.py     microcode ROM images + CRCs + header
     docs/notes/progrom_gen.py       program ROMs, and the Python oracle
     docs/notes/isatest_gen.py       the ISA self-test family (isa, isacount,
@@ -443,6 +446,10 @@ Each is a rule because something broke. The narrative behind each is in
     docs/notes/layout_gen.py        breadboard placement, slot maps, guides
     docs/notes/kicad_netlist.py     build_report() — the netlist oracle
     docs/notes/roms_readme_gen.py   roms/README.md
+    docs/notes/netsim_gen.py        the twin: Rev 1.0 netlist -> gate-level Verilog
+    docs/notes/netsim_run.py        run a ROM (or --ram program) on the twin
+    docs/notes/netsim_suite.py      every runnable image on the twin vs the
+                                    oracle (`make twin`)
 
 `simulate()` in `progrom_gen.py` interprets the real microcode rows and
 computes what `OB` should read; it is the answer key, and it is not the
@@ -451,12 +458,49 @@ to each generator (`test_*.py`). Adding an instruction costs a three-ROM
 burn; CRCs are pinned literals so a reburn is always deliberate. New
 programs are `.asm` under `asm/`, never Python lists.
 
-Permanently red tests, by ruling: `test_kicad_contracts_pinmap.py`,
-`test_kicad_blocks.py::test_pinmap_has_block_bundles` (rig), and the
-`fpga`/`vplan` tests (twin). Pre-existing red, not from bench work:
-`test_bus_gen`, `test_continuity_completeness`, `test_erc_cleanup`,
-`test_footprint_gen`, `test_kicad_blocks`, `test_pcb_gen`,
-`test_suite_reachability` (HANDOFF section 6).
+## The twin
+
+`netsim/` is DINO's only twin (Rico, 2026-10-30): the TTL exactly as
+drawn, simulated in Icarus. `netsim_gen.py` exports the netlist the PCB is
+routed from and emits one Verilog instance per chip, wired by pin number;
+`netsim/ttl_models.v` holds one model per part type (datasheet function
+tables, typical delays); `netsim/tb_dino.v` seats the burned ROMs and
+reads OB. It has no option to rewire a pin, by ruling, and
+`test_netsim.py` holds the generated Verilog pin-for-pin against the
+netlist (1530 chip pins; 12 pull-ups, 4 series R, 2 jumper shunts, no
+floating net).
+
+    make twin                                                 # the suite
+    python3 docs/notes/netsim_run.py PROG_isa [--seed N]
+    python3 docs/notes/netsim_run.py --ram asm/ram/retlda.asm   # as L + G
+
+Models, stated so nobody reads more into a pass than is there: stateful
+parts power up random per seed; nothing changes state for the first 1 us
+(the rail ramp); memory outputs move each differing bit once at a random
+moment inside the access time; outputs pass any pulse of 4 ns or more;
+open TTL inputs float high; uninitialised RAM reads x; '382 Cn+4 in
+logic modes is x.
+
+**FACT (2026-10-30):** `make twin`: 43 images x 3 power-up seeds, 129/129
+match the oracle, HALT, no unknown machine state (C and V after a logic
+op excepted: the '382's unmeasured Cn+4/OVR, held x), no RAM write under
+tWP. Includes isa `0xB4`, isasoak `0x00`, carry `0xAD`, ramexec `0x6E`.
+The oracle runs each burned image as the twin sees the board: slots
+empty, so SW1 reads `0xFF` and there is no serial card. Not run, listed
+by the suite: the serial and interrupt images (they need the card),
+four images that never HALT, and `PROG_diag` (an older ISA). `retlda`
+returns from RAM. `test_netsim.py` 33/33.
+
+The breadboard had a fetch glitch that the T0 write gate (the NOR, U62 g4)
+fixed. Unmeasured on the PCB. The twin is logically identical, NOR
+included.
+
+**FACT (2026-10-30):** `pytest docs/notes` (the whole host suite,
+nothing ignored, Python 3.14 + pytest): 656 passed, 0 failed. The tools follow the schematic as built
+(Rico): the continuity tool joins a label shared between sheets as KiCad
+does; card zero's edge follows the 10-29 bus pinout (`bus_gen`); the
+block ladder and the rig pinmap are retired with their tests.
+Plain `python3` here has no pytest.
 
 ## Retired
 
@@ -465,12 +509,13 @@ against the generated crossing list, TL866 read-back, and the coverage
 ROMs' `OB`. The ROM burn targets in `tests/dino_bringup/Makefile` are not
 rig code and must survive any cleanup. Do not extend `POOL`.
 
-**The FPGA twin** (2026-08-24). `make -C fpga verify` does not pass and
-will not be fixed; do not gate bench work on it or spend a session on it.
-It generated from the schematic and so could only catch design errors;
-every fault that killed it was a build or analog fault. Dead with it:
-`fpga/`, `fpga_gen.py`, `coverage_lint.py`, `dino_fpga_vplan.md`,
-`test_fpga_gen.py`, `.git/sdd/BRINGUP_FPGA.md`.
+**The FPGA twin** (retired 2026-08-24, deleted 2026-10-30). Synthesisable
+VHDL generated from an earlier schematic; perfect logic, so it could not
+produce the faults that mattered (analog, and the 09-29 fetch runt).
+Deleted with it: `fpga/`, `fpga_gen.py`, `coverage_lint.py`,
+`dino_fpga_vplan.md`, `test_fpga_gen.py`, `test_vplan.py`,
+`test_netlist_integrity.py`. `.git/sdd/BRINGUP_FPGA.md` is kept as
+history. Replaced by `netsim/` ("The twin").
 
 ## Where to read next
 

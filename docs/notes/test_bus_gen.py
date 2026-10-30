@@ -170,6 +170,18 @@ class TestLibrary(unittest.TestCase):
         self.assertEqual([float(v) for v in child(child(model, "rotate"), "xyz")[1:]], [-90.0, 0.0, 0.0])
 
 
+class TestFlatten(unittest.TestCase):
+    def test_a_card_ref_that_repeats_a_core_ref_stays_its_own_part(self):
+        # 2026-10-06 the ALU board took U76 ('157); card zero's '138 is U76
+        # too. Joined by name, the two chips' pins merged and +5V met GND.
+        core = {"VCC": {("U76", "16"), ("C1", "1")},
+                "GND": {("U76", "8"), ("C1", "2")}}
+        # one card net touching both pin numbers: by name, core VCC and GND
+        card = {"N": {("U76", "8"), ("R1", "1"), ("U76", "16")}}
+        parts = bg.flatten(core, {0: card})
+        self.assertFalse(any({("C1", "1"), ("C1", "2")} <= set(s) for s in parts))
+
+
 @unittest.skipUnless(HAVE_KICAD, "KiCad 10 not installed")
 class TestSplit(unittest.TestCase):
     @classmethod
@@ -207,12 +219,18 @@ class TestSplit(unittest.TestCase):
                                 "R20", "R21", "R22", "R23", "R24", "C48", "C81", "J1"})
 
     def test_joined_through_slot_zero_nothing_electrical_changed(self):
+        # The split is in the tree since 2026-09-12, so `before` is already
+        # split: compare the core alone, slots and card parts left out on
+        # both sides. Plugging card zero into slot zero must not join or
+        # break any core net.
         new = {f"J{i}" for i in range(1, 9)} | {"U78"}
-        got = bg.flatten(self.core_after, {0: self.card_after})
-        got = {frozenset(p for p in s if p[0] not in new and p[0] != "J1@card")
-               for s in got}
-        got = {s for s in got if s}
-        want = {frozenset(pins) for pins in self.before.values()}
+
+        def core_only(nets):
+            out = {frozenset(p for p in s if p[0] not in new and "@card" not in p[0])
+                   for s in nets}
+            return {s for s in out if s}
+        got = core_only(bg.flatten(self.core_after, {0: self.card_after}))
+        want = core_only(self.before.values())
         self.assertEqual(sorted(map(sorted, got - want)), [])
         self.assertEqual(sorted(map(sorted, want - got)), [])
 
@@ -233,6 +251,22 @@ class TestSplit(unittest.TestCase):
         self.assertEqual({r for r, p in clk_b if r.startswith("J")}, {"J%d" % i for i in range(1, 9)})
         src = [s for s in self.core_after.values() if ("U78", "1") in s][0]
         self.assertIn(("U27", "6"), src)          # ~{CLK}
+
+    def test_card_zero_edge_follows_the_bus_pinout(self):
+        # 2026-10-29 CLK_B moved to pin 1, GND to 17; card zero was written
+        # 09-12 on the old table. Every taken pin carries its bus name, and
+        # nothing else on the edge is wired (Rico 2026-10-30: redraw it).
+        name = {}
+        for net, pins in self.card_after.items():
+            for r, p in pins:
+                if r == "J1":
+                    name[int(p)] = net
+        for pin, n, kind in bg.BUS:
+            if kind != "spare" and n in bg.CARD_ZERO_TAKES:
+                self.assertEqual(name.get(pin), n, pin)
+            else:
+                self.assertTrue(name.get(pin, "unconnected").startswith("unconnected"),
+                                (pin, n, name.get(pin)))
 
     def test_erc_core_zero_errors_zero_warnings(self):
         self.assertEqual([v for v in self.core_erc if v[0] == "error"], [])

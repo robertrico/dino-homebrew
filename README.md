@@ -182,6 +182,8 @@ datasheets/      74-series and memory parts
 | `roms_readme_gen.py` | `roms/README.md` — the inventory read at the burner |
 | `layout_gen.py` | breadboard placement, slot maps, wiring guides |
 | `bus_gen.py` | the card-edge pinout, symbol and footprint |
+| `netsim_gen.py` | the twin: the Rev 1.0 netlist as gate-level Verilog (`netsim/`) |
+| `netsim_suite.py` | every runnable image on the twin against the oracle (`make twin`) |
 
 ```bash
 make test               # host tests
@@ -202,10 +204,15 @@ time, then one integration block at a time, shedding wires as each block
 was proven. Retired 2026-08-24. `tests/dino_bringup/` stays for its ROM
 burn targets.
 
-**The FPGA twin** (`fpga/`) generated VHDL from the same netlist. It could
-only catch design errors, and every fault that mattered by then was a build
-or analog fault. Retired 2026-08-24; `make -C fpga verify` does not pass
-and will not be fixed.
+**The FPGA twin** generated VHDL from an earlier netlist. It was perfect
+logic, so it could not see the faults that mattered, which were build,
+analog and glitch faults. Retired 2026-08-24 and deleted 2026-10-30. The
+only twin now is `netsim/`: the Rev 1.0 netlist exactly as drawn, chip by
+chip and pin by pin, simulated in Icarus with typical delays. `make twin`
+runs every image that needs no card (43 of them, `isa` and `isasoak`
+included) and all match the oracle. The breadboard had a fetch glitch that the T0 write
+gate fixed; unmeasured on the PCB; the twin is logically identical, gate
+included.
 
 ---
 

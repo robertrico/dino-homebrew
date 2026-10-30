@@ -29,8 +29,11 @@ class TestAssign(unittest.TestCase):
 
     def test_no_socket_footprints(self):
         inv = fg.inventory(fg.sheets(PROJ))
+        # an IC socket footprint; a female pin header (PinSocket, J11/J16)
+        # is a connector, not a socket under an IC
         socketed = [i.ref for i in inv
-                    if "Socket" in fg.assign(i.lib_id, i.value)]
+                    if fg.assign(i.lib_id, i.value).startswith("Package_DIP")
+                    and "Socket" in fg.assign(i.lib_id, i.value)]
         self.assertEqual(socketed, [])
 
     def test_dip_width_follows_pin_count_and_family(self):

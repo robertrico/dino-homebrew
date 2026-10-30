@@ -103,6 +103,13 @@ def parse_with_pinfunction(netfile):
     return values, nets
 
 
+# Instrument pins: J15 is the Rev 1.0 LA header (2026-10-29), TPn the scope
+# test points. All passive, so without this every signal J15 exposes would
+# read as an input of the sheet the header sits on. DNP parts (the C94-C96
+# cap pads on root) are skipped for the same reason: not fitted, no load.
+PROBE_REFS = re.compile(r"^(J15|TP\d+)$")
+
+
 def build_contracts(root_path):
     netfile = kxa.export_netlist(root_path)
     values, nets = parse_with_pinfunction(netfile)
@@ -129,6 +136,8 @@ def build_contracts(root_path):
             continue
         sheets_of = values["__sheets__"]
         for r, _p, fn, t in nodes:
+            if PROBE_REFS.match(r) or values.get(r) == "DNP":
+                continue  # an instrument pin or an unfitted pad consumes nothing
             sheet = sheets_of.get(r, "/")
             merged[label][sheet].add((r, fn or "", t.split("+")[0]))
 
@@ -472,466 +481,6 @@ PIN_PROBES = {
 }
 
 
-# ---------------------------------------------------------------------------
-# BLOCKS — the integration ladder.
-#
-# THE BLOCK LAW (BRINGUP.md): sample a signal at block level ONLY if its value
-# depends on MORE THAN ONE MEMBER of the block. If one module alone determines
-# it, that module's test retired it. If an earlier block sampled it, that block
-# retired it. Everything produced inside the block and consumed inside it is
-# COPPER — wired board-to-board, the rig never touches it.
-#
-#   COPPER  OUT of one member AND IN of another          -> dropped
-#   DRIVE   IN of a member, OUT of none, needed as stimulus
-#   STRAP   IN of a member, OUT of none, NOT needed      -> tied on the board
-#   SAMPLE  OUT of a member, not copper, not retired
-#
-# EVERY unfed input must be named as drive or strap. An unnamed one is a
-# hard error, not a warning: a floating WRITE_DIR sets the U21 '245 direction
-# AND fires a real RAM write every clock low. That is the whole reason this
-# classifier exists.
-#
-# `retire` cites the MODULE test that earned the retirement. Retirement by an
-# earlier BLOCK is derived from ladder order, not retyped.
-# `sample_anyway` is the END/HALT exception, spelled out rather than special
-# cased: copper, but sampled because nothing else can segment the instruction
-# stream or observe the freeze from outside.
-# THE STANDING TIMING SET. CLK and T0-3 are sampled in EVERY block, in the
-# SAME HOLES throughout, exactly as END/HALT are. Neither is an assertion —
-# root.clock and root.tstates own them. They are what makes a sample
-# INTERPRETABLE: CLK says the ROM has settled, T says which microcode row the
-# sample belongs to. Without T the rig must infer the row from position in a
-# captured sequence, and Block 1 spent an evening proving how many ways that
-# goes wrong. Five wires, sampled, so the driven gate is untouched.
-_TIMING = ["CLK", "T0", "T1", "T2", "T3"]
-
-BLOCKS = {
-    "block1": {
-        # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
-        # purely as a CAPTURE QUALIFIER. The microcode ROM outputs are invalid
-        # for one access time after T changes on the CLK rising edge, and the
-        # decoded strobes glitch through it. A blind sampler splits one T-state
-        # into several frames and loses t = position entirely. Gating on CLK
-        # low samples after the ROM has settled. Sampled, so driven is
-        # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
-        # T0-3 joins CLK as a REFERENCE, not an assertion: root.tstates still
-        # owns the counter. Sampling T LABELS EACH SAMPLE WITH ITS OWN T-STATE,
-        # which removes the need to infer t from position in a captured
-        # sequence. That inference needed the fetch frame to be unique — and in
-        # the SRC pass it is not, because LDA's T0/T1/T2 are all
-        # mux_pc+pc_up+src=ROM and differ only in DST. It also broke whenever a
-        # single T-state got no sample. Four sampled wires make both failure
-        # modes structurally impossible (2026-07-30).
-        "qualify": _TIMING,
-        "members": ["root", "microcode", "control_word"],
-        "primary": "decode",
-        "drive": [f"IRB{i}" for i in range(8)],
-        "retire": {
-            "CLK":      "root.clock",
-            "~{CLK}":   "root.clock",
-            "RESET":    "root.reset",
-            "~{RESET}": "root.reset",
-        },
-        "strap": {"COND_FLAG": ("HIGH", "control_word.truth")},
-        "sample_anyway": ["CW12=END", "CW15=HALT"],
-    },
-    "block2": {
-        # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
-        # purely as a CAPTURE QUALIFIER. The microcode ROM outputs are invalid
-        # for one access time after T changes on the CLK rising edge, and the
-        # decoded strobes glitch through it. A blind sampler splits one T-state
-        # into several frames and loses t = position entirely. Gating on CLK
-        # low samples after the ROM has settled. Sampled, so driven is
-        # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
-        "qualify": _TIMING,
-        "members": ["root", "microcode", "control_word", "pc", "mar", "memory"],
-        "primary": "fetch",
-        "drive": [f"IRB{i}" for i in range(8)],
-        "retire": {},
-        # PHASE D, 2026-08-24. ~{ROM_BUF_EN} and ~{RAM_OE_G} are memory-board
-        # inputs whose driver moved to the MDR board, which does not join the
-        # ladder until block3. Same shape as WRITE_DIR, which has always been
-        # strapped here for exactly this reason.
-        #
-        # The values are forced, not chosen. ~{RAM_OE_G} LOW would leave U19
-        # and U21 both enabled onto MDR0-7 -- the contention phase D exists to
-        # prevent -- so HIGH is the only safe strap, and ~{ROM_BUF_EN} LOW is
-        # the only one that lets block2 fetch at all.
-        #
-        # COST, named rather than buried: block2 can no longer read RAM under
-        # microcode control. Before phase D its RAM enable came from
-        # control_word, in-block. RAM read-back is now covered only by the
-        # memory module test. This is a real reduction in block2's surface and
-        # it is the price of moving two enables onto the MDR board.
-        #
-        # PHASE E, 2026-08-25. ~{RAM_OE_G} IS NO LONGER STRAPPED -- it is
-        # GENERATED IN-BLOCK. Its driver moved the other way this time, from
-        # U37.10 on the MDR board to U74 g3 on the memory board, so the gate
-        # is inside block2's membership. What crosses in instead are its two
-        # upstream terms' MDR-side halves:
-        #
-        #   RAM_OE_ON   LOW  -> ~{RAM_OE_G} = NAND(LOW, M15) = HIGH. The SAME
-        #                       forced outcome phase D strapped directly; only
-        #                       the pin it is forced at has moved.
-        #   READS_IDLE  HIGH -> ~{IO_RD} = OR(~{IO_SEL}, HIGH) = HIGH, so the
-        #                       published card read strobe never asserts in
-        #                       block2. There is no card in the ladder to read.
-        #
-        # Net effect on block2's surface: unchanged. One strap out, two in, and
-        # the electrical state of U19/U21 is identical to phase D's.
-        "strap": dict({"COND_FLAG": ("HIGH", "control_word.truth"),
-                       "WRITE_DIR": ("LOW", "memory.window"),
-                       "~{ROM_BUF_EN}": ("LOW", "memory.window"),
-                       "RAM_OE_ON": ("LOW", "memory.ramrw"),
-                       "READS_IDLE": ("HIGH", "memory.ramrw")},
-                      **{f"W{i}": ("PULLDOWN10K", "memory.ramrw") for i in range(8)}),
-        "sample_anyway": ["CW12=END", "CW15=HALT"],
-    },
-    "block3": {
-        # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
-        # purely as a CAPTURE QUALIFIER. The microcode ROM outputs are invalid
-        # for one access time after T changes on the CLK rising edge, and the
-        # decoded strobes glitch through it. A blind sampler splits one T-state
-        # into several frames and loses t = position entirely. Gating on CLK
-        # low samples after the ROM has settled. Sampled, so driven is
-        # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
-        "qualify": _TIMING,
-        "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
-                    "mdr"],
-        "primary": "opcodes",
-        "steppable": True,          # A0 -> U20.2 available for a stepped run
-        "drive": [],
-        "retire": {},
-        "strap": {"COND_FLAG": ("HIGH", "control_word.truth")},
-        # IRB is copper now (real IR). Sampled at the CONSUMER end anyway: it
-        # is the mirror-witness for the U25 bridge, because block2 read that
-        # same byte at MDR, BEFORE it crossed U25 and U34.
-        "sample_anyway": ["CW12=END", "CW15=HALT"] + [f"IRB{i}" for i in range(8)],
-    },
-    "block4": {
-        "steppable": True,          # A0 -> U20.2: the milestone is ~10us long,
-                                    # far too short to catch by polling
-        # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
-        # purely as a CAPTURE QUALIFIER. The microcode ROM outputs are invalid
-        # for one access time after T changes on the CLK rising edge, and the
-        # decoded strobes glitch through it. A blind sampler splits one T-state
-        # into several frames and loses t = position entirely. Gating on CLK
-        # low samples after the ROM has settled. Sampled, so driven is
-        # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
-        "qualify": _TIMING,
-        # stack_pointer joins here (2026-08-10): SP is an MDR provider with
-        # exactly the shape of registers A/B/C -- one SRC code, one DST code
-        # -- so it comes up with the datapath, not before it.
-        "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
-                    "mdr", "registers", "alu", "stack_pointer"],
-        "primary": "milestone",
-        "drive": [],
-        "retire": {},
-        "strap": {},
-        "sample_anyway": ["CW12=END", "CW15=HALT"],
-    },
-    "block5": {
-        "steppable": True,          # A0 -> U20.2: the milestone is ~10us long,
-                                    # far too short to catch by polling
-        # CLK is RETIRED as an assertion (root.clock owns it) and sampled here
-        # purely as a CAPTURE QUALIFIER. The microcode ROM outputs are invalid
-        # for one access time after T changes on the CLK rising edge, and the
-        # decoded strobes glitch through it. A blind sampler splits one T-state
-        # into several frames and loses t = position entirely. Gating on CLK
-        # low samples after the ROM has settled. Sampled, so driven is
-        # unchanged. (Cost one Block 1 bench run, 2026-07-30.)
-        "qualify": _TIMING,
-        "members": ["root", "microcode", "control_word", "pc", "mar", "memory",
-                    "mdr", "registers", "alu", "io", "stack_pointer"],
-        "primary": "run",
-        "drive": [],
-        "retire": {},
-        # SW1 is set to 0xF7 at the bench, but IS0-7 never crosses a sheet
-        # boundary (switches -> '244 is all on the io board), so it is not a
-        # contract signal and cannot be a strap. See BRINGUP.md block5 for the
-        # setting and why 0xF7 is the witness value.
-        "strap": {},
-        "sample_anyway": (["CW12=END", "CW15=HALT"] +
-                          [f"OB{i}" for i in range(8)]),
-    },
-}
-
-# Blocks whose signals do not land where the fixed bus rules would put them.
-# Only block1 needs this: capture_burst() reads WHOLE PORTS, so each decoder
-# group must sit in exactly one port or it cannot be read coherently — and the
-# 8 SRC enables in one port is precisely what makes block1.onehot a single
-# read. The anchor group (SA/END/PC_UP/PC_MAR_MUX/HALT) and IRB already fall
-# out of MEGA_PORT_BY_PREFIX correctly.
-# CLK must land in one of the TWO PORTS each capture pass reads, or the
-# qualifier is never sampled. Every block's captures include PL, and PL0 is
-# PL's one free bit (CW8 is copper), so CLK sits on D49 in EVERY block — the
-# same hole throughout, exactly like END on D45 and HALT on D42. Left to the
-# pool it landed on PD7/D38, which no capture pass reads.
-_CLK_PIN = {"CLK": "PL0/D49",
-            "T0": "PF4/A4", "T1": "PF5/A5", "T2": "PF6/A6", "T3": "PF7/A7"}
-
-BLOCK_PIN_ASSIGN = {
-    # MDR0-7 off its usual PF and onto PA (one unbroken D22->D29 run) so that
-    # PF4-7 remains T's home in EVERY block. A fixed home for the timing set
-    # matters more than MDR keeping its bus-rule default: five wires that never
-    # move are five wires that cannot be re-landed wrong.
-    "block2": dict(_CLK_PIN, **{f"MDR{i}": f"PA{i}/D{22+i}" for i in range(8)}),
-    "block3": dict(_CLK_PIN),
-    "block4": dict(_CLK_PIN),
-    "block5": dict(_CLK_PIN),
-    "block1": {
-        # DST group -> PORTA, D22..D28
-        "~{REG_A_LOAD}":   "PA0/D22",
-        "~{REG_B_LOAD}":   "PA1/D23",
-        "~{REG_C_LOAD}":   "PA2/D24",
-        "~{MAR_LO_LOAD}":  "PA3/D25",
-        "~{MAR_HI_LOAD}":  "PA4/D26",
-        "~{IR_LOAD}":      "PA5/D27",
-        "~{RAM_LOAD}":     "PA6/D28",
-        # SRC group -> PORTC, D30..D37 (all 8 bits, one read decides onehot)
-        "SRC_ACTIVE":      "PC7/D30",
-        "~{ROM_OUT}":      "PC6/D31",
-        "~{RAM_OUT}":      "PC5/D32",
-        "~{REG_A_OUT}":    "PC4/D33",
-        "~{REG_B_OUT}":    "PC3/D34",
-        "~{REG_C_OUT}":    "PC2/D35",
-        "~{ALU_OUT}":      "PC1/D36",
-        "~{SW_OUT}":       "PC0/D37",
-        # CLK -> PL0, the anchor port's only free bit (CW8 is copper), so the
-        # qualifier arrives in the SAME READ as the frame it qualifies
-        "CLK":             "PL0/D49",
-        # T0-3 -> PF4..PF7, the top nibble of the jmp port. One read of PF now
-        # yields the jmp strobes AND the T-state that labels them. Block-1 only:
-        # block2 fills PF with MDR0-7, and blocks 2-6 do not decode per-T.
-        "T0":              "PF4/A4",
-        "T1":              "PF5/A5",
-        "T2":              "PF6/A6",
-        "T3":              "PF7/A7",
-        # JMP group -> PORTF, A0..A3
-        "~{PC_CLEAR}":     "PF0/A0",
-        "~{MDR_OUT}":      "PF1/A1",
-        "~{REG_OUT_LOAD}": "PF2/A2",
-        "~{PC_LOAD}":      "PF3/A3",
-    },
-}
-
-
-def _member_owner(contracts, members):
-    """signal -> (producers, consumers) as sets of member tokens."""
-    prod, cons = {}, {}
-    for sheet in contracts:
-        tok = mod_token(sheet)
-        if tok not in members:
-            continue
-        for label, _o in contracts[sheet]["OUT"]:
-            for sig in expand(label):
-                prod.setdefault(sig, set()).add(tok)
-        for label, _o in contracts[sheet]["IN"]:
-            for sig in expand(label):
-                cons.setdefault(sig, set()).add(tok)
-        for label, _o in contracts[sheet]["BIDIR"]:
-            for sig in expand(label):
-                prod.setdefault(sig, set()).add(tok)
-                cons.setdefault(sig, set()).add(tok)
-    return prod, cons
-
-
-def _member_io(contracts, members):
-    """(ins, outs) over the union of `members`, as sets of expanded signals.
-    BIDIR counts as both. Raises if a member names no sheet."""
-    seen, ins, outs = set(), set(), set()
-    for sheet in contracts:
-        tok = mod_token(sheet)
-        if tok not in members:
-            continue
-        seen.add(tok)
-        for kind, tgt in (("IN", ins), ("OUT", outs), ("BIDIR", None)):
-            for label, _o in contracts[sheet][kind]:
-                for sig in expand(label):
-                    if tgt is None:
-                        ins.add(sig)
-                        outs.add(sig)
-                    else:
-                        tgt.add(sig)
-    missing = set(members) - seen
-    if missing:
-        raise SystemExit(f"block: unknown member module(s): {sorted(missing)}")
-    return ins, outs
-
-
-# Signals the rig drives ONLY in a stepped diagnostic run. They appear in the
-# bundle so `pins <block>` shows them, but they are NOT part of the block's
-# DRIVE set: the driven-wire gate governs the ACCEPTANCE harness, and stepping
-# is an instrument like the LA and the scope. CLKIN is not a contract net —
-# Y1.8->U20.2 is anonymous — so it is declared here with its pin, the same way
-# PIN_PROBES declares rig-internal probes.
-STEP_DRIVE = {"CLKIN": ("PF0/A0", "U20.2, with Y1 disabled at its EN pin")}
-
-
-def block_surface(contracts, name, spec, retired_by=None):
-    """Classify one block's signals per THE BLOCK LAW.
-
-    retired_by: {signal: citation} accumulated from earlier blocks and from
-    module tests. Signals in it are not sampled again."""
-    members = spec["members"]
-    ins, outs = _member_io(contracts, members)
-    universe = ins | outs
-    copper = ins & outs
-    unfed = ins - outs                       # IN with no driver in this block
-    fresh = outs - ins                       # OUT that leaves the block
-
-    retired_by = dict(retired_by or {})
-    for sig, cite in spec.get("retire", {}).items():
-        if sig not in universe:
-            raise SystemExit(
-                f"block {name}: retire names a signal not in the block: {sig}")
-        retired_by[sig] = cite
-
-    strap = {}
-    for sig, val in spec.get("strap", {}).items():
-        if sig not in unfed:
-            raise SystemExit(
-                f"block {name}: strap names {sig}, which is not an unfed input "
-                f"of this block (it is "
-                f"{'copper' if sig in copper else 'not present'})")
-        strap[sig] = val
-
-    drive = []
-    for sig in spec.get("drive", []):
-        if sig not in unfed:
-            raise SystemExit(
-                f"block {name}: drive names {sig}, which is not an unfed input "
-                f"of this block (it is "
-                f"{'copper' if sig in copper else 'not present'}) — the rig "
-                f"would be fighting a real driver")
-        if sig in strap:
-            raise SystemExit(f"block {name}: {sig} is both driven and strapped")
-        drive.append(sig)
-
-    floats = sorted(unfed - set(drive) - set(strap))
-    if floats:
-        raise SystemExit(
-            f"block {name}: unfed input(s) left unclassified: {floats}. "
-            f"Every input with no driver in the block must be named as drive "
-            f"or strap — a floating enable or direction pin is a live hazard "
-            f"(see WRITE_DIR).")
-
-    qualify = list(spec.get("qualify", []))
-    for sig in qualify:
-        if sig not in outs:
-            raise SystemExit(
-                f"block {name}: qualify names {sig}, which no member drives")
-
-    sample = sorted(s for s in fresh if s not in retired_by)
-    for sig in spec.get("sample_anyway", []):
-        if sig not in copper:
-            raise SystemExit(
-                f"block {name}: sample_anyway names {sig}, which is not copper. "
-                f"The exception exists only for signals the law would drop.")
-        if sig not in sample:
-            sample.append(sig)
-    for sig in qualify:
-        if sig not in sample:
-            sample.append(sig)
-    sample.sort()
-
-    # WHICH BOARD DOES THE WIRE LAND ON? Not always the producer:
-    #   drive         -> the member that CONSUMES it (that is the input pin)
-    #   sample        -> the member that PRODUCES it (tap at the source)
-    #   sample_anyway -> the member that CONSUMES it (STRIKE-7 FAR-END rule:
-    #                    END/HALT at root's U61, IRB at microcode's U16, OB at
-    #                    the io end — the tap proves the RUN, not just the pin)
-    prod, cons = _member_owner(contracts, members)
-    anyway = set(spec.get("sample_anyway", []))
-    owner = {}
-    for sig in drive:
-        owner[sig] = sorted(cons.get(sig, {"?"}))[0]
-    for sig in sample:
-        pick = cons if sig in anyway else prod
-        fallback = prod if sig in anyway else cons
-        owner[sig] = sorted(pick.get(sig) or fallback.get(sig) or {"?"})[0]
-    # CLKIN is not a contract net (Y1.8->U20.2 is anonymous), so name its board
-    # explicitly — it lands on root, at the divider input.
-    for sig in STEP_DRIVE:
-        owner[sig] = "root"
-
-    return {"name": name, "members": members, "primary": spec.get("primary", ""),
-            "owner": owner,
-            "copper": sorted(copper), "drive": drive, "strap": strap,
-            "step_drive": dict(STEP_DRIVE) if spec.get("steppable") else {},
-            "sample": sample, "qualify": qualify, "floats": floats,
-            "retired": sorted(retired_by), "retired_by": retired_by}
-
-
-def build_blocks(contracts, blocks=None):
-    """Walk the ladder in order, cascading retirements forward: whatever a
-    block samples is retired for every block after it."""
-    blocks = BLOCKS if blocks is None else blocks
-    out, retired_by = {}, {}
-    for name, spec in blocks.items():
-        surf = block_surface(contracts, name, spec, retired_by)
-        out[name] = surf
-        cite = f"{name}.{surf['primary']}"
-        for sig in surf["sample"]:
-            retired_by.setdefault(sig, cite)
-        for sig, c in surf["retired_by"].items():
-            retired_by.setdefault(sig, c)
-    return out
-
-
-def _wire_key(row):
-    """Mega header sweep order: D53 down to D2, then A15 down to A0."""
-    pin = row[1].split("/")[1]
-    return (0 if pin[0] == "D" else 1, -int(pin[1:]))
-
-
-def block_pins(contracts, name, surf=None):
-    """(signal, megapin, dir, owner) rows for a block bundle, in wiring
-    order. dir is the RIG's direction: 'O' drives the DUT, 'I' samples it.
-    owner is the MEMBER BOARD the wire lands on — see block_surface()."""
-    if surf is None:
-        surf = build_blocks(contracts)[name]
-    assign = BLOCK_PIN_ASSIGN.get(name, {})
-    unknown = set(assign) - set(surf["drive"]) - set(surf["sample"])
-    if unknown:
-        raise SystemExit(f"BLOCK_PIN_ASSIGN[{name}]: signal not in the bundle: "
-                         f"{sorted(unknown)}")
-    pool = [p for p in POOL if p not in set(assign.values())]
-    rows, used = [], {}
-    for sig, d in ([(s, 'O') for s in surf["drive"]] +
-                   [(s, 'I') for s in surf["sample"]] +
-                   [(s, 'O') for s in surf.get("step_drive", {})]):
-        if sig in surf.get("step_drive", {}):
-            pin = surf["step_drive"][sig][0]
-        elif sig in assign:
-            pin = assign[sig]
-        else:
-            bp = bus_pin(sig)
-            pin = bp[0] if bp else pool.pop(0)
-        if pin in used:
-            raise SystemExit(f"block {name}: pin {pin} claimed by both "
-                             f"{used[pin]} and {sig}")
-        used[pin] = sig
-        rows.append((sig, pin, d, surf["owner"].get(sig, "?")))
-    rows.sort(key=_wire_key)
-    return rows
-
-
-def bus_pin(signal):
-    """Fixed-port pin for a bus bit, trying every alias component
-    ('M15=ROM_EN' matches via 'M15'). Returns (pin, priority) where priority
-    is the MEGA_PORT_BY_PREFIX index — lower wins a within-module pin clash
-    (M before CW: the rig reads the M bus as whole ports)."""
-    for pri, (rx, port, dmap) in enumerate(MEGA_PORT_BY_PREFIX):
-        for comp in signal.split("="):
-            m = rx.match(comp)
-            if m:
-                n = m.group(1)
-                bit = int(n) & 7
-                return f"{port}{bit}/{dmap[n]}", pri
-    return None
-
-
 def mod_token(sheetpath):
     s = short(sheetpath).lower()
     s = re.sub(r"[^a-z0-9]+", "_", s).strip("_")
@@ -942,129 +491,10 @@ def mod_token(sheetpath):
             "register_modules": "registers", "output": "io"}.get(s, s)
 
 
-def emit_pinmap(contracts, out_path):
-    lines = ["/* GENERATED by kicad_contracts.py --pinmap — do not edit */",
-             "#ifndef PINMAP_GEN_H", "#define PINMAP_GEN_H",
-             "#include <stdint.h>",
-             "#include <avr/pgmspace.h>", "",
-             "/* All tables live in flash (PROGMEM). Read entries with memcpy_P;",
-             "   the embedded char pointers are flash addresses (pgm_read_byte). */",
-             "/* owner = the MEMBER BOARD this wire lands on. For a per-module bundle",
-             "   it is the module itself; for a BLOCK it is resolved per signal, and",
-             "   it is NOT always the producer — END/HALT tap at root's U61, IRB at",
-             "   microcode's U16, OB at the io end (strike-7 far-end rule). It is",
-             "   also what slot_of() must be keyed on, since slot maps are per",
-             "   module and a block has no slots of its own. */",
-             "typedef struct { const char *signal; const char *megapin; char dir;",
-             "                 const char *owner; } sigpin_t;",
-             "/* members = the boards this bundle spans, in LADDER ORDER. For a",
-             "   per-module bundle it is just the module; for a BLOCK it is every",
-             "   member, so `pins block1` opens by telling you which boards have to",
-             "   be on the bench before a single jumper goes in. */",
-             "typedef struct { const char *module; const sigpin_t *sig; uint8_t n;",
-             "                 const char *members; const char *straps; } modmap_t;", ""]
-    interned, strdefs = {}, []
-
-    def sym(s):
-        if s not in interned:
-            interned[s] = f"pm_s{len(interned)}"
-            strdefs.append(f'static const char {interned[s]}[] PROGMEM = "{s}";')
-        return interned[s]
-
-    mods, mod_blocks = [], []
-    for sheet in sorted(contracts):
-        tok = mod_token(sheet)
-        assign = PIN_ASSIGN.get(tok, {})
-        probes = PIN_PROBES.get(tok, [])
-        held = set(assign.values()) | {p for _s, p in probes}
-        fixed_pins = {f"{port}{int(n) & 7}/{dpin}"
-                      for _rx, port, dmap in MEGA_PORT_BY_PREFIX
-                      for n, dpin in dmap.items()}
-        unknown = held - set(POOL) - fixed_pins
-        if unknown:
-            raise SystemExit(f"PIN_ASSIGN/PIN_PROBES for {tok}: unknown pin: {unknown}")
-        if len(held) < len(assign) + len(probes):
-            raise SystemExit(f"PIN_ASSIGN/PIN_PROBES for {tok}: duplicate pin")
-        cands, pool = [], [p for p in POOL if p not in held]
-        for kind, d in (("IN", 'O'), ("OUT", 'I'), ("BIDIR", 'B')):
-            # rig direction is the DUT's inverse: DUT IN => rig Output
-            for label, _others in sorted(contracts[sheet][kind]):
-                for signal in expand(label):
-                    cands.append((signal, bus_pin(signal), d))
-        # Resolve within-module bus-pin clashes (e.g. CW14=PC_MAR_MUX vs M14
-        # both wanting PL6): the lowest-priority-index signal keeps the port
-        # pin, the loser falls to the pool. Emit alias joins in full so the
-        # hookup table shows both names.
-        best = {}
-        for i, (_s, bp, _d) in enumerate(cands):
-            if bp and (bp[0] not in best or bp[1] < cands[best[bp[0]]][1][1]):
-                best[bp[0]] = i
-        rows = []
-        assigned_seen = set()
-        for i, (signal, bp, d) in enumerate(cands):
-            if signal in assign:            # hand-tune beats the bus rule
-                pin = assign[signal]
-                assigned_seen.add(signal)
-            elif bp and best[bp[0]] == i:
-                pin = bp[0]
-            else:
-                pin = pool.pop(0)
-            rows.append((signal, pin, d))
-        leftover = set(assign) - assigned_seen
-        if leftover:
-            raise SystemExit(f"PIN_ASSIGN for {tok}: no such contract signal: {leftover}")
-        contract_names = {s for s, _p, _d in rows}
-        for pname, ppin in probes:
-            if pname in contract_names:
-                raise SystemExit(f"PIN_PROBES for {tok}: name collides with contract: {pname}")
-            rows.append((pname, ppin, 'I'))
-        pins_used = [p for _s, p, _d in rows]
-        dupes = {p for p in pins_used if pins_used.count(p) > 1}
-        if dupes:
-            raise SystemExit(f"pinmap for {tok}: pin used twice: {dupes}")
-        # Wiring order: Mega header sweep — D53 down to D2, then A15 down
-        # to A0. `pins <mod>` prints in table order, so this IS the order
-        # you jumper in.
-        rows.sort(key=_wire_key)
-        arr = ",\n    ".join(f"{{{sym(s)}, {sym(p)}, '{d}', {sym(tok)}}}"
-                             for s, p, d in rows)
-        mod_blocks.append(f"static const sigpin_t sig_{tok}[] PROGMEM = {{\n    {arr}\n}};")
-        mods.append((tok, len(rows), tok, ""))
-
-    # Block bundles ride the same MODMAPS machinery — `pins block1`,
-    # `run block1.decode`, sig_lookup() and coverage_lint all work unchanged.
-    for bname, surf in build_blocks(contracts).items():
-        rows = block_pins(contracts, bname, surf)
-        arr = ",\n    ".join(f"{{{sym(s)}, {sym(p)}, '{d}', {sym(o)}}}"
-                             for s, p, d, o in rows)
-        mod_blocks.append(
-            f"static const sigpin_t sig_{bname}[] PROGMEM = {{\n    {arr}\n}};")
-        # STRAPS BELONG IN THE HOOKUP TABLE. They are board ties with no rig
-        # wire, so a table that lists only jumpers gives no reason to believe
-        # they exist — and on the bench they simply did not get built
-        # (2026-08-01) — specifically WRITE_DIR and W0-7. WRITE_DIR floating
-        # high is a live RAM-write and U21-direction hazard. FLAG_Z was fitted
-        # all along (1k pull-high at U62.3); an earlier note here claimed it was
-        # floating, which came from over-reading "I haven't done any strapping"
-        # as covering all three. Corrected 2026-08-02.
-        st = "; ".join(f"{sig}={lvl}" for sig, (lvl, _cite)
-                       in sorted(surf["strap"].items())) or "none"
-        mods.append((bname, len(rows), ", ".join(surf["members"]), st))
-
-    arr = ",\n    ".join(f'{{{sym(t)}, sig_{t}, {n}, {sym(mem)}, {sym(st)}}}'
-                         for t, n, mem, st in mods)
-    lines += strdefs + [""] + mod_blocks
-    lines += ["", f"static const modmap_t MODMAPS[] PROGMEM = {{\n    {arr}\n}};",
-              f"#define MODMAP_COUNT {len(mods)}", "", "#endif"]
-    open(out_path, "w").write("\n".join(lines) + "\n")
-    print(f"[pinmap written to {out_path}]")
-
-
 def expand(label):
     """Expand a compressed numeric range ('W0-7' -> W0..W7). Defensive only:
     build_contracts() emits uncompressed per-bit labels. Alias joins like
-    'CW14=PC_MAR_MUX' pass through whole — emit_pinmap() keeps the full join
-    as the signal name and pins it by whichever component is a bus bit."""
+    'CW14=PC_MAR_MUX' pass through whole."""
     m = re.match(r"^(.*?)(\d+)-(\d+)$", label)
     if not m:
         return [label]
@@ -1109,19 +539,45 @@ def net_pins(root):
             if net.startswith("N$anon") or net in ("GND", "+5V"):
                 continue
             pins[net].append((ref, int(pin), token))
-    return dict(pins)
+    # One physical net may carry different label sets on different sheets
+    # (microcode: CW12; interrupt: CW12 + END). KiCad joins them through the
+    # shared global label, and so does this: keys sharing any label merge,
+    # under the sorted union of their labels. (2026-10-30, Rico: the tools
+    # follow the schematic as built.)
+    parent = {k: k for k in pins}
+
+    def find(k):
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+    owner = {}
+    for k in pins:
+        for part in k.split("/"):
+            if part in owner:
+                parent[find(k)] = find(owner[part])
+            else:
+                owner[part] = k
+    groups = defaultdict(list)
+    for k in pins:
+        groups[find(k)].append(k)
+    out = {}
+    for ks in groups.values():
+        name = "/".join(sorted({p for k in ks for p in k.split("/")}))
+        out[name] = [p for k in sorted(ks) for p in pins[k]]
+    return out
 
 
 def alias_splits(net_pins_map):
     """{base_label: [conflicting net keys]} — one physical net carried under
     two different label sets.
 
-    kicad_netlist keys a net on its FULL label set, joined with "/". Cross-sheet
-    connectivity in this design is a naming convention (every label is
-    sheet-local; KiCad joins nothing between sheets), so a net whose label set
-    differs per sheet gets a different key per sheet, every key looks
-    single-sheet, and continuity_checklist's cross-sheet filter drops the whole
-    wire. Silently: a copper wire is driven by no test and sampled by no test.
+    kicad_netlist keys a net on its FULL label set, joined with "/", per
+    sheet. A net whose label set differs per sheet gets a different key per
+    sheet; net_pins() merges keys that share a label (as KiCad's global labels
+    do, since 2026-09-12), so on its output this should be empty. If it is
+    not, every key looks single-sheet and continuity_checklist's cross-sheet
+    filter drops the whole wire: driven by no test, sampled by no test.
 
     That is how M15/ROM_EN — the ROM chip-enable — stayed off every checklist
     this tool ever generated while the machine booted from ROM daily. Empty is
@@ -1356,8 +812,3 @@ if __name__ == "__main__":
         i = sys.argv.index("--since")
         rest = [a for a in sys.argv[i + 1:] if not a.startswith("--")]
         print_pin_net_diff(root, rest[0] if rest else "HEAD")
-    if "--pinmap" in sys.argv:
-        out = os.path.normpath(os.path.join(here, "..", "..", "tests",
-                                            "dino_bringup", "src", "pinmap_gen.h"))
-        os.makedirs(os.path.dirname(out), exist_ok=True)
-        emit_pinmap(contracts, out)

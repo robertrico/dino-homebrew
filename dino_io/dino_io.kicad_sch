@@ -89,10 +89,10 @@
 				)
 			)
 			(symbol "DINO_BUS_EDGE_1_1"
-				(pin power_out line
+				(pin output line
 					(at -12.7 30.48 0)
 					(length 2.54)
-					(name "GND"
+					(name "CLK_B"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -197,7 +197,7 @@
 						)
 					)
 				)
-				(pin passive line
+				(pin power_out line
 					(at -12.7 15.24 0)
 					(length 2.54)
 					(name "GND"
@@ -377,10 +377,10 @@
 						)
 					)
 				)
-				(pin output line
+				(pin passive line
 					(at -12.7 -10.16 0)
 					(length 2.54)
-					(name "CLK_B"
+					(name "GND"
 						(effects
 							(font
 								(size 1.27 1.27)
@@ -7464,27 +7464,9 @@
 			)
 		)
 	)
-	(global_label "GND"
-		(shape passive)
-		(at 203.2 71.12 180)
-		(fields_autoplaced yes)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right)
-		)
-		(uuid "6a120911-95b6-5904-8220-3f63bb329367")
-		(property "Intersheetrefs" "${INTERSHEET_REFS}"
-			(at 203.2 71.12 180)
-			(hide yes)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right)
-			)
-		)
+	(no_connect
+		(at 203.2 71.12)
+		(uuid "48b0222e-1bc2-5f21-b805-ae5b65d4fd17")
 	)
 	(global_label "+5V"
 		(shape passive)
@@ -7762,9 +7744,27 @@
 			)
 		)
 	)
-	(no_connect
-		(at 203.2 111.76)
-		(uuid "91c530c1-7b6f-52d6-a7cf-c01332d2aa84")
+	(global_label "GND"
+		(shape passive)
+		(at 203.2 111.76 180)
+		(fields_autoplaced yes)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify right)
+		)
+		(uuid "51180e4f-8a30-558c-ab3d-b2f8c1139947")
+		(property "Intersheetrefs" "${INTERSHEET_REFS}"
+			(at 203.2 111.76 180)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify right)
+			)
+		)
 	)
 	(no_connect
 		(at 203.2 114.3)

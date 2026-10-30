@@ -115,8 +115,13 @@ class TestSheet(unittest.TestCase):
         psg.generate(self.tmp)
         after = open(os.path.join(self.tmp, "dino_v0_0_2.kicad_sch")).read()
         self.assertEqual(before, after)
+        # one block per sub-sheet on disk (13 since the interrupt sheet,
+        # 2026-09-29), and the power block exactly once
         blocks = [sh for sh in children(self.root, "sheet")]
-        self.assertEqual(len(blocks), 12)
+        subs = [f for f in os.listdir(PROJ) if f.endswith(".kicad_sch")
+                and f != "dino_v0_0_2.kicad_sch"]
+        self.assertEqual(len(blocks), len(subs))
+        self.assertEqual(after.count('"Sheetfile" "%s"' % psg.SHEET_FILE), 1)
 
     def test_no_reference_collides_with_the_core(self):
         others = [f for f in fg.sheets(PROJ)

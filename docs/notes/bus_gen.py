@@ -328,6 +328,12 @@ def connector(ref, lib_name, x, y, path, project, takes=None):
     out = _instance(f"{LIB}:{lib_name}", ref, lib_name, x, y,
                     [str(p) for p, _, _ in BUS], path, project, fp,
                     descr="DINO peripheral bus", key=f"{project}/{ref}")
+    return out + edge_marks(ref, x, y, project, takes)
+
+
+def edge_marks(ref, x, y, project, takes=None):
+    """The label or no-connect on each of a connector's 50 pins, from BUS."""
+    out = ""
     for pin, name, kind in BUS:
         px, py = pin_sheet_xy((x, y), pin)
         rot = 180 if pin <= 25 else 0
@@ -337,6 +343,48 @@ def connector(ref, lib_name, x, y, path, project, takes=None):
         else:
             out += no_connect(px, py, f"{project}/{ref}/nc/{pin}")
     return out
+
+
+def refresh_card_zero_edge(repo):
+    """Re-mark card zero's J1 from the current BUS table. The card was split
+    out 2026-09-12 and split_card_zero runs once; when the pinout moved
+    (2026-10-29: CLK_B to pin 1, GND to 17) its edge kept the old one. Every
+    mark is found by its generated uuid and rewritten in place, so a rerun
+    is byte-identical. Returns whether the file changed."""
+    path = os.path.join(repo, CARD, CARD + ".kicad_sch")
+    if not os.path.exists(path):
+        return False
+    with open(path) as f:
+        src = f.read()
+    txt = src
+    first = None
+    for pin, _n, _k in BUS:
+        for kind, key in (("global_label", f"{CARD}/J1/label/{pin}"),
+                          ("no_connect", f"{CARD}/J1/nc/{pin}")):
+            m = re.search(r"\t\(%s\b.*\n(?:\t\t.*\n)*?\t\t\(uuid \"%s\"\)\n(?:\t\t.*\n)*?\t\)\n"
+                          % (kind, uid(key)), txt)
+            if m:
+                first = m.start() if first is None else min(first, m.start())
+                txt = txt[:m.start()] + txt[m.end():]
+    if first is None:
+        raise SystemExit(f"{path}: no generated J1 marks found")
+    # the embedded edge symbol carries pin types from the same table: GND's
+    # power_out pin moved too, so it is re-embedded from the library
+    with open(os.path.join(repo, LIB, LIB + ".kicad_sym")) as f:
+        blk = _extract(f.read(), EDGE).replace(f'(symbol "{EDGE}"', f'(symbol "{LIB}:{EDGE}"', 1)
+    blk = "\n".join("\t" + l if l else l for l in blk.splitlines()) + "\n"
+    head = f'\t\t(symbol "{LIB}:{EDGE}"\n'
+    i = txt.index(head)
+    j = txt.index("\n\t\t)\n", i) + len("\n\t\t)\n")
+    first += len(blk) - (j - i) if first > i else 0
+    txt = txt[:i] + blk + txt[j:]
+    marks = edge_marks("J1", CARD_J1_AT[0], CARD_J1_AT[1], CARD, CARD_ZERO_TAKES)
+    txt = txt[:first] + marks + txt[first:]
+    if txt == src:
+        return False
+    with open(path, "w") as f:
+        f.write(txt)
+    return True
 
 
 # --- the core's bus sheet -------------------------------------------------------
@@ -565,9 +613,10 @@ def rename_front_panel(core):
 
 def flatten(core_nets, cards):
     """Partition of (ref, pin) across the core and the cards, joined through
-    the slot pin numbers. `cards`: {slot: nets}. A card's own J1 is renamed
-    'J1@card' (or 'J1@card<slot>' when several) so it cannot collide with
-    the core's J1. Every other card ref is kept: refs came from the core."""
+    the slot pin numbers. `cards`: {slot: nets}. Every card ref is renamed
+    '<ref>@card' (or '<ref>@card<slot>' when several) so it cannot collide
+    with a core ref: the core's J1, and since 2026-10-06 the ALU board's U76
+    ('157) against card zero's U76 ('138)."""
     parent = {}
 
     def find(a):
@@ -586,9 +635,10 @@ def flatten(core_nets, cards):
         for p in pins[1:]:
             union(pins[0], p)
     for slot, nets in cards.items():
-        tag = "J1@card" if len(cards) == 1 else f"J1@card{slot}"
+        sfx = "@card" if len(cards) == 1 else f"@card{slot}"
+        tag = "J1" + sfx
         for pins in nets.values():
-            pins = [((tag, p) if r == "J1" else (r, p)) for r, p in pins]
+            pins = [(r + sfx, p) for r, p in pins]
             find(pins[0])
             for p in pins[1:]:
                 union(pins[0], p)
@@ -607,7 +657,8 @@ def run(repo):
     core = os.path.join(repo, "dino_v0_0_2")
     out = {"bus_sheet": add_bus_sheet(repo),
            "card_zero": split_card_zero(repo),
-           "front_panel": rename_front_panel(core)}
+           "front_panel": rename_front_panel(core),
+           "card_zero_edge": refresh_card_zero_edge(repo)}
     # RESET_B, ~{IO_WR}, ~{IO_SEL} lived on the Memory sheet alone until the
     # bus sheet named them too; they are cross-sheet now and must go global
     out["globalised"] = globalise(core)

@@ -143,8 +143,8 @@ class TestCrc(unittest.TestCase):
 
 class TestExpectedRows(unittest.TestCase):
     """expected_rows()/print_expected() -- the bring-up sheet's generator
-    (fpga/BRINGUP_FPGA.md and tests/dino_bringup/BRINGUP.md's "everything
-    generated, nothing retyped" rule). in-process checks first, then one
+    (tests/dino_bringup/BRINGUP.md's "everything generated, nothing
+    retyped" rule). in-process checks first, then one
     subprocess check that the actual `--expected` CLI flag prints the
     same numbers and does not touch roms/ (side-effect-free)."""
 

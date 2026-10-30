@@ -39,8 +39,12 @@ ROOT = os.path.normpath(os.path.join(HERE, "..", "..",
 #   moved to ~{ROM_SEL}. This is the exact net whose alias split cost every
 #   continuity checklist this project ever generated, so a stale name on it
 #   re-arms that hazard under a name that now also lies.
-M15_PINS = {("U12", 9), ("U14", 9), ("U74", 10),
-            ("U59", 11), ("U60", 8), ("U60", 9)}
+#
+# The peripheral bus (2026-09-12) publishes M15 on every slot, edge pin 43
+# (J1-J8); the serial card does not take it (test_serial_card EDGE_NOT_TAKEN).
+M15_PINS = ({("U12", 9), ("U14", 9), ("U74", 10),
+             ("U59", 11), ("U60", 8), ("U60", 9)}
+            | {(f"J{i}", 43) for i in range(1, 9)})
 
 
 # A pytest FUNCTION, not a module-level assert. The other test_*.py here assert
@@ -202,9 +206,13 @@ def test_refs_list_includes_a_new_chips_own_on_board_wiring():
 def test_single_pin_stubs_are_bucketed_not_listed_as_work():
     rows = continuity_checklist(ROOT, ["U23"])
     listed = {net for net, _, _ in rows}
-    assert "CW16/~{CIN_SEL}" not in listed, (
-        "CW16 is a U23 output wired to nothing — it must not appear as a wire "
+    # CW16 was the example until 2026-10-06, when U76.1 (the carry-in mux)
+    # became its consumer; CW19 is still a U23 output to nothing
+    assert "CW19/~{MISC_BANK}" not in listed, (
+        "CW19 is a U23 output wired to nothing — it must not appear as a wire "
         "to land. Unwired CW bits are correct, not a failed label.")
+    assert "CW16/~{CIN_SEL}" in listed, (
+        "CW16 is a crossing since 2026-10-06: U23.11 -> U76.1 (ALU carry mux)")
 
     # RESERVE_BITS, not a second hand-written list. A tuple someone has to
     # remember to update is the failure test_suite_reachability.py exists for,
@@ -283,7 +291,9 @@ def test_default_report_is_unchanged_by_the_refs_relaxation():
 # checklist proper as CW21/FLAG_SEL0 against U23.17. That is what an alias
 # binding for the first time looks like -- "an alias binds only when its
 # consumer pin exists".
-RESERVE_BITS = {"CW16/~{CIN_SEL}", "CW19/~{MISC_BANK}", "CW20/~{ADDR_SEL1}",
+#
+# CW16 LEFT THIS LEDGER 2026-10-06: U76.1 (ADC/SBB carry-in select).
+RESERVE_BITS = {"CW19/~{MISC_BANK}", "CW20/~{ADDR_SEL1}",
                 "CW22/FLAG_SEL1", "CW23/FLAG_POL"}
 
 # PHASE E, 2026-08-25. U75's three published strobes have no consumer in the
@@ -294,23 +304,27 @@ RESERVE_BITS = {"CW16/~{CIN_SEL}", "CW19/~{MISC_BANK}", "CW20/~{ADDR_SEL1}",
 # ~{IO_WR} and ~{IO_RD_Q} retire when the first card lands on them. RESET_B is
 # a BUFFER of RESET for the backplane and may stay a stub indefinitely -- that
 # is what a published reset looks like with no card plugged in.
-PUBLISHED_BUS = {
-    "~{IO_WR}":    "OR(~{IO_SEL}, ~{RAM_WRITE_EN}) -> every card's ~WR",
-    "RESET_B":     "OR(RESET, GND) -> the backplane's reset",
-}
+#
+# BOTH LEFT THIS LEDGER with the peripheral bus sheet (2026-09-12): the slot
+# connectors J1-J8 consume ~{IO_WR} and RESET_B, so they are crossings now.
+PUBLISHED_BUS = {}
 # ~{IO_RD_Q} LEFT THIS LEDGER 2026-08-26, PHASE E STEP B. It was a stub while
 # U75.11 was its only pin; card zero's '138 (U76.4, E1) gave it a second and
 # it is now a genuine crossing on the checklist proper. ~{IO_WR} and RESET_B
 # stay -- no card uses them yet.
 
+# CW12 and CW15 LEFT 2026-09-29: END and HALT reach the interrupt board
+# (U82) now, a child sheet, so both are microcode -> interrupt crossings.
 ROOT_CROSSING = {           # counterpart lives on the root sheet
-    "CW12":     "END      -> root U61.3",
-    "CW15":     "HALT     -> root U61.5/6",
     "T0":       "root T-counter U6/U7/U8",
     "T1":       "root T-counter U6/U7/U8",
     "T2":       "root T-counter U6/U7/U8",
     "T3":       "root T-counter U6/U7/U8",
-    "~{RESET}": "root U27.8",
+    # ~{RESET} LEFT 2026-09-29: U81.13 (interrupt, IE reset) is a second
+    # child-sheet pin, so it is a crossing alu <-> interrupt now.
+    # 2026-09-29: the interrupt board's END gate and the T0 write gate
+    "END_OR_ACCEPT": "interrupt U82.6 -> root U61.3",
+    "~{TO0}":        "root U56.4 -> control_word U62.12 (WR_GATE)",
 }
 # RESET LEFT THIS LEDGER 2026-08-25, PHASE E. It was a stub because its only
 # child-sheet pin was U10.6 (program_counter) and its driver U27.9 is on the
@@ -335,6 +349,18 @@ def test_stub_bucket_contains_only_known_entries():
         "\n  ".join(sorted(vanished)))
 
 
+def test_a_label_shared_between_sheets_is_one_net_like_kicad():
+    """2026-10-30. Microcode labels CW12/CW15 bare; the interrupt sheet adds
+    END/HALT beside them. KiCad joins them by the shared global label (one
+    net each; the routed board has them), so net_pins must too -- the
+    schematic is what was built, the tool follows it."""
+    np = kicad_contracts.net_pins(ROOT)
+    for key, pins in (("CW12/END", {("U15", 16), ("U82", 1), ("U82", 4)}),
+                      ("CW15/HALT", {("U15", 19), ("U82", 2)})):
+        assert key in np, f"{key} not one net: {sorted(k for k in np if key.split('/')[0] in k)}"
+        assert pins <= {(r, p) for r, p, _ in np[key]}, key
+
+
 def test_the_five_repaired_aliases_stay_joined():
     """Regression for 2026-08-23. Each of these was in the no-connect bucket
     while being a live wire on a working machine."""
@@ -342,7 +368,9 @@ def test_the_five_repaired_aliases_stay_joined():
     for key, sheets in (("CW9/SA2", {"microcode", "alu"}),
                         ("CW10/SA1", {"microcode", "alu"}),
                         ("CW11/SA0", {"microcode", "alu"}),
-                        ("CW13/PC_UP", {"microcode", "program_counter"}),
+                        # 2026-09-29: PC_UP goes through the interrupt
+                        # board's U81 (PC_UP_GATED) on its way to the PC
+                        ("CW13/PC_UP", {"microcode", "interrupt"}),
                         ("CW14/PC_MAR_MUX", {"microcode", "mar"})):
         assert key in np, (
             f"{key} is split again -- both sheets must declare the SAME label "

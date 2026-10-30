@@ -243,9 +243,29 @@ def label_sheets(proj):
     return out
 
 
-def exclusions(rep, ref_sheet=None, label_sheet=None):
+def label_instances(proj):
+    """label name -> [(uuid, pos, sheet uuid path)] for every label drawn by
+    that name; pos in the report's units (mm / 100)."""
+    by_uuid = label_sheets(proj)
+    out = {}
+    for p in sheets(proj):
+        with open(p) as f:
+            src = f.read()
+        for m in re.finditer(r'\t\((?:global_)?label "([^"]*)"\n(?:\t\t.*\n)*?'
+                             r'\t\t\(at ([\d.-]+) ([\d.-]+)[^)]*\)\n(?:\t\t.*\n)*?'
+                             r'\t\t\(uuid "([^"]+)"\)', src):
+            pos = {"x": float(m.group(2)) / 100, "y": float(m.group(3)) / 100}
+            out.setdefault(m.group(1), []).append((m.group(4), pos, by_uuid[m.group(4)]))
+    return out
+
+
+_LABEL = re.compile(r"Label '([^']*)'")
+
+
+def exclusions(rep, ref_sheet=None, label_sheet=None, instances=None):
     keys = []
     label_sheet = label_sheet or {}
+    instances = instances or {}
     for s in rep["sheets"]:
         for v in s["violations"]:
             if v["type"] not in EXCLUDE_KINDS:
@@ -255,15 +275,35 @@ def exclusions(rep, ref_sheet=None, label_sheet=None):
             sp = s["uuid_path"]
             if len(v["items"]) == 1:
                 sp = label_sheet.get(v["items"][0]["uuid"], sp)
-            keys.append(key(v["type"], sp, v["items"], ref_sheet))
-    return keys
+            if v["type"] != "multiple_net_names":
+                keys.append(key(v["type"], sp, v["items"], ref_sheet))
+                continue
+            # An alias pair's marker is not stable run to run: KiCad picks
+            # either name first and any sheet's stub of the pair. Key both
+            # orders of every same-sheet instance pair (2026-10-30: 0 left
+            # in 15 consecutive kicad-cli 10.0.4 runs).
+            names = [_LABEL.search(i["description"]) for i in v["items"]]
+            insts = [[({"uuid": u, "pos": pos}, s_) for u, pos, s_ in
+                      instances.get(m.group(1), [])] if m else [] for m in names]
+            insts = [found or [(i, sp)] for found, i in zip(insts, v["items"])]
+            for a, sa in insts[0]:
+                for b, sb in insts[1]:
+                    if sa != sb:
+                        continue    # an alias stub is two labels on one sheet
+                    keys.append(key(v["type"], sa, [a, b], ref_sheet))
+                    keys.append(key(v["type"], sa, [b, a], ref_sheet))
+    return list(dict.fromkeys(keys))
 
 
 def write_exclusions(proj, keys):
     pro = os.path.join(proj, "dino_v0_0_2.kicad_pro")
     with open(pro) as f:
         d = json.load(f)
-    d.setdefault("erc", {})["erc_exclusions"] = keys
+    # merge, never replace: the report a re-run sees no longer lists what is
+    # already excluded. KiCad 10 stores [key, comment]; plain keys also load.
+    have = d.setdefault("erc", {}).setdefault("erc_exclusions", [])
+    known = {h[0] if isinstance(h, list) else h for h in have}
+    have.extend(k for k in dict.fromkeys(keys) if k not in known)
     with open(pro, "w") as f:
         json.dump(d, f, indent=2)
         f.write("\n")
@@ -281,12 +321,14 @@ def append_report(proj, report_path):
     have_sch = os.path.exists(root)
     keys = exclusions(rep,
                       ref_sheets(proj) if have_sch and os.path.exists(KICAD_CLI) else {},
-                      label_sheets(proj) if have_sch else {})
+                      label_sheets(proj) if have_sch else {},
+                      label_instances(proj) if have_sch else {})
     pro = os.path.join(proj, "dino_v0_0_2.kicad_pro")
     with open(pro) as f:
         d = json.load(f)
     have = d.setdefault("erc", {}).setdefault("erc_exclusions", [])
-    new = [k for k in keys if k not in have]
+    known = {h[0] if isinstance(h, list) else h for h in have}
+    new = [k for k in dict.fromkeys(keys) if k not in known]
     if new:
         have.extend(new)
         with open(pro, "w") as f:
@@ -302,7 +344,8 @@ def run(proj):
     root = os.path.join(proj, "dino_v0_0_2.kicad_sch")
     wire = delete_by_uuid(root, "wire", STUB_WIRE_UUID)
     nc = delete_dangling_nc(proj)
-    keys = exclusions(_erc(proj), ref_sheets(proj), label_sheets(proj))
+    keys = exclusions(_erc(proj), ref_sheets(proj), label_sheets(proj),
+                      label_instances(proj))
     write_exclusions(proj, keys)
     return {"rehomed_sheets": rehomed, "stub_wire": wire, "no_connect": nc,
             "exclusions": len(keys)}

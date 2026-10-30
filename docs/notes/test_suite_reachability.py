@@ -44,21 +44,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # Modules exempted from the reachability rule. EVERY ENTRY NAMES WHAT RETIRED
 # IT -- an unexplained exemption is how the hole reopens.
 EXEMPT = {
-    "test_fpga_gen.py":
-        "DEAD with the FPGA twin, retired 2026-08-24. CLAUDE.md: do not "
-        "repair it, do not read a green badge into it.",
-    "test_vplan.py":
-        "DEAD with the FPGA twin -- dino_fpga_vplan.md is the twin's "
-        "coverage map, retired 2026-08-24.",
-    "test_netlist_integrity.py":
-        "DEAD with the FPGA twin: it synthesises fpga/gen/*.vhd through "
-        "ghdl-yosys-plugin. oss-cad-suite IS installed, so this gate would "
-        "run -- but the artifact it gates is retired.",
-    "test_kicad_contracts_pinmap.py":
-        "PERMANENTLY RED with the ATmega rig, retired 2026-08-24. --pinmap "
-        "throws IndexError: the MDR sheet needs 21 rig pins and POOL has 19. "
-        "CLAUDE.md: do NOT extend POOL, that would commit a hookup table for "
-        "retired hardware.",
     "test_suite_reachability.py":
         "this file; it is its own runner.",
 }
