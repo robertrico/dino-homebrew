@@ -1,0 +1,56 @@
+# The FPGA twin on the ECP5-5G Versa (LFE5UM5G-45F, CABGA381).
+# Clock, reset button, LEDs and DIP switches as the retired FPGA twin's
+# versa.lpf had them (litex-boards lattice_versa_ecp5.py, EB103). The UART
+# lines are b8008_monitor's, verbatim: an FTDI adapter wired and proven
+# there (Rico, 2026-10-30).
+
+LOCATE COMP "clk" SITE "P3";
+IOBUF PORT "clk" IO_TYPE=LVDS;
+FREQUENCY PORT "clk" 100 MHZ;
+FREQUENCY NET "clk_sys" 48 MHZ;
+
+LOCATE COMP "rst_n" SITE "T1";
+IOBUF PORT "rst_n" IO_TYPE=LVCMOS33;
+
+# UART (intel-8008-vhdl/projects/b8008_monitor/constraints/b8008_monitor.lpf)
+#   FPGA TX (uart_tx) -> FTDI RX, FPGA RX (uart_rx) <- FTDI TX, GND -> GND
+LOCATE COMP "uart_tx" SITE "B19";
+IOBUF PORT "uart_tx" IO_TYPE=LVCMOS33 DRIVE=12;
+LOCATE COMP "uart_rx" SITE "B12";
+IOBUF PORT "uart_rx" IO_TYPE=LVCMOS33 PULLMODE=UP;
+
+# LEDs, active low
+LOCATE COMP "led[0]" SITE "E16";
+IOBUF PORT "led[0]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[1]" SITE "D17";
+IOBUF PORT "led[1]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[2]" SITE "D18";
+IOBUF PORT "led[2]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[3]" SITE "E18";
+IOBUF PORT "led[3]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[4]" SITE "F17";
+IOBUF PORT "led[4]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[5]" SITE "F18";
+IOBUF PORT "led[5]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[6]" SITE "E17";
+IOBUF PORT "led[6]" IO_TYPE=LVCMOS25;
+LOCATE COMP "led[7]" SITE "F16";
+IOBUF PORT "led[7]" IO_TYPE=LVCMOS25;
+
+# DIP switches: ON reads 0
+LOCATE COMP "dip[0]" SITE "H2";
+IOBUF PORT "dip[0]" IO_TYPE=LVCMOS15;
+LOCATE COMP "dip[1]" SITE "K3";
+IOBUF PORT "dip[1]" IO_TYPE=LVCMOS15;
+LOCATE COMP "dip[2]" SITE "G3";
+IOBUF PORT "dip[2]" IO_TYPE=LVCMOS15;
+LOCATE COMP "dip[3]" SITE "F2";
+IOBUF PORT "dip[3]" IO_TYPE=LVCMOS15;
+LOCATE COMP "dip[4]" SITE "J18";
+IOBUF PORT "dip[4]" IO_TYPE=LVCMOS25;
+LOCATE COMP "dip[5]" SITE "K18";
+IOBUF PORT "dip[5]" IO_TYPE=LVCMOS25;
+LOCATE COMP "dip[6]" SITE "K19";
+IOBUF PORT "dip[6]" IO_TYPE=LVCMOS25;
+LOCATE COMP "dip[7]" SITE "K20";
+IOBUF PORT "dip[7]" IO_TYPE=LVCMOS25;

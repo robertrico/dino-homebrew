@@ -30,8 +30,9 @@ import progrom_gen as pg
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 RUN = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'netsim_run.py')
 
-# Images that exist to drive the serial card or interrupts.
-NEEDS_CARD = re.compile(r'^PROG_(ser|int|rx|tx|hello|monitor|imon|basic)')
+# Images that exist to drive the serial card or interrupts, or that read a
+# card only the FPGA twin seats (deadbeef: fpga_twin_suite.CARD_IMAGES).
+NEEDS_CARD = re.compile(r'^PROG_(ser|int|rx|tx|hello|monitor|imon|basic|deadbeef)')
 EMPTY_SLOT = 0xFF
 
 

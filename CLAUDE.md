@@ -60,8 +60,8 @@ serial card and a ROM monitor.** Phases B (stack), C (CALL/RET), D
 (serial card) and G_0 (monitor) are on silicon and drawn. Instruments:
 Siglent SDS1204X-E, DSLogic Plus LA (16 ch at 100 MHz in buffer mode,
 2026-10-06 CSV headers), DMM, TL866. The ATmega rig is retired (see
-"Retired"). The machine has one twin, the netlist simulation `netsim/`
-(see "The twin").
+"Retired"). The machine has three twins: the breadboard, the netlist
+simulation `netsim/` and the FPGA twin (see "The twins").
 
 **FACT — interrupts work (2026-10-06).** The INT core (U80-U87), the
 serial card's 7406N (U104) and the ~{IRQ} jumper are wired; every rung of
@@ -335,9 +335,11 @@ any other key resumes. `asm/ram/spin.asm` is the Ctrl-C witness.
   driven-wire count may not rise). The ladder and its classifier were
   retired with their tests 2026-10-30 (Rico): they described the rig's
   bring-up order and predate the interrupt board.
-- 2026-08-24: the ATmega rig and the FPGA twin are retired, not repaired.
-- 2026-10-30: one twin, `netsim/`: the TTL exactly as drawn, no rewiring;
-  the FPGA twin is deleted (Rico).
+- 2026-08-24: the ATmega rig and the (VHDL) FPGA twin are retired, not repaired.
+- 2026-10-30: three twins (Rico, "triplets"): the breadboard, `netsim/`
+  (the TTL exactly as drawn, no rewiring) and a net-new FPGA twin generated
+  from the same netlists; the old VHDL FPGA twin is deleted. The FPGA twin
+  has slots J1-J8 and one card API, for proving RTL cards before copper.
 - 2026-08-25: phases E, F and G are independent in both directions.
 - 2026-08-27: `0x00` stays `NOP`; `IN` is retired from the ISA (`0x52`
   free); `0x9x` reserved for hardware-gated opcodes; high nibble = family.
@@ -450,6 +452,13 @@ Each is a rule because something broke. The narrative behind each is in
     docs/notes/netsim_run.py        run a ROM (or --ram program) on the twin
     docs/notes/netsim_suite.py      every runnable image on the twin vs the
                                     oracle (`make twin`)
+    docs/notes/fpga_twin_gen.py     FPGA twin engine and the card API
+    docs/notes/fpga_core_gen.py     mainboard -> dino_core, slots J1-J8
+    docs/notes/fpga_card_gen.py     one KiCad card -> one card module
+    docs/notes/fpga_cards.py        card registry: source, window, oracle
+    docs/notes/fpga_slots_gen.py    SLOTS, the slot table -> dino_system
+    docs/notes/fpga_twin_suite.py   every image on the FPGA twin vs the
+                                    oracle (`make fpga-twin`)
 
 `simulate()` in `progrom_gen.py` interprets the real microcode rows and
 computes what `OB` should read; it is the answer key, and it is not the
@@ -458,9 +467,9 @@ to each generator (`test_*.py`). Adding an instruction costs a three-ROM
 burn; CRCs are pinned literals so a reburn is always deliberate. New
 programs are `.asm` under `asm/`, never Python lists.
 
-## The twin
+## The twins
 
-`netsim/` is DINO's only twin (Rico, 2026-10-30): the TTL exactly as
+**netsim** (`netsim/`, 2026-10-30): the TTL exactly as
 drawn, simulated in Icarus. `netsim_gen.py` exports the netlist the PCB is
 routed from and emits one Verilog instance per chip, wired by pin number;
 `netsim/ttl_models.v` holds one model per part type (datasheet function
@@ -492,11 +501,45 @@ four images that never HALT, and `PROG_diag` (an older ISA). `retlda`
 returns from RAM. `test_netsim.py` 33/33.
 
 The breadboard had a fetch glitch that the T0 write gate (the NOR, U62 g4)
-fixed. Unmeasured on the PCB. The twin is logically identical, NOR
-included.
+fixed. Unmeasured on the PCB. Both simulation twins are logically
+identical, NOR included.
+
+**The FPGA twin** (`fpga/`, `fpga/README.md`, 2026-10-30): the mainboard and
+its cards as synthesizable Verilog, one instance per chip by pin number from
+the same netlists, on a 48 MHz `clk_sys` (CLK 1.0 MHz). Runs in Verilator
+and on the ECP5-5G Versa. Logic, not timing: zero-delay gates, one-tick
+registered memory and '245 data. The mainboard's J1-J8 are eight copies of
+one card API (the 37 non-rail pins of `bus_gen.BUS`, `eP_S_xo/_xe` in,
+`_do/_de` out; `fpga_twin_gen.py` docstring); `fpga_slots_gen.SLOTS` seats
+J1 card zero (DIP), J2 the serial card, J3 the DEADBEEF card (RTL, window 2,
+0x5000). Every card's edge comes from its `DINO_BUS_EDGE` by pin: card
+zero's J1, the serial card's J2 (drawn 2026-10-30 through Konnect: netlist
+otherwise unchanged, ERC 34 -> 3 items, the 3 pre-existing warnings).
+A hand-written card starts from `fpga/cards/proto_card.v`: '138 on M11-M13
+enabled by `~{IO_SEL}`, W driven only on `~{IO_RD_Q}` (PHASE_G's rule).
+
+    make fpga-twin                    # every image, 3 seeds, vs the oracle
+    make -C fpga bit IMAGE=basic      # Versa bitstream; prog loads it
+
+**FACT (2026-10-30):** `make fpga-twin`: 44 images x 3 seeds, 132/132 match
+the oracle with the slot table, HALT, no contention; `deadbeef` `0x5A`. The
+slot rewrite left every pre-existing result byte-identical, ticks included
+(`docs/captures/fpga_twin/2026-10-30_suite_{before,after}_slots.log`).
+`test_fpga_twin.py` 32/32 (chip pins against all three netlists, every
+f_ model against its netsim model), `test_fpga_slots.py` 37/37; 17 planted
+faults (pin swaps, a dropped driver, a crossed edge or socket pin, a
+miswired slot, model bugs, a card driving on a write) all caught. Bitstreams
+build at 123.6 MHz Fmax (PASS at 48). On the Versa at 1.0 MHz (before the
+slot rewrite): `PROG_isa` `0xB4`, imon, SCELBAL 11/11 sessions
+byte-identical to the 8008 when echo-paced; pasted input drops characters
+at 0-2 ms per character (16-byte ring, no flow control), clean at 5 ms or
+more. After it, on the Versa with the slot table: `PROG_deadbeef` `0x5A`
+(card 2 answering through J3; Rico read the LEDs). Versa LEDs read OB
+bit 7 on D25; DIPs are SW1, bit 7 on H2.
 
 **FACT (2026-10-30):** `pytest docs/notes` (the whole host suite,
-nothing ignored, Python 3.14 + pytest): 656 passed, 0 failed. The tools follow the schematic as built
+nothing ignored, Python 3.14 + pytest): 725 passed, 0 failed (the FPGA twin's
+`test_fpga_twin.py` and `test_fpga_slots.py` included). The tools follow the schematic as built
 (Rico): the continuity tool joins a label shared between sheets as KiCad
 does; card zero's edge follows the 10-29 bus pinout (`bus_gen`); the
 block ladder and the rig pinmap are retired with their tests.
@@ -509,13 +552,14 @@ against the generated crossing list, TL866 read-back, and the coverage
 ROMs' `OB`. The ROM burn targets in `tests/dino_bringup/Makefile` are not
 rig code and must survive any cleanup. Do not extend `POOL`.
 
-**The FPGA twin** (retired 2026-08-24, deleted 2026-10-30). Synthesisable
-VHDL generated from an earlier schematic; perfect logic, so it could not
-produce the faults that mattered (analog, and the 09-29 fetch runt).
-Deleted with it: `fpga/`, `fpga_gen.py`, `coverage_lint.py`,
-`dino_fpga_vplan.md`, `test_fpga_gen.py`, `test_vplan.py`,
-`test_netlist_integrity.py`. `.git/sdd/BRINGUP_FPGA.md` is kept as
-history. Replaced by `netsim/` ("The twin").
+**The VHDL FPGA twin** (retired 2026-08-24, deleted 2026-10-30).
+Synthesisable VHDL generated from an earlier schematic; perfect logic, so
+it could not produce the faults that mattered (analog, and the 09-29 fetch
+runt). Deleted with it: the old `fpga/` tree, `fpga_gen.py`,
+`coverage_lint.py`, `dino_fpga_vplan.md`, `test_fpga_gen.py`,
+`test_vplan.py`, `test_netlist_integrity.py`. `.git/sdd/BRINGUP_FPGA.md`
+is kept as history. Superseded by `netsim/` and the net-new FPGA twin
+("The twins").
 
 ## Where to read next
 

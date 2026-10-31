@@ -27,6 +27,9 @@ ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
 ROMS = os.path.join(ROOT, "roms")
 OUT = os.path.join(ROMS, "README.md")
 
+# images that read a card only the FPGA twin seats (fpga_twin_suite.CARD_IMAGES)
+CARD_IMAGES = {"PROG_deadbeef"}
+
 # What each coverage image is FOR. One line each; the full rationale lives in
 # progrom_gen.py beside the program itself.
 NOTES = {
@@ -280,8 +283,15 @@ def handwritten_rows():
         # fill=r.fill: the same padding `asm.py -o` wrote, or the README's
         # CRC is a number no chip reads back (2026-09-06, PROG_sertx00).
         img = pr.build_image_from_bytes(r.code, r.origin, fill=r.fill)
+        cards = None
+        if fn[:-4] in CARD_IMAGES:
+            # an image for a card only the FPGA twin seats: scored with its
+            # slot table, marked `+`
+            import fpga_cards
+            import fpga_slots_gen
+            cards = fpga_cards.oracle_cards(fpga_slots_gen.SLOTS)
         try:
-            st = pr.simulate(None, image=img)
+            st = pr.simulate(None, image=img, cards=cards)
         except pr.Unoracled:
             # By design (PHASE_G.md SECTION 5): the oracle has no answer key
             # for images that touch temporal UART registers. Listed, not
@@ -291,6 +301,8 @@ def handwritten_rows():
             ob = "none" if st["out"] is None else f"0x{st['out']:02X}"
             if not st["halted"]:
                 ob += "*"
+            if cards is not None:
+                ob += "+"
         rows.append((fn, pr.crc16(img), ob, os.path.relpath(src, ROOT)))
     return rows
 
@@ -538,6 +550,9 @@ def build():
               "    above are generated and CRC-pinned, these are yours. The",
               "    expected OB below is what the oracle computes by",
               "    interpreting the same microcode the machine will run.",
+              "    `*` never halts (last OB shown). `+` reads a card that exists",
+              "    only on the FPGA twin, scored with its slot table",
+              "    (docs/notes/fpga_slots_gen.py); with the slot empty it fails.",
               "",
               "    IMAGE            CRC16   OB    SOURCE"]
         for fn, crc, ob, src in hand:

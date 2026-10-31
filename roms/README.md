@@ -443,10 +443,15 @@ time the DIAG image is reburned — no reason to reburn just for this.
     above are generated and CRC-pinned, these are yours. The
     expected OB below is what the oracle computes by
     interpreting the same microcode the machine will run.
+    `*` never halts (last OB shown). `+` reads a card that exists
+    only on the FPGA twin, scored with its slot table
+    (docs/notes/fpga_slots_gen.py); with the slot empty it fails.
 
     IMAGE            CRC16   OB    SOURCE
     PROG_basic.bin   0xC34C  UNORACLED asm/basic.asm
     PROG_carry.bin   0xCA1F  0xAD  asm/carry.asm
+    PROG_deadbeef.bin 0x346F  0x5A+ asm/deadbeef.asm
+    PROG_diploop.bin 0x8926  0x2F* asm/diploop.asm
     PROG_hello.bin   0x9C68  0x96  asm/hello.asm
     PROG_imon.bin    0xC12B  UNORACLED asm/imon.asm
     PROG_intaddr.bin 0x7F01  UNORACLED asm/intaddr.asm
@@ -475,6 +480,7 @@ time the DIAG image is reburned — no reason to reburn just for this.
     PROG_serrxlive.bin 0xA673  UNORACLED asm/serrxlive.asm
     PROG_sertx.bin   0x1DC8  UNORACLED asm/sertx.asm
     PROG_sertx00.bin 0x8E73  UNORACLED asm/sertx00.asm
+    PROG_swecho.bin  0x946D  0xFF* asm/swecho.asm
     PROG_test.bin    0xC6CF  0x00* asm/test.asm
     PROG_test2.bin   0x3FAA  0x4D  asm/test2.asm
     PROG_test3.bin   0xB56A  0x4D  asm/test3.asm

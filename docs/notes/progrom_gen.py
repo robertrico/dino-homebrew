@@ -474,11 +474,19 @@ def _ser_write(addr, val, uart):
         uart["regs"][_SER_REG_NAME[reg]] = val    # FCR / MCR: accepted, inert
 
 
-def io_read(addr, switches, uart=None):
+def io_read(addr, switches, uart=None, cards=None):
     """One byte from the I/O window, 0x4000-0x7FFF.
 
     `uart` is the serial card's state from uart_reset(); None means no card
-    in slot 1 -- the phase-E machine -- and the slot reads the park."""
+    in slot 1 -- the phase-E machine -- and the slot reads the park.
+
+    `cards` is the FPGA twin's slot table as the oracle sees it,
+    {window: read(addr)} (fpga_cards.oracle_cards): a card there answers its
+    whole 2K window ahead of the built-in models. None = as before."""
+    if cards:
+        win = (addr - IO_BASE) >> 11
+        if win in cards:
+            return cards[win](addr) & 0xFF
     if (addr & ~DIP_SLOT) == DIP_BASE:
         return switches & 0xFF
     if (addr & ~SER_SLOT) == SER_BASE and uart is not None:
@@ -499,7 +507,7 @@ def io_write(addr, val, uart):
 def simulate(program, max_steps=100000, switches=0x00,
              image=None, rom_window=None, serial=True, serial_in=None,
              irq_at=None, trace=None, serial_gap=None, ram_init=None,
-             serial_echo_paced=False):
+             serial_echo_paced=False, cards=None):
     """Execute an assembled image by interpreting its microcode rows.
 
     `serial=False` pulls the serial card out of slot 1 -- the phase-E
@@ -524,6 +532,8 @@ def simulate(program, max_steps=100000, switches=0x00,
 
     `ram_init={addr: byte}` preloads RAM (PHASE_BASIC's per-instruction
     differential tests); the result always carries `ram`, the final RAM.
+
+    `cards={window: read(addr)}` seats the FPGA twin's cards (io_read).
 
     `trace=[]` gets one dict per instruction executed, {"pc", "op"}: the
     address its opcode was FETCHED from (None for an injected INT) and its
@@ -589,7 +599,7 @@ def simulate(program, max_steps=100000, switches=0x00,
         if a < window:
             return code[a] if a < len(code) else SAFE_FILL
         if a < RAM_BASE:
-            return io_read(a, switches, uart)
+            return io_read(a, switches, uart, cards)
         return ram.get(a, 0)
 
     while st["steps"] < max_steps:

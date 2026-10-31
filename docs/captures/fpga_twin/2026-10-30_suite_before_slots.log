@@ -1,0 +1,72 @@
+PROG               want 0x4D   ok 4d  ok 4d  ok 4d
+PROG_adda          want 0x39   ok 39  ok 39  ok 39
+PROG_addb          want 0x39   ok 39  ok 39  ok 39
+PROG_alu           want 0x39   ok 39  ok 39  ok 39
+PROG_call          want 0x4B   ok 4b  ok 4b  ok 4b
+PROG_calladdr      want 0x5C   ok 5c  ok 5c  ok 5c
+PROG_callraw       want 0x2A   ok 2a  ok 2a  ok 2a
+PROG_carry         want 0xAD   ok ad  ok ad  ok ad
+PROG_dip           want 0x2E   ok 2e  ok 2e  ok 2e
+PROG_flow          want 0x39   ok 39  ok 39  ok 39
+PROG_ind           want 0x63   ok 63  ok 63  ok 63
+PROG_indj          want 0x6C   ok 6c  ok 6c  ok 6c
+PROG_indst         want 0x5B   ok 5b  ok 5b  ok 5b
+PROG_isa           want 0xB4   ok b4  ok b4  ok b4
+PROG_isacount      want 0x00   ok 00  ok 00  ok 00
+PROG_isaid         want 0x00   ok 00  ok 00  ok 00
+PROG_isalive       want 0xB4   ok b4  ok b4  ok b4
+PROG_isasoak       want 0x00   ok 00  ok 00  ok 00
+PROG_isawhere      want 0xB4   ok b4  ok b4  ok b4
+PROG_jnc           want 0x6C   ok 6c  ok 6c  ok 6c
+PROG_jncswap       want 0xEE   ok ee  ok ee  ok ee
+PROG_loop          want 0x15   ok 15  ok 15  ok 15
+PROG_mardisc       want 0x6B   ok 6b  ok 6b  ok 6b
+PROG_mem           want 0xC5   ok c5  ok c5  ok c5
+PROG_mov           want 0x9C   ok 9c  ok 9c  ok 9c
+PROG_pads          want 0x40   ok 40  ok 40  ok 40
+PROG_probe         want 0x39   ok 39  ok 39  ok 39
+PROG_ptr           want 0x22   ok 22  ok 22  ok 22
+PROG_ramexec       want 0x6E   ok 6e  ok 6e  ok 6e
+PROG_romsoak       want 0xFF   ok ff  ok ff  ok ff
+PROG_shl           want 0xA4   ok a4  ok a4  ok a4
+PROG_sp            want 0x27   ok 27  ok 27  ok 27
+PROG_sp1           want 0x2C   ok 2c  ok 2c  ok 2c
+PROG_sp2           want 0x53   ok 53  ok 53  ok 53
+PROG_sp3           want 0x2C   ok 2c  ok 2c  ok 2c
+PROG_stack         want 0x27   ok 27  ok 27  ok 27
+PROG_suite         want 0xFF   ok ff  ok ff  ok ff
+PROG_test2         want 0x4D   ok 4d  ok 4d  ok 4d
+PROG_test3         want 0x4D   ok 4d  ok 4d  ok 4d
+PROG_test4         want 0x5A   ok 5a  ok 5a  ok 5a
+PROG_test5         want 0xFF   ok ff  ok ff  ok ff
+PROG_wander        want 0xFF   ok ff  ok ff  ok ff
+PROG_window        want 0x5A   ok 5a  ok 5a  ok 5a
+PROG_cylon         not run: never HALTs
+PROG_diag          not run: oracle: pc=0x000D: no instruction for 0xF9
+PROG_diploop       not run: never HALTs
+PROG_spcylon       not run: never HALTs
+PROG_swdemo        not run: never HALTs
+PROG_swecho        not run: never HALTs
+PROG_test          not run: never HALTs
+0 failing run(s)
+
+== sertx +HALT_TICKS=500000 +MAX_TICKS=200000000
+44 49 4e 4f 0d 0a HALT OB=53 ticks=709196 contention=0
+== serid +HALT_TICKS=500000 +MAX_TICKS=200000000
+HALT OB=55 ticks=504236 contention=0
+== serid_aa +HALT_TICKS=500000 +MAX_TICKS=200000000
+HALT OB=aa ticks=504236 contention=0
+== serlsr +HALT_TICKS=500000 +MAX_TICKS=200000000
+HALT OB=60 ticks=503948 contention=0
+== seriir +HALT_TICKS=500000 +MAX_TICKS=200000000
+HALT OB=c1 ticks=504236 contention=0
+== serloop +HALT_TICKS=500000 +MAX_TICKS=200000000
+HALT OB=53 ticks=555212 contention=0
+== dip +SW=00
+HALT OB=2e ticks=100140 contention=0
+== dip +SW=e1
+HALT OB=4d ticks=100140 contention=0
+== imon +SIN=\rD 0000\r~ +MAX_TICKS=150000000
+44 49 4e 4f 20 49 4d 4f 4e 0d 0a 3e 20 0d 0a 3e 20 44 20 30 30 30 30 0d 0a 30 78 31 31 0d 0a 3e 20 TIMEOUT OB=ff ticks=150000000 contention=0
+== basic +SIN=\rG 0A00\r~PRINT 2/3\r~PRINT PEEK(16384)\r~ +MAX_TICKS=400000000 +SW=80
+44 49 4e 4f 20 49 4d 4f 4e 0d 0a 3e 20 0d 0a 3e 20 47 20 30 41 30 30 0d 0a 14 0d 0a 52 45 41 44 59 0d 0a 0a 50 52 49 4e 54 20 32 2f 33 0d 0d 0a 20 30 2e 36 36 36 36 36 36 37 0d 0a 14 0d 0a 52 45 41 44 59 0d 0a 0a 50 52 49 4e 54 20 50 45 45 4b 28 31 36 33 38 34 29 0d 0d 0a 20 31 32 37 2e 30 0d 0a 14 0d 0a 52 45 41 44 59 0d 0a 0a TIMEOUT OB=ff ticks=400000000 contention=0

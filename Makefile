@@ -172,6 +172,10 @@ test:
 twin:
 	$(PY) docs/notes/netsim_suite.py --seeds 3
 
+# the FPGA twin with its slot table (docs/notes/fpga_slots_gen.py SLOTS)
+fpga-twin:
+	$(PY) docs/notes/fpga_twin_suite.py --seeds 3
+
 # ---- serial ------------------------------------------------------------
 # Copied from intel-8008-vhdl/projects/b8008_monitor 2026-09-04. The serial
 # card (phase G) runs 9600 8N1: divisor 24 at 3.6864MHz, see asm/serbaud.asm.
@@ -202,7 +206,7 @@ kill-monitor:
 	    echo "minicom not running"; \
 	fi
 
-.PHONY: list-asm assemble-all gen-microcode gen-progrom gen-isa expected test twin \
+.PHONY: list-asm assemble-all gen-microcode gen-progrom gen-isa expected test twin fpga-twin \
         burn-real-u9 burn-real-u15 burn-real-u23 burn-prog burn-prog-diag \
         list-prog read-prog id-rom verify-prog verify-prog-diag \
         verify-real-u9 verify-real-u15 verify-real-u23 \
