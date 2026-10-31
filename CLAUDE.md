@@ -204,7 +204,7 @@ pins good (2026-09-29). An alternative form, `AND(WRITE_DIR, TO0)` on
   `dino_v0_0_2/fabrication/dino_rev_1_0_gerbers_20261029_1153.zip`. CLK and
   RESET runs reviewed net by net 2026-10-29 (`docs/captures/rev1_0/`); the
   reset RC node's 301 mm run to SW2 passes 50 mm beside M7 and is left as
-  is (10 uF at U56.11 swamps the coupling; Rico). 5 boards through PCBWay's audit 2026-10-29; not yet paid (Rico asking about shipping). Power is an old ATX tower supply into
+  is (10 uF at U56.11 swamps the coupling; Rico). 5 boards ordered from PCBWay 2026-10-30 (through their audit 10-29). Power is an old ATX tower supply into
   `J9` (`.git/sdd/POWER.md` SECTION 8; draw 1.25-1.34 A); open: the unit's
   make and 5V rating, group regulation (TASK 2).
 

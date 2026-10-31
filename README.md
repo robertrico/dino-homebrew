@@ -40,7 +40,7 @@ crystal, executes from ROM and RAM, takes interrupts, and talks over serial.
 - **SCELBAL BASIC** (the 1974 8008 BASIC), machine-translated into DINO
   assembly, runs out of ROM: `PRINT 2/3` gives ` 0.6666667`.
 
-**Rev 1.0, the PCB.** Five boards through PCBWay's audit; the order goes in once shipping is settled.
+**Rev 1.0, the PCB.** Five boards ordered from PCBWay (2026-10-30).
 4 layers (GND and +5V planes inside), KiCad DRC 0 unconnected / 0 errors,
 schematic parity 0. Routed by Freerouting 2.5.0. Added for bring-up: a clock
 select header (1.024 MHz, 512k, 256k, 128k, or a debounced single-step
