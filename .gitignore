@@ -51,3 +51,5 @@ docs/superpowers/
 
 # bench photos and the as-built map: local only (Rico, 2026-10-28)
 docs/layout/
+dino_proto/drc.json
+dino_proto/erc.json

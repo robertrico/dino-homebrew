@@ -49,17 +49,6 @@
 		(layer "F.Fab")
 		(uuid "2f95d3f3-2db9-5684-a0e4-09f6826e1a33")
 	)
-	(fp_rect
-		(start -51.75 0)
-		(end 51.75 0.001)
-		(stroke
-			(width 0.05)
-			(type solid)
-		)
-		(fill no)
-		(layer "Edge.Cuts")
-		(uuid "9bf48382-7095-582d-ac32-ce90ba9de3ab")
-	)
 	(pad "1" smd rect
 		(at -30.480 -5.5)
 		(size 1.6 10)

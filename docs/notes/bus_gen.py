@@ -192,14 +192,16 @@ def _fp_rect(name, layer, x0, y0, x1, y1, w):
 
 def fingers_footprint():
     """25 fingers a side, 0.1in pitch, 1.6mm wide x 10mm long, board edge
-    along the bottom of the pads. Pin 1 front-left; pin 26 sits behind it
-    on B.Cu. Chamfer and finger length follow the socket (OPEN 2)."""
+    along the bottom of the pads (y = 0 is the card edge, drawn by the card).
+    Pin 1 front-left; pin 26 sits behind it on B.Cu. Chamfer and finger
+    length follow the socket (OPEN 2)."""
     name = FP_FINGERS
     w = 25 * PITCH
     out = _fp_head(name, "DINO bus card fingers, 2x25, 0.1in pitch. Front 1-25, back 26-50.", "smd")
     out += _fp_rect(name, "F.CrtYd", -w / 2 - 0.5, -11.5, w / 2 + 0.5, 0.5, 0.05)
     out += _fp_rect(name, "F.Fab", -w / 2, -11, w / 2, 0, 0.1)
-    out += _fp_rect(name, "Edge.Cuts", -w / 2 - 20, 0, w / 2 + 20, 0.001, 0.05)   # the edge
+    # no Edge.Cuts here (2026-11-01): the card's outline owns the edge; a
+    # 103.5 mm line at the tab bottom stood on no real card (PROTO_CARD.md 6)
     for pin in range(1, 51):
         col = (pin - 1) % 25
         x = -w / 2 + PITCH / 2 + col * PITCH
