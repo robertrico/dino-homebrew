@@ -79,7 +79,8 @@ JOIN_W = 0.6           # J2 same-net joins where the geometry allows
 # the vertical feeds, right margin (B.Cu), from J2 up; a via into each row
 FEED_X = {"+12V": BX + WIDTH - 6.5, "-12V": BX + WIDTH - 5.4, "+3.3V": BX + WIDTH - 4.3,
           "+5V": BX + WIDTH - 3.2, "GND": BX + WIDTH - 2.1}
-LEFT_FEED_X = {}                                       # no left ties: every row reaches the right feeds
+LEFT_TIE_X = {"GND": BX + 1.0, "+5V": BX + 2.6}       # the left ties, F.Cu / B.Cu
+TIE_W = 0.8
 
 
 def grid_holes():
@@ -602,18 +603,25 @@ def rail_tracks(fx):
     for _, net, y, n in rail_rows():
         out.append(("B.Cu", net, [(xa, y), (GRID_X0 + (n - 1) * PITCH, y)], RAIL_W[net]))
         out.append(("F.Cu", net, [(xa, y), (FEED_X[net], y)], RAIL_W[net]))
-    # the band's rails (F.Cu, hole-less), fed from the grid's rows down the
-    # left margin: GND on F.Cu at x 20.8 from row 16, +5V on B.Cu at x 22.6
-    # from row 17 (a via onto the F.Cu band rail). They run on past J2's
-    # first columns for pins 26 and 27.
+    # the left ties (Rico, 2026-11-02: "+5V and GND loops"): GND on F.Cu at
+    # x 21.0 and +5V on B.Cu at x 22.6, each through every row of its net
+    # from the topmost down to the band's rail, with a jog onto each row's
+    # first hole. Every GND/+5V row is then fed from both ends: a loop, not
+    # a stub. The band's rails (F.Cu, hole-less) hang off the same ties and
+    # run on past J2's first columns for pins 26 and 27.
     x0_ = fx - 12 * PITCH
     gnd_end = x0_ + J2_SHIFT                                      # pin 26's via
     vcc_end = x0_ + PITCH + J2_SHIFT                              # pin 27's via
-    out.append(("F.Cu", "GND", [(xa, GRID_Y0 + 16 * PITCH), (BX + 0.8, GRID_Y0 + 16 * PITCH),
-                                (BX + 0.8, BAND_GND_Y), (gnd_end, BAND_GND_Y)], 0.6))
-    out.append(("F.Cu", "+5V", [(BX + 2.6, BAND_VCC_Y), (vcc_end, BAND_VCC_Y)], 0.6))
-    out.append(("B.Cu", "+5V", [(xa, GRID_Y0 + 17 * PITCH), (BX + 2.6, GRID_Y0 + 17 * PITCH),
-                                (BX + 2.6, BAND_VCC_Y)], 0.6))
+    gnd_rows = [y for _, net, y, _ in rail_rows() if net == "GND"]
+    vcc_rows = [y for _, net, y, _ in rail_rows() if net == "+5V"]
+    out.append(("F.Cu", "GND", [(LEFT_TIE_X["GND"], min(gnd_rows)), (LEFT_TIE_X["GND"], BAND_GND_Y)], TIE_W))
+    out.append(("F.Cu", "GND", [(LEFT_TIE_X["GND"], BAND_GND_Y), (gnd_end, BAND_GND_Y)], 0.6))
+    for y in gnd_rows:
+        out.append(("F.Cu", "GND", [(xa, y), (LEFT_TIE_X["GND"], y)], TIE_W))
+    out.append(("B.Cu", "+5V", [(LEFT_TIE_X["+5V"], min(vcc_rows)), (LEFT_TIE_X["+5V"], BAND_VCC_Y)], TIE_W))
+    for y in vcc_rows:
+        out.append(("B.Cu", "+5V", [(xa, y), (LEFT_TIE_X["+5V"], y)], TIE_W))
+    out.append(("F.Cu", "+5V", [(LEFT_TIE_X["+5V"], BAND_VCC_Y), (vcc_end, BAND_VCC_Y)], 0.6))
     return out
 
 
@@ -621,7 +629,7 @@ def rail_vias(fx=None):
     """(net, x, y): F.Cu row to B.Cu vertical at the feed; and the two
     GND joins at J2 (pin 44's column and pin 17's gap, y 80.15)."""
     out = [(net, FEED_X[net], y) for _, net, y, _ in rail_rows()]
-    out.append(("+5V", BX + 2.6, BAND_VCC_Y))                       # the left-margin +5V riser
+    out.append(("+5V", LEFT_TIE_X["+5V"], BAND_VCC_Y))              # the left +5V tie onto the band rail
     if fx is not None:
         x0 = fx - 12 * PITCH
         out.append(("+5V", x0 + PITCH + J2_SHIFT, BAND_VCC_Y))       # pin 27
