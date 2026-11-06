@@ -1,4 +1,4 @@
-# CLAUDE.md — DINO (Discrete Integrated NISC Operator)
+# CLAUDE.md — DINO (Discrete Integrated Numeric Operator)
 
 An 8-bit CPU built from discrete 74-series logic on breadboards, designed in
 KiCad. Split out of the `hardware` portfolio repo on 2026-07-28 with full
