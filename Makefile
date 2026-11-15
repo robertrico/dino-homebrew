@@ -176,6 +176,28 @@ twin:
 fpga-twin:
 	$(PY) docs/notes/fpga_twin_suite.py --seeds 3
 
+# ---- case ------------------------------------------------------------------
+# The case, generated from the Rev 1.0 PCB (docs/notes/case_gen.py). build123d
+# lives in its own venv:  python3 -m venv ~/.venvs/dino-cad &&
+# ~/.venvs/dino-cad/bin/pip install build123d pytest
+#     make case                  STEP + STL per piece in case/gen/<variant>_<power>/
+#     make case CASE_POWER=pico  DC jack instead of the ATX cable slot
+#     make case-test             test_case_gen.py, solids included
+#     make case-render           Blender studio renders in case/gen/render/
+#                                (brew install --cask blender; pip shapely cairosvg)
+CAD_PY     ?= $(HOME)/.venvs/dino-cad/bin/python
+CASE_VAR   ?= plain
+CASE_POWER ?= atx
+
+case:
+	$(CAD_PY) docs/notes/case_gen.py --variant $(CASE_VAR) --power $(CASE_POWER)
+
+case-render:
+	$(CAD_PY) docs/notes/case_render.py
+
+case-test:
+	$(CAD_PY) -m pytest -q -p no:warnings docs/notes/test_case_gen.py
+
 # ---- serial ------------------------------------------------------------
 # Copied from intel-8008-vhdl/projects/b8008_monitor 2026-09-04. The serial
 # card (phase G) runs 9600 8N1: divisor 24 at 3.6864MHz, see asm/serbaud.asm.
@@ -206,7 +228,7 @@ kill-monitor:
 	    echo "minicom not running"; \
 	fi
 
-.PHONY: list-asm assemble-all gen-microcode gen-progrom gen-isa expected test twin fpga-twin \
+.PHONY: list-asm assemble-all gen-microcode gen-progrom gen-isa expected test twin fpga-twin case case-test case-render \
         burn-real-u9 burn-real-u15 burn-real-u23 burn-prog burn-prog-diag \
         list-prog read-prog id-rom verify-prog verify-prog-diag \
         verify-real-u9 verify-real-u15 verify-real-u23 \

@@ -465,6 +465,13 @@ Each is a rule because something broke. The narrative behind each is in
     docs/notes/fpga_slots_gen.py    SLOTS, the slot table -> dino_system
     docs/notes/fpga_twin_suite.py   every image on the FPGA twin vs the
                                     oracle (`make fpga-twin`)
+    docs/notes/case_gen.py          the case from the Rev 1.0 PCB: STEP + STL
+                                    pieces for a Core One (`make case`,
+                                    `make case-test`; build123d venv)
+    docs/notes/case_render.py       studio renders of the case + brand in
+                                    Blender Cycles (`make case-render`)
+    docs/brand/build.py             the DINO wordmark, monogram and front
+                                    panel SVGs; case_gen reads the panel
 
 `simulate()` in `progrom_gen.py` interprets the real microcode rows and
 computes what `OB` should read; it is the answer key, and it is not the
