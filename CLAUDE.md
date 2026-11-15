@@ -207,6 +207,12 @@ pins good (2026-09-29). An alternative form, `AND(WRITE_DIR, TO0)` on
   is (10 uF at U56.11 swamps the coupling; Rico). 5 boards ordered from PCBWay 2026-10-30 (through their audit 10-29). Power is an old ATX tower supply into
   `J9` (`.git/sdd/POWER.md` SECTION 8; draw 1.25-1.34 A); open: the unit's
   make and 5V rating, group regulation (TASK 2).
+  Boards are in hand (bare, 2026-11-14). Sockets: every IC socketed,
+  machined on the ROMs `U9 U15 U23 U24`, stamped elsewhere (`U26`
+  included), `Y1` soldered; a ZIF does not fit (the body covers each ROM's
+  decoupling cap). Sockets for boards 1-2 in the Mouser cart 2026-11-14;
+  boards 3-5 wait on board 1. Counts, parts, ZIF check:
+  `dino_v0_0_2/rev1_0_sockets.md`.
 
 ## Architecture, netlist-extracted
 
