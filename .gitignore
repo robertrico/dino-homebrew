@@ -55,3 +55,19 @@ dino_proto/drc.json
 dino_proto/erc.json
 # case/gen/: STEP + STL from docs/notes/case_gen.py. `make case`.
 case/gen/
+# fpga/sim, fpga/ttl: GHDL binaries and results of the VHDL twin (deleted
+# 2026-10-30). Named one by one so a new source in fpga/sim stays visible.
+/fpga/ttl/
+/fpga/sim/sim_build/
+/fpga/sim/results.xml
+/fpga/sim/alu
+/fpga/sim/control_word
+/fpga/sim/dino_core
+/fpga/sim/input_output
+/fpga/sim/mar
+/fpga/sim/mdr
+/fpga/sim/memory
+/fpga/sim/microcode
+/fpga/sim/program_counter
+/fpga/sim/registers_a_b
+/fpga/sim/stack_pointer
